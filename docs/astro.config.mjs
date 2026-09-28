@@ -5,8 +5,7 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 
 export default defineConfig({
-  site: 'https://andreojr.github.io',
-  base: '/sensor-ppg',
+  site: 'https://ppg.works.ufba.app',
   markdown: {
     remarkPlugins: [remarkMath],
     rehypePlugins: [rehypeKatex],
