@@ -99,7 +99,6 @@ Cada passo é um PR próprio:
 - As regras de tamanho e de documentação são checadas pelo CI
   (`.github/scripts/regras_pr.py`); dá pra rodar antes do push:
   `python3 .github/scripts/regras_pr.py origin/main HEAD`.
-- **Prazo de revisão:** 48 h. Se não der, avise no grupo.
 - Merge por **squash**. O título do PR vira a mensagem do commit.
 
 ## Versões (releases)
