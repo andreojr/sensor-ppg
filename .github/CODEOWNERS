@@ -1,0 +1,24 @@
+# Quem aprova o quê. O último padrão que casar vale.
+# O autor do PR não conta como aprovação: por isso cada módulo tem o dono
+# da frente + o revisor fixo daquela frente.
+#
+# Divisão dos módulos: definida pelo grupo em 28/09. Trocar @colega1 e
+# @colega2 pelos usuários do GitHub e descomentar as linhas dos módulos.
+
+*                              @andreojr @colega1 @colega2
+
+# Interface: qualquer um aprova, mas mudança no ppg.h é combinada antes.
+/Core/Inc/pds/comum/           @andreojr @colega1 @colega2
+
+# .ioc com dois donos, pra o PR de quem mexe nele não travar.
+/*.ioc                         @andreojr @colega1
+
+# Módulos de PDS: @dono @revisor-fixo
+# /Core/*/pds/decimacao/       @dono @revisor
+# /Core/*/pds/filtro/          @dono @revisor
+# /Core/*/pds/picos/           @dono @revisor
+# /Core/*/pds/espectral/       @dono @revisor
+# /Core/*/pds/hrv/             @dono @revisor
+# /Core/*/pds/spo2/            @dono @revisor
+# /Core/*/pds/respiracao/      @dono @revisor
+# /Core/*/pds/qualidade/       @dono @revisor
