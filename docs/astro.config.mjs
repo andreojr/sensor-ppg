@@ -12,7 +12,8 @@ export default defineConfig({
   },
   integrations: [
     starlight({
-      title: 'sensor-ppg',
+      title: 'Sensor PPG',
+      favicon: '/favicon.svg',
       description: 'PDS de fotopletismografia em tempo real (ENGG54, UFBA)',
       defaultLocale: 'root',
       locales: { root: { label: 'Português', lang: 'pt-BR' } },
