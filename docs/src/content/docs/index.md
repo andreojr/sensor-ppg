@@ -8,6 +8,8 @@ estimar frequência cardíaca, variabilidade dos batimentos, oxigenação e
 respiração a partir de um sensor óptico de dedo, **com todo o processamento
 feito por nós**, rodando em tempo real numa STM32.
 
+> Projeto de alunos da disciplina. Não é um site oficial da UFBA.
+
 ## Hardware
 
 | Peça | Papel |
