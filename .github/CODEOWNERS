@@ -2,16 +2,16 @@
 # O autor do PR não conta como aprovação: por isso cada módulo tem o dono
 # da frente + o revisor fixo daquela frente.
 #
-# Divisão dos módulos: definida pelo grupo em 28/09. Trocar @colega1 e
-# @colega2 pelos usuários do GitHub e descomentar as linhas dos módulos.
+# Divisão dos módulos: V6, definida em 28/09. Falta decidir quem é A, B e C
+# e descomentar as linhas dos módulos.
 
-*                              @andreojr @colega1 @colega2
+*                              @andreojr @CelsoJrr @joaocluis
 
 # Interface: qualquer um aprova, mas mudança no ppg.h é combinada antes.
-/Core/Inc/pds/comum/           @andreojr @colega1 @colega2
+/Core/Inc/pds/comum/           @andreojr @CelsoJrr @joaocluis
 
-# .ioc com dois donos, pra o PR de quem mexe nele não travar.
-/*.ioc                         @andreojr @colega1
+# .ioc: qualquer um dos outros dois aprova (um PR de cada vez mexe nele).
+/*.ioc                         @andreojr @CelsoJrr @joaocluis
 
 # Módulos de PDS: @dono @revisor-fixo
 # Frentes (divisão V6): A = decimacao, filtro, respiracao
