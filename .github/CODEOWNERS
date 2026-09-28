@@ -2,8 +2,7 @@
 # O autor do PR não conta como aprovação: por isso cada módulo tem o dono
 # da frente + o revisor fixo daquela frente.
 #
-# Divisão dos módulos: V6, definida em 28/09. Falta decidir quem é A, B e C
-# e descomentar as linhas dos módulos.
+# Divisão dos módulos: V6, definida em 28/09.
 
 *                              @andreojr @CelsoJrr @joaocluis
 
@@ -13,17 +12,14 @@
 # .ioc: qualquer um dos outros dois aprova (um PR de cada vez mexe nele).
 /*.ioc                         @andreojr @CelsoJrr @joaocluis
 
-# Módulos de PDS: @dono @revisor-fixo
-# Frentes (divisão V6): A = decimacao, filtro, respiracao
-#                       B = hrv, qualidade
-#                       C = picos, espectral, spo2
-# Revisor fixo em rodízio: A é revisado por C, B por A, C por B.
-# Trocar @pessoa-a/b/c pelos usuários do GitHub e descomentar.
-# /Core/*/pds/decimacao/       @pessoa-a @pessoa-c
-# /Core/*/pds/filtro/          @pessoa-a @pessoa-c
-# /Core/*/pds/respiracao/      @pessoa-a @pessoa-c
-# /Core/*/pds/hrv/             @pessoa-b @pessoa-a
-# /Core/*/pds/qualidade/       @pessoa-b @pessoa-a
-# /Core/*/pds/picos/           @pessoa-c @pessoa-b
-# /Core/*/pds/espectral/       @pessoa-c @pessoa-b
-# /Core/*/pds/spo2/            @pessoa-c @pessoa-b
+# Módulos de PDS: @dono @revisor-fixo (divisão V6)
+# A = @joaocluis (filtragem), B = @andreojr (HRV), C = @CelsoJrr (batimento)
+# Rodízio: A é revisado por C, B por A, C por B.
+/Core/*/pds/decimacao/         @joaocluis @CelsoJrr
+/Core/*/pds/filtro/            @joaocluis @CelsoJrr
+/Core/*/pds/respiracao/        @joaocluis @CelsoJrr
+/Core/*/pds/hrv/               @andreojr @joaocluis
+/Core/*/pds/qualidade/         @andreojr @joaocluis
+/Core/*/pds/picos/             @CelsoJrr @andreojr
+/Core/*/pds/espectral/         @CelsoJrr @andreojr
+/Core/*/pds/spo2/              @CelsoJrr @andreojr
