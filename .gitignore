@@ -11,3 +11,5 @@ analise/dados/
 docs/node_modules/
 docs/dist/
 docs/.astro/
+.pytest_cache/
+.ruff_cache/

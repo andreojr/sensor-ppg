@@ -1,0 +1,24 @@
+[project]
+name = "analise"
+version = "0.1.0"
+description = "Protótipos e validação do PDS do sensor-ppg (PhysioNet e dados do sensor)"
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=2.0",
+    "scipy>=1.13",
+    "pandas>=2.2",
+    "matplotlib>=3.9",
+]
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[build-system]
+requires = ["uv_build>=0.12.8,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
