@@ -1,0 +1,44 @@
+name: Release
+
+# Ao criar uma tag v* (ex.: v0.1 no relatório 1), compila o firmware e publica
+# a release com os arquivos pra gravar na placa e as notas geradas dos PRs.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: release
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq gcc-arm-none-eabi binutils-arm-none-eabi cmake ninja-build
+      - name: Testes do PDS no PC (a release não sai se falharem)
+        run: |
+          cmake -S testes -B build/testes -G Ninja
+          cmake --build build/testes
+          ctest --test-dir build/testes --output-on-failure
+      - name: Compila o firmware (Release)
+        run: |
+          cmake --preset Release
+          cmake --build --preset Release
+      - name: Arquivos pra gravar
+        run: |
+          mkdir -p dist
+          cp build/Release/sensor-ppg.elf dist/
+          arm-none-eabi-objcopy -O binary build/Release/sensor-ppg.elf dist/sensor-ppg.bin
+          arm-none-eabi-objcopy -O ihex build/Release/sensor-ppg.elf dist/sensor-ppg.hex
+          (cd dist && sha256sum * > SHA256SUMS)
+      - name: Publica a release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > notas.md <<'NOTAS'
+          Gravar na placa: `st-flash write sensor-ppg.bin 0x8000000`, ou abrir o `sensor-ppg.hex` no STM32CubeProgrammer.
+          NOTAS
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "$GITHUB_REF_NAME" --notes-file notas.md --generate-notes --verify-tag

@@ -1,0 +1,28 @@
+name: Label do PR
+
+# Coloca no PR o label do prefixo da branch (pds/..., firmware/..., ...).
+# É o que separa as notas da release por tipo (.github/release.yml).
+on:
+  pull_request:
+    types: [opened, reopened]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  label:
+    name: label-pr
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Label a partir da branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.head_ref }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          prefixo="${BRANCH%%/*}"
+          case "$prefixo" in
+            pds|comum|firmware|analise|testes|docs|ci)
+              gh pr edit "$PR" -R "$GITHUB_REPOSITORY" --add-label "$prefixo" ;;
+            *) echo "branch '$BRANCH' sem prefixo conhecido: nenhum label" ;;
+          esac

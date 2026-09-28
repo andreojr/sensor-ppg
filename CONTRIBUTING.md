@@ -102,6 +102,20 @@ Cada passo é um PR próprio:
 - **Prazo de revisão:** 48 h. Se não der, avise no grupo.
 - Merge por **squash**. O título do PR vira a mensagem do commit.
 
+## Versões (releases)
+
+Uma versão por marco: `v0.1` no relatório 1, `v0.2` no relatório 2, `v1.0` na
+apresentação final. Na véspera, com a `main` atualizada:
+
+```bash
+git tag v0.1 -m "Relatório 1"
+git push origin v0.1
+```
+
+O CI compila o firmware, roda os testes e publica a release com o `.bin`, o
+`.hex` e o `.elf`, e a lista dos PRs do período separada por tipo. O tipo sai do
+label do PR, que é colocado sozinho a partir do prefixo da branch.
+
 ## `.ioc` (CubeMX)
 
 Conflito no `.ioc` é difícil de resolver. **Um PR de cada vez mexe nele.**
