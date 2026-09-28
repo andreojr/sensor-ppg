@@ -1,0 +1,6 @@
+# Arquivos gerados: o GitHub recolhe o diff deles (e o CI não conta no limite de linhas).
+docs/package-lock.json linguist-generated=true
+analise/uv.lock        linguist-generated=true
+Drivers/**             linguist-generated=true
+cmake/stm32cubemx/**   linguist-generated=true
+testes/**/vetores/**   linguist-generated=true
