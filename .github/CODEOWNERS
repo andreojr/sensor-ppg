@@ -14,11 +14,16 @@
 /*.ioc                         @andreojr @colega1
 
 # Módulos de PDS: @dono @revisor-fixo
-# /Core/*/pds/decimacao/       @dono @revisor
-# /Core/*/pds/filtro/          @dono @revisor
-# /Core/*/pds/picos/           @dono @revisor
-# /Core/*/pds/espectral/       @dono @revisor
-# /Core/*/pds/hrv/             @dono @revisor
-# /Core/*/pds/spo2/            @dono @revisor
-# /Core/*/pds/respiracao/      @dono @revisor
-# /Core/*/pds/qualidade/       @dono @revisor
+# Frentes (divisão V6): A = decimacao, filtro, respiracao
+#                       B = hrv, qualidade
+#                       C = picos, espectral, spo2
+# Revisor fixo em rodízio: A é revisado por C, B por A, C por B.
+# Trocar @pessoa-a/b/c pelos usuários do GitHub e descomentar.
+# /Core/*/pds/decimacao/       @pessoa-a @pessoa-c
+# /Core/*/pds/filtro/          @pessoa-a @pessoa-c
+# /Core/*/pds/respiracao/      @pessoa-a @pessoa-c
+# /Core/*/pds/hrv/             @pessoa-b @pessoa-a
+# /Core/*/pds/qualidade/       @pessoa-b @pessoa-a
+# /Core/*/pds/picos/           @pessoa-c @pessoa-b
+# /Core/*/pds/espectral/       @pessoa-c @pessoa-b
+# /Core/*/pds/spo2/            @pessoa-c @pessoa-b
