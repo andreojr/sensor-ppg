@@ -1,5 +1,5 @@
 ---
-title: Sensor PPG
+title: Visão geral
 description: Processamento digital de sinais de fotopletismografia em tempo real.
 ---
 
