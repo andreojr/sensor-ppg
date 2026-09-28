@@ -1,0 +1,15 @@
+# Seções das notas geradas nas releases, pelo label do PR.
+changelog:
+  categories:
+    - title: PDS
+      labels: [pds, comum]
+    - title: Firmware
+      labels: [firmware]
+    - title: Análise e validação
+      labels: [analise, testes]
+    - title: Documentação
+      labels: [docs]
+    - title: CI e automação
+      labels: [ci]
+    - title: Outros
+      labels: ["*"]
