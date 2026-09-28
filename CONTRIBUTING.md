@@ -85,9 +85,17 @@ Cada passo é um PR próprio:
   dono ou o revisor fixo daquele módulo aprova. Commit novo derruba a
   aprovação.
 - **CI verde** é obrigatório.
-- **Documentação do módulo:** PR que muda `Core/*/pds/<módulo>/` também muda
-  a página do módulo em `docs/src/content/docs/modulos/<módulo>.md`. É dali
-  que saem os relatórios.
+- **Documentação junto com o código.** O CI exige:
+
+  | Se o PR muda | Também muda |
+  |---|---|
+  | `Core/*/pds/<módulo>/` | `docs/src/content/docs/modulos/<módulo>.md` |
+  | `Core/Inc/pds/comum/ppg.h` | `docs/src/content/docs/interface.md` |
+  | o `.ioc`, ou firmware nosso em `Core/` fora de `pds/` | `docs/src/content/docs/firmware.md` |
+
+  Os arquivos que o CubeMX gera (`main.c`, `stm32f4xx_*`...) não entram na
+  regra sozinhos, mas uma mudança no `.ioc` que os regenera entra. É das
+  páginas que saem os relatórios.
 - As regras de tamanho e de documentação são checadas pelo CI
   (`.github/scripts/regras_pr.py`); dá pra rodar antes do push:
   `python3 .github/scripts/regras_pr.py origin/main HEAD`.
