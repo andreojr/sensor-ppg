@@ -63,7 +63,11 @@ Cada passo é um PR próprio:
   aprovação.
 - **CI verde** é obrigatório.
 - **Documentação do módulo:** PR que muda `Core/*/pds/<módulo>/` também muda
-  `docs/` (a página do módulo). É dali que saem os relatórios.
+  a página do módulo em `docs/src/content/docs/modulos/<módulo>.md`. É dali
+  que saem os relatórios.
+- As regras de tamanho e de documentação são checadas pelo CI
+  (`.github/scripts/regras_pr.py`); dá pra rodar antes do push:
+  `python3 .github/scripts/regras_pr.py origin/main HEAD`.
 - **Prazo de revisão:** 48 h. Se não der, avise no grupo.
 - Merge por **squash**. O título do PR vira a mensagem do commit.
 

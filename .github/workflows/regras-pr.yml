@@ -1,0 +1,16 @@
+name: Regras de PR
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+jobs:
+  regras-pr:
+    name: regras-pr
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Tamanho do PR e doc do módulo
+        run: python3 .github/scripts/regras_pr.py "origin/${{ github.base_ref }}" HEAD
