@@ -63,6 +63,7 @@ void Error_Handler(void);
 #define DISPLAY_SDA_GPIO_Port GPIOB
 #define SENSOR_INT_Pin GPIO_PIN_5
 #define SENSOR_INT_GPIO_Port GPIOB
+#define SENSOR_INT_EXTI_IRQn EXTI9_5_IRQn
 #define SENSOR_SCL_Pin GPIO_PIN_6
 #define SENSOR_SCL_GPIO_Port GPIOB
 #define SENSOR_SDA_Pin GPIO_PIN_7
