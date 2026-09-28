@@ -1,0 +1,24 @@
+name: Status do Project
+
+on:
+  create:
+  pull_request:
+    types: [opened, reopened, ready_for_review, converted_to_draft, closed]
+  pull_request_review:
+    types: [submitted]
+  issues:
+    types: [opened, reopened, closed]
+
+jobs:
+  status:
+    name: status-project
+    runs-on: ubuntu-24.04
+    if: github.event_name != 'create' || github.event.ref_type == 'branch'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+      - name: Move o card
+        env:
+          GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+        run: python3 .github/scripts/status_project.py

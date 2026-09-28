@@ -1,6 +1,8 @@
 ## O quê
 
-<!-- Uma ou duas frases. Qual issue fecha: "Fecha #N". -->
+<!-- Uma ou duas frases. -->
+
+Closes #<!-- nº da issue (em inglês: é o que liga o PR à issue e move o card) -->
 
 ## Passo do fluxo
 
