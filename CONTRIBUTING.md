@@ -52,8 +52,20 @@ Cada passo é um PR próprio:
 ## Branches e PRs
 
 - A `main` é protegida: ninguém faz push direto, nem o dono do repositório.
-- Branch: `<módulo>/<descrição-curta>`, por exemplo `filtro/butterworth-iir`.
-  Fora do PDS: `firmware/...`, `docs/...`, `ci/...`.
+- **Toda branch nasce de uma issue**, com o número dela no nome:
+  `<módulo>/<nº da issue>-<descrição-curta>`, por exemplo
+  `filtro/42-butterworth-iir`. Fora do PDS: `firmware/...`, `docs/...`,
+  `ci/...`. Pelo terminal:
+
+  ```bash
+  gh issue develop 42 --name filtro/42-butterworth-iir --checkout
+  ```
+
+  Ou pelo botão "Create a branch" na página da issue (o nome padrão
+  `42-titulo` também funciona).
+- **No PR, escreva `Closes #42`** na descrição (tem que ser em inglês:
+  `Closes`, `Fixes` ou `Resolves`). É isso que liga o PR à issue e fecha a
+  issue no merge.
 - **PR pequeno:** até ~400 linhas alteradas, sem contar arquivo gerado
   (`Drivers/`, `cmake/stm32cubemx/`, código gerado do CubeMX, vetores de
   referência).
@@ -79,8 +91,17 @@ em `Core/*/pds/` mudou.
 
 ## Gestão
 
-- **Tasks:** GitHub Projects do repositório. Uma issue por task; o PR que a
-  fecha move o card sozinho. Marcos: relatório 1 (05/10), relatório 2 (26/10),
+- **Tasks:** GitHub Projects do repositório. Uma issue por task. O card anda
+  sozinho:
+
+  | Quando | Status |
+  |---|---|
+  | issue criada | A fazer |
+  | branch criada com o nº da issue | Em andamento |
+  | PR aberto com `Closes #N` | Em revisão |
+  | review pedindo mudanças | Em andamento |
+  | PR mergeado | Feito |
+ Marcos: relatório 1 (05/10), relatório 2 (26/10),
   apresentação final (23 ou 30/11).
 - **Compromissos com hora** (aulas, orientação, reuniões): agenda do Google
   compartilhada do grupo.
