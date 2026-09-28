@@ -54,23 +54,22 @@ Cada passo é um PR próprio:
 - A `main` é protegida: ninguém faz push direto, nem o dono do repositório.
 - **Toda branch nasce de uma issue**, com o número dela no nome:
   `<label>/<nº da issue>-<descrição-curta>`. **O prefixo é o label da
-  issue**, por exemplo `filtro/42-butterworth-iir` pra uma issue com o label
-  `filtro`.
+  issue.** Em PDS, o módulo vai logo depois do número.
 
-  | Label | Quando |
-  |---|---|
-  | `decimacao`, `filtro`, `picos`, `espectral`, `hrv`, `spo2`, `respiracao`, `qualidade` | módulo de PDS |
-  | `comum` | a interface `ppg.h` |
-  | `firmware` | código da STM32 com HAL e o `.ioc` |
-  | `analise` | Python: ferramentas, validação, coleta |
-  | `testes` | testes do PDS no PC e vetores |
-  | `docs` | site, relatórios, apresentação |
-  | `ci` | CI, regras de PR, automação |
+  | Label | Quando | Exemplo de branch |
+  |---|---|---|
+  | `pds` | módulo de PDS (`Core/*/pds/<módulo>/`) | `pds/42-filtro-butterworth` |
+  | `comum` | a interface `ppg.h` | `comum/4-ppg-h-v1` |
+  | `firmware` | código da STM32 com HAL e o `.ioc` | `firmware/6-ioc-usart-timer` |
+  | `analise` | Python: ferramentas, validação, coleta | `analise/9-carregador-physionet` |
+  | `testes` | testes do PDS no PC e vetores | `testes/22-vetores` |
+  | `docs` | site, relatórios, apresentação | `docs/14-relatorio-1` |
+  | `ci` | CI, regras de PR, automação | `ci/90-cache-do-build` |
 
   Pelo terminal:
 
   ```bash
-  gh issue develop 42 --name filtro/42-butterworth-iir --checkout
+  gh issue develop 42 --name pds/42-filtro-butterworth --checkout
   ```
 
   Ou pelo botão "Create a branch" na página da issue: troque o nome sugerido
