@@ -1,8 +1,12 @@
 """Regras de PR do sensor-ppg (ver CONTRIBUTING.md).
 
 1. Até LIMITE_LINHAS linhas alteradas, sem contar arquivo gerado.
-2. PR que muda Core/Inc/pds/<módulo>/ ou Core/Src/pds/<módulo>/ também muda
-   a página do módulo em docs/src/content/docs/modulos/<módulo>.md(x).
+2. Documentação junto com o código:
+   - Core/*/pds/<módulo>/        -> docs/src/content/docs/modulos/<módulo>.md(x)
+   - Core/Inc/pds/comum/ppg.h    -> docs/src/content/docs/interface.md
+   - *.ioc ou firmware nosso     -> docs/src/content/docs/firmware.md
+     (firmware nosso = arquivos em Core/Inc e Core/Src fora de pds/, menos os
+     que o CubeMX gera: main, stm32f4xx_*, syscalls, sysmem, system_stm32f4xx)
 
 Uso: python3 regras_pr.py <base> <head>
 """
@@ -29,7 +33,13 @@ GERADOS = (
 
 MODULO = re.compile(r"^Core/(?:Inc|Src)/pds/([^/]+)/")
 DOC = re.compile(r"^docs/src/content/docs/modulos/([^/]+)\.mdx?$")
-SEM_DOC = {"comum"}  # a interface é documentada à parte
+SEM_DOC = {"comum"}  # a interface é documentada à parte (interface.md)
+
+DOCS = "docs/src/content/docs/"
+INTERFACE = re.compile(r"^Core/Inc/pds/comum/ppg\.h$")
+IOC = re.compile(r"^[^/]*\.ioc$")
+FIRMWARE_NOSSO = re.compile(r"^Core/(Inc|Src)/(?!pds/)[^/]+\.[ch]$")
+GERADO_CUBEMX = re.compile(r"^Core/(Inc|Src)/(main|stm32f4xx_\w+|syscalls|sysmem|system_stm32f4xx)\.[ch]$")
 
 
 def alteracoes(base: str, head: str) -> list[tuple[int, str]]:
@@ -67,6 +77,20 @@ def checa(linhas: list[tuple[int, str]]) -> list[str]:
         erros.append(
             f"O módulo '{mod}' mudou, mas a doc dele não: atualize "
             f"docs/src/content/docs/modulos/{mod}.md"
+        )
+
+    def mudou_doc(nome: str) -> bool:
+        return any(re.match(rf"^{DOCS}{nome}\.mdx?$", c) for c in caminhos)
+
+    if any(INTERFACE.match(c) for c in caminhos) and not mudou_doc("interface"):
+        erros.append(f"O ppg.h mudou, mas a doc da interface não: atualize {DOCS}interface.md")
+
+    firmware = [c for c in caminhos
+                if IOC.match(c) or (FIRMWARE_NOSSO.match(c) and not GERADO_CUBEMX.match(c))]
+    if firmware and not mudou_doc("firmware"):
+        erros.append(
+            f"O firmware mudou ({', '.join(firmware[:3])}), mas a doc não: "
+            f"atualize {DOCS}firmware.md"
         )
     return erros
 
