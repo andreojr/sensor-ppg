@@ -1,0 +1,13 @@
+build/
+Debug/
+Release/
+.cache/
+compile_commands.json
+.vscode/
+.venv/
+__pycache__/
+*.pyc
+analise/dados/
+docs/node_modules/
+docs/dist/
+docs/.astro/
