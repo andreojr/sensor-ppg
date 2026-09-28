@@ -29,7 +29,7 @@ MAX30102 ──► decimacao ──► bruto (com DC) ──┬──► filtro 
 ```
 
 Cada caixa é um módulo em `Core/*/pds/<módulo>/`, com uma página em
-Módulos de PDS (menu ao lado).
+[Módulos de PDS](modulos/decimacao/).
 
 ## Equipe
 
