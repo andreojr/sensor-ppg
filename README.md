@@ -48,7 +48,12 @@ ctest --test-dir build/testes --output-on-failure
 
 # Python
 cd analise && uv sync && uv run pytest
+
+# documentação (http://localhost:4321/sensor-ppg/)
+cd docs && npm ci && npm run dev
 ```
+
+Documentação publicada: https://andreojr.github.io/sensor-ppg/
 
 Gravar na placa: `st-flash write build/Debug/sensor-ppg.bin 0x8000000`
 (ou STM32CubeProgrammer).
