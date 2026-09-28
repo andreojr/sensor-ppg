@@ -53,16 +53,28 @@ Cada passo é um PR próprio:
 
 - A `main` é protegida: ninguém faz push direto, nem o dono do repositório.
 - **Toda branch nasce de uma issue**, com o número dela no nome:
-  `<módulo>/<nº da issue>-<descrição-curta>`, por exemplo
-  `filtro/42-butterworth-iir`. Fora do PDS: `firmware/...`, `docs/...`,
-  `ci/...`. Pelo terminal:
+  `<label>/<nº da issue>-<descrição-curta>`. **O prefixo é o label da
+  issue**, por exemplo `filtro/42-butterworth-iir` pra uma issue com o label
+  `filtro`.
+
+  | Label | Quando |
+  |---|---|
+  | `decimacao`, `filtro`, `picos`, `espectral`, `hrv`, `spo2`, `respiracao`, `qualidade` | módulo de PDS |
+  | `comum` | a interface `ppg.h` |
+  | `firmware` | código da STM32 com HAL e o `.ioc` |
+  | `analise` | Python: ferramentas, validação, coleta |
+  | `testes` | testes do PDS no PC e vetores |
+  | `docs` | site, relatórios, apresentação |
+  | `ci` | CI, regras de PR, automação |
+
+  Pelo terminal:
 
   ```bash
   gh issue develop 42 --name filtro/42-butterworth-iir --checkout
   ```
 
-  Ou pelo botão "Create a branch" na página da issue (o nome padrão
-  `42-titulo` também funciona).
+  Ou pelo botão "Create a branch" na página da issue: troque o nome sugerido
+  pra `<label>/<nº>-<descrição>`.
 - **No PR, escreva `Closes #42`** na descrição (tem que ser em inglês:
   `Closes`, `Fixes` ou `Resolves`). É isso que liga o PR à issue e fecha a
   issue no merge.
