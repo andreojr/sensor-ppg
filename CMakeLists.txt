@@ -48,6 +48,8 @@ file(GLOB_RECURSE PDS_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/Core/Src/pds
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
+    ${CMAKE_SOURCE_DIR}/Core/Src/max30102.c
+    ${CMAKE_SOURCE_DIR}/Core/Src/serial.c
     ${PDS_SOURCES}
 )
 
