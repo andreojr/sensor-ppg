@@ -50,6 +50,12 @@ PART_ID (0x15), reseta o sensor e configura:
 | LED1_PA / LED2_PA (0x0C / 0x0D) | 0x24            | 7,2 mA no vermelho e no IR                                                           |
 | INT_ENABLE1 (0x02)              | 0x80            | só o A_FULL (FIFO quase cheia)                                                       |
 
+Antes do init, o `destrava_i2c1()` (em `main.c`) solta o barramento. Se a placa
+resetar no meio de uma leitura (F5, botão de reset, mau contato), o sensor fica
+segurando o SDA em 0 esperando o resto do byte. A I2C1 vê o barramento ocupado
+e o init falha. Até 9 pulsos no SCL, feitos por GPIO, terminam o byte, e um
+STOP libera o barramento.
+
 Sem rollover, se a FIFO encher o sensor descarta as amostras **novas** e conta
 no OVF_COUNTER. Assim dá pra saber quantas se perderam.
 
