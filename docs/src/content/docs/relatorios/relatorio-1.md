@@ -35,7 +35,8 @@ semestre. Não bastava: com passa-faixa e picos, o BPM saiu em 77,1 contra
 um detector de picos ingênuo errou batimentos e dobrou a medida de
 variabilidade (SDNN de 141 ms onde o esperado era cerca de 40 ms). O
 problema fácil é o BPM; o difícil é tudo o que depende do instante exato de
-cada batimento.
+cada batimento. No nosso sensor, em 05/10, o mesmo detector ingênuo perdeu 3
+de 18 batimentos (seção 4).
 
 Com isso, o escopo foi ampliado. Nada do que a proposta prometeu mudou
 (sensor fixo, dedo em repouso, sem compras além das previstas, sem filtro
@@ -110,9 +111,11 @@ medidos em cada uma.
 | 03/10 | Leitura do MAX30102 pela I2C a 400 Hz, 18 bits, FIFO com interrupção, sinal cru enviado ao PC (PR #98, João) | 399,4 amostras/s medidas; 0 perdidas em 20 s; IR ~130 mil e vermelho ~137 mil com o dedo, ~1500 sem dedo |
 | 04/10 | Interface `ppg.h` v1 (PR #99, em revisão) | ver seção 3 |
 | 04/10 | Carregador do dado público PhysioNet, com IR, vermelho, ECG e marcas de pico R (PR #100, em revisão) | registro s1_sit: 508 s, 613 batimentos; do ECG: 72,4 bpm, SDNN 46,9 ms, RMSSD 30,5 ms |
+| 04/10 | Script de captura serial no PC (PR #103) e formato e gerador dos vetores de referência dos testes (PR #104), ambos em revisão | |
 | 05/10 | Gerador da fonte falsa (issue #15, PR #101, em revisão): trechos do PhysioNet em arrays C para a flash e vetores para os testes no PC | 10 s a 400 Hz; 60 s bruto e filtrado a 100 Hz; marcas do ECG |
+| 05/10 | Primeira captura no sensor real com os PRs em revisão integrados numa branch de teste (firmware compila com 4,8% da flash; testes do PC e do Python passam). Dedo parado, 20 s | 399,4 amostras/s e 0 perdidas; DC de cerca de 147 mil; pulso de 0,4% a 0,7% do DC; correlação de 0,98 entre IR e vermelho filtrados; BPM pela FFT em 82,7, ainda sem gabarito |
 
-Dois achados que valem registro:
+Três achados que valem registro:
 
 - **Sensor segurando o barramento.** Se a placa reseta no meio de uma
   leitura I2C, o sensor fica segurando a linha de dados e a inicialização
@@ -121,8 +124,18 @@ Dois achados que valem registro:
 - **Canal vermelho e infravermelho trocados.** A descrição do dado público
   se contradiz sobre qual canal é qual. A razão das razões (base do SpO2)
   decide: com um canal como vermelho a SpO2 dá 97% (o registro mede 98%);
-  trocado, dá 63%. No nosso sensor o vermelho também saiu um pouco acima
-  do infravermelho, o que vamos conferir com a forma de onda.
+  trocado, dá 63%. No nosso sensor a ordem foi conferida em 05/10 desligando
+  um LED de cada vez: sem o LED1 (vermelho), a coluna do vermelho cai de 1573
+  para 74 e a do IR não muda; sem o LED2 (IR), a do IR cai de 1638 para 83.
+  O nível relativo depende do dedo (em 03/10 o vermelho ficou acima; em 05/10,
+  o IR), então ele não serve para decidir qual canal é qual.
+- **O detector de picos ingênuo também falha no sensor real.** Num trecho
+  limpo de 15 s com o dedo parado, um detector simples (limiar de
+  proeminência fixo) achou 15 picos e perdeu 3 de 18 batimentos (três
+  intervalos saíram com o dobro do normal): o BPM por picos deu 66 contra 82,7
+  pela FFT, e o SDNN foi a 334 ms. Mexer o dedo gera um artefato maior que o
+  próprio pulso. É o argumento do spike reproduzido no nosso hardware, e a
+  razão do limiar adaptativo (item 3a) e do detector de qualidade (item 7).
 
 ## 5. Método de trabalho
 
@@ -165,10 +178,13 @@ e a `v0.2` em 26/10, com BPM na placa.
 ## 7. Riscos
 
 - **Sinal da protoboard pior que o do dado público.** O clipe de dedo do
-  PhysioNet tem pressão controlada; o nosso não. Se o sinal real for muito
-  ruidoso, o detector de qualidade (item 7) ganha peso e a respiração (item
-  6) sai do alvo. A leitura do sensor já funciona, então essa comparação é
-  a primeira coisa a fazer.
+  PhysioNet tem pressão controlada; o nosso não. Primeira medida, em 05/10:
+  com o dedo parado o pulso aparece limpo (0,4% a 0,7% do DC, na mesma ordem
+  do dado público), mas o movimento do dedo gera artefatos maiores que o
+  pulso. Então o risco é real e se concentra no movimento: o detector de
+  qualidade (item 7) ganha peso e, se o sinal continuar ruidoso, a respiração
+  (item 6) sai do alvo. Falta um gabarito para o BPM do sensor (contagem
+  manual do pulso ou oxímetro emprestado).
 - **Dependência entre picos e HRV.** O HRV precisa dos instantes dos
   picos. A fonte falsa cobre isso durante o desenvolvimento com as marcas
   do ECG; a dependência só aparece na integração final.
