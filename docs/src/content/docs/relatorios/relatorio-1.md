@@ -39,16 +39,19 @@ Com isso, o escopo foi ampliado. Nada do que a proposta prometeu mudou
 (sensor fixo, dedo em repouso, sem compras além das previstas, sem filtro
 adaptativo, sem acelerômetro). Mudam os resultados e o cronograma.
 
-| # | Item | PDS envolvido | Compromisso |
-|---|---|---|---|
-| 1 | Anti-aliasing e decimação próprios (sensor a 400 Hz, saída a 100 Hz) | amostragem, aliasing, FIR passa-baixas, comparação com a média interna do sensor | piso |
-| 2 | Remoção de DC e passa-faixa 0,5 a 4 Hz | IIR × FIR, resposta em frequência, atraso de fase | piso |
-| 3a | BPM por detecção de picos | limiar adaptativo, rejeição de batimento falso | piso |
-| 3b | BPM pelo espectro (FFT) | janelamento, resolução espectral × atraso | piso |
-| 4 | Variabilidade da frequência cardíaca (HRV) | interpolação do pico, SDNN e RMSSD; LF/HF como alvo | piso (tempo) e alvo (frequência) |
-| 5 | SpO2 | separação AC/DC nos dois canais, razão das razões | alvo |
-| 6 | Frequência respiratória | filtro de banda muito baixa (0,1 a 0,5 Hz), demodulação de amplitude | alvo |
-| 7 | Detector de sinal ruim (dedo mal posicionado) | relação sinal-ruído, estatística por janela | piso |
+| # | Item | PDS envolvido |
+|---|---|---|
+| **Piso** | | |
+| 1 | Anti-aliasing e decimação próprios (sensor a 400 Hz, saída a 100 Hz) | amostragem, aliasing, FIR passa-baixas, comparação com a média interna do sensor |
+| 2 | Remoção de DC e passa-faixa 0,5 a 4 Hz | IIR × FIR, resposta em frequência, atraso de fase |
+| 3a | BPM por detecção de picos | limiar adaptativo, rejeição de batimento falso |
+| 3b | BPM pelo espectro (FFT) | janelamento, resolução espectral × atraso |
+| 4 | HRV no tempo | interpolação do pico, SDNN e RMSSD |
+| 7 | Detector de sinal ruim (dedo mal posicionado) | relação sinal-ruído, estatística por janela |
+| **Alvo** | | |
+| 4 | HRV na frequência | LF/HF |
+| 5 | SpO2 | separação AC/DC nos dois canais, razão das razões |
+| 6 | Frequência respiratória | filtro de banda muito baixa (0,1 a 0,5 Hz), demodulação de amplitude |
 
 **Piso** é o que o grupo se compromete a entregar; **alvo** é o que tenta
 entregar. O item 1 merece destaque: o sensor sabe fazer média interna de
