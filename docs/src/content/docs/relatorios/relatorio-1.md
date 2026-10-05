@@ -98,7 +98,7 @@ três. As decisões da versão 1 (PR #99):
 - Cada módulo tem `init` e `processa`, sem alocação dinâmica e sem estado
   global.
 
-## 4. O que foi feito até 04/10
+## 4. O que foi feito até 05/10
 
 A tabela abaixo resume as entregas da primeira semana, com os números
 medidos em cada uma.
