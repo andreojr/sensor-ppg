@@ -33,6 +33,7 @@ export default defineConfig({
         { label: 'Fluxo de trabalho', slug: 'fluxo' },
         { label: 'Módulos de PDS', items: [{ autogenerate: { directory: 'modulos' } }] },
         { label: 'Firmware', slug: 'firmware' },
+        { label: 'Relatórios', items: [{ autogenerate: { directory: 'relatorios' } }] },
       ],
     }),
   ],
