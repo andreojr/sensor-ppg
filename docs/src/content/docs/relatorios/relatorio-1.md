@@ -8,6 +8,8 @@ sidebar:
 **ENGG54, Laboratório Integrado III, UFBA, 2026.2.**
 André Júnior, Celso Bomfim e João Luís da Cruz. Entregue em 05/10/2026.
 
+[Baixar o relatório em PDF](/relatorios/relatorio-1.pdf), versão entregue no Moodle.
+
 ## 1. Contexto e motivação
 
 O projeto é um oxímetro de dedo cujo processamento de sinal é todo nosso:
