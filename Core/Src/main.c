@@ -21,6 +21,10 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdio.h>
+
+#include "max30102.h"
+#include "serial.h"
 
 /* USER CODE END Includes */
 
@@ -49,6 +53,9 @@ UART_HandleTypeDef huart1;
 DMA_HandleTypeDef hdma_usart1_tx;
 
 /* USER CODE BEGIN PV */
+static volatile bool sensor_int;
+static uint32_t indice; /* nº da amostra a MAX30102_FS_HZ desde o início */
+static volatile max30102_amostra_t ultima; /* pra olhar no Live Watch do debugger */
 
 /* USER CODE END PV */
 
@@ -61,6 +68,8 @@ static void MX_I2C3_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
+static void envia_amostras(void);
+static void destrava_i2c1(void);
 
 /* USER CODE END PFP */
 
@@ -104,7 +113,18 @@ int main(void)
   MX_USART1_UART_Init();
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
-
+  serial_init(&huart1);
+  destrava_i2c1();
+  if (max30102_init(&hi2c1) != HAL_OK)
+  {
+    static const char erro[] = "# erro: MAX30102 nao respondeu na I2C1\n";
+    HAL_UART_Transmit(&huart1, (const uint8_t *)erro, sizeof erro - 1, 100);
+    Error_Handler();
+  }
+  char cabecalho[48];
+  int n = snprintf(cabecalho, sizeof cabecalho, "# MAX30102 %u Hz: n,ir,vermelho\n",
+                   MAX30102_FS_HZ);
+  serial_escreve(cabecalho, (uint32_t)n);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -114,6 +134,14 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    /* O pino também é olhado: se uma leitura falhar, o INT fica baixo e não
+       vem outra borda de descida. */
+    if (sensor_int || HAL_GPIO_ReadPin(SENSOR_INT_GPIO_Port, SENSOR_INT_Pin) == GPIO_PIN_RESET)
+    {
+      sensor_int = false;
+      envia_amostras();
+    }
+    serial_envia();
   }
   /* USER CODE END 3 */
 }
@@ -358,6 +386,81 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+  if (GPIO_Pin == SENSOR_INT_Pin)
+  {
+    sensor_int = true;
+  }
+}
+
+/* Se a placa resetar no meio de uma leitura, o sensor fica segurando o SDA em
+   0 esperando o resto do byte, e a I2C1 acha o barramento ocupado. Até 9
+   pulsos no SCL terminam o byte; depois um STOP solta o barramento. */
+static void destrava_i2c1(void)
+{
+  GPIO_InitTypeDef gpio = {0};
+
+  HAL_I2C_DeInit(&hi2c1);
+  gpio.Pin = SENSOR_SCL_Pin | SENSOR_SDA_Pin;
+  gpio.Mode = GPIO_MODE_OUTPUT_OD;
+  gpio.Pull = GPIO_NOPULL;
+  gpio.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_WritePin(SENSOR_SCL_GPIO_Port, SENSOR_SCL_Pin | SENSOR_SDA_Pin, GPIO_PIN_SET);
+  HAL_GPIO_Init(SENSOR_SCL_GPIO_Port, &gpio);
+  HAL_Delay(1);
+
+  for (int i = 0; i < 9 && HAL_GPIO_ReadPin(SENSOR_SDA_GPIO_Port, SENSOR_SDA_Pin) == GPIO_PIN_RESET; i++)
+  {
+    HAL_GPIO_WritePin(SENSOR_SCL_GPIO_Port, SENSOR_SCL_Pin, GPIO_PIN_RESET);
+    HAL_Delay(1);
+    HAL_GPIO_WritePin(SENSOR_SCL_GPIO_Port, SENSOR_SCL_Pin, GPIO_PIN_SET);
+    HAL_Delay(1);
+  }
+
+  /* STOP: SDA sobe com o SCL alto. */
+  HAL_GPIO_WritePin(SENSOR_SCL_GPIO_Port, SENSOR_SCL_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(SENSOR_SDA_GPIO_Port, SENSOR_SDA_Pin, GPIO_PIN_RESET);
+  HAL_Delay(1);
+  HAL_GPIO_WritePin(SENSOR_SCL_GPIO_Port, SENSOR_SCL_Pin, GPIO_PIN_SET);
+  HAL_Delay(1);
+  HAL_GPIO_WritePin(SENSOR_SDA_GPIO_Port, SENSOR_SDA_Pin, GPIO_PIN_SET);
+  HAL_Delay(1);
+
+  MX_I2C1_Init();
+}
+
+/* Uma linha "n,ir,vermelho" por amostra. Amostra perdida vira salto no n. */
+static void envia_amostras(void)
+{
+  static max30102_amostra_t amostras[MAX30102_FIFO_TAM];
+  uint32_t n;
+  uint32_t perdidas;
+  char linha[32];
+
+  if (max30102_le_fifo(amostras, &n, &perdidas) != HAL_OK)
+  {
+    return;
+  }
+  if (perdidas > 0)
+  {
+    int tam = snprintf(linha, sizeof linha, "# perdidas: %lu\n", (unsigned long)perdidas);
+    serial_escreve(linha, (uint32_t)tam);
+    indice += perdidas;
+  }
+  for (uint32_t i = 0; i < n; i++)
+  {
+    int tam = snprintf(linha, sizeof linha, "%lu,%lu,%lu\n", (unsigned long)indice,
+                       (unsigned long)amostras[i].ir, (unsigned long)amostras[i].vermelho);
+    serial_escreve(linha, (uint32_t)tam);
+    indice++;
+  }
+  if (n > 0)
+  {
+    ultima.ir = amostras[n - 1].ir;
+    ultima.vermelho = amostras[n - 1].vermelho;
+  }
+}
 
 /* USER CODE END 4 */
 
