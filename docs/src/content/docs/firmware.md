@@ -123,6 +123,15 @@ do VS Code com `"vscode-serial-monitor.customBaudRates": [921600]` nas
 configurações. Sem dedo, IR e vermelho ficam na casa de 1 000; com o dedo,
 passam de 100 000 e oscilam ~1% com o pulso.
 
+Pra gravar em CSV e plotar, dentro de `analise/` (o CSV vai pra
+`analise/dados/`, que não entra no git). No fim, a captura mostra a taxa medida
+e quantas amostras se perderam:
+
+```bash
+uv run python -m analise.captura COM3 --segundos 30
+uv run python -m analise.plota dados/sensor_<data>_<hora>.csv
+```
+
 | Sintoma | Causa provável |
 |---|---|
 | `# erro: MAX30102 nao respondeu na I2C1` | VIN, GND, SCL ou SDA soltos (o SCL solto é o mais comum) |
