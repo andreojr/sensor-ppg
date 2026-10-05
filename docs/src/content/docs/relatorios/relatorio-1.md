@@ -56,11 +56,10 @@ amostras, mas essa média é um filtro ruim (lóbulo lateral a -13 dB).
 Desligamos a média, lemos o sensor a 400 Hz e fazemos o anti-aliasing e a
 redução de taxa nós mesmos, comparando o resultado com o do sensor.
 
-<!-- TODO(André): ajustar este parágrafo com o que foi apresentado ao
-professor em 28/09 (PDF da apresentação). -->
-> **Escopo desta entrega.** A ampliação acima foi apresentada ao professor
-> na orientação de 28/09 e é registrada aqui como o plano em vigor. O que a
-> proposta chamou de "filtragem única" como risco é atacado pelos itens 1 e 7.
+> **Escopo desta entrega.** A ampliação acima é uma decisão do grupo e ainda
+> não foi discutida com o professor. Este relatório a apresenta como o plano
+> em vigor e pede a confirmação ou os ajustes do professor. O que a proposta
+> chamou de "filtragem única" como risco é atacado pelos itens 1 e 7.
 
 ## 3. Arquitetura
 
@@ -149,16 +148,14 @@ metrônomo.
 
 ## 6. Próximos passos até o 2º relatório (26/10)
 
-<!-- TODO(André): confirmar com João e Celso. -->
-
 | Frente | Até 26/10 |
 |---|---|
 | A (João) | Protótipo e porte da decimação (item 1) e do filtro (item 2); comparação com a média interna do sensor; sinal filtrado do sensor real no PC |
 | B (André) | Fonte falsa rodando na placa; timer, filas e laço principal; protótipo do HRV no tempo (SDNN, RMSSD) validado contra o ECG; esboço do detector de qualidade |
 | C (Celso) | Protótipo e porte da detecção de picos (3a) com pico interpolado; BPM na placa com a fonte falsa; primeira tela no OLED |
 
-Marco intermediário: a release `v0.1` ("Sinal bruto") na véspera deste
-relatório, e `v0.2` em 26/10 com BPM na placa.
+Marcos: a release `v0.1` ("Relatório 1"), com o sinal bruto e a interface,
+e a `v0.2` em 26/10, com BPM na placa.
 
 ## 7. Riscos
 

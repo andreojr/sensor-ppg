@@ -39,7 +39,7 @@ um número por frase. O que não cabe fica no relatório escrito.
 
 ## Quem fala o quê
 
-<!-- TODO(André): combinar com João e Celso. Sugestão: cada um fala do que
+<!-- Sugestão, já com o ok de João e Celso: cada um fala do que
 fez (João o slide 4 da leitura do sensor; Celso ...). -->
 
 ## Perguntas prováveis
