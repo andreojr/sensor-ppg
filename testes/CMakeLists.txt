@@ -28,6 +28,8 @@ foreach(arquivo ${TESTES})
     get_filename_component(nome ${arquivo} NAME_WE)
     add_executable(${nome} ${arquivo})
     target_link_libraries(${nome} PRIVATE pds)
+    # confere.h; os vetores (vetores/<caso>.h) vêm da pasta do próprio teste.
+    target_include_directories(${nome} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     add_test(NAME ${nome} COMMAND ${nome})
 endforeach()
 
