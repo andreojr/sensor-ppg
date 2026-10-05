@@ -106,7 +106,7 @@ medidos em cada uma.
 | 03/10 | Leitura do MAX30102 pela I2C a 400 Hz, 18 bits, FIFO com interrupção, sinal cru enviado ao PC (PR #98, João) | 399,4 amostras/s medidas; 0 perdidas em 20 s; IR ~130 mil e vermelho ~137 mil com o dedo, ~1500 sem dedo |
 | 04/10 | Interface `ppg.h` v1 (PR #99, em revisão) | ver seção 3 |
 | 04/10 | Carregador do dado público PhysioNet, com IR, vermelho, ECG e marcas de pico R (PR #100, em revisão) | registro s1_sit: 508 s, 613 batimentos; do ECG: 72,4 bpm, SDNN 46,9 ms, RMSSD 30,5 ms |
-| em andamento | Gerador da fonte falsa (issue #15): trechos do PhysioNet em arrays C para a flash e vetores para os testes no PC | 10 s a 400 Hz; 60 s bruto e filtrado a 100 Hz; marcas do ECG |
+| 05/10 | Gerador da fonte falsa (issue #15, PR #101, em revisão): trechos do PhysioNet em arrays C para a flash e vetores para os testes no PC | 10 s a 400 Hz; 60 s bruto e filtrado a 100 Hz; marcas do ECG |
 
 Dois achados que valem registro:
 
