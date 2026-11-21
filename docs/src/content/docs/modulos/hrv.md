@@ -60,6 +60,32 @@ mínimo que a literatura de "ultracurta" aceita pro RMSSD. O SDNN numa janela
 de 60 s é menor que o de 5 min (não pega as variações lentas): **não compare
 o nosso SDNN com tabelas de 5 min**.
 
+Medido no PhysioNet (`uv run python -m analise.hrv --janelas`): nos 22
+registros `sit`, a cada batimento depois dos primeiros 5 min, o HRV dos
+últimos 60 s contra o dos últimos 5 min, os dois com o ECG exato. Mediana dos
+22 (entre parênteses, o menor e o maior registro):
+
+| Medida | 60 s − 5 min | diferença típica (RMS) | razão 60 s / 5 min |
+|---|---|---|---|
+| SDNN | −3,7 ms (−19,9 a +5,2) | 9,2 ms (pior 31,4) | 0,93 (0,65 a 1,06) |
+| RMSSD | −0,5 ms (−10,2 a +4,3) | 2,9 ms (pior 14,0) | 0,99 (0,82 a 1,12) |
+
+Valor de 5 min, mediana: SDNN 51,2 ms, RMSSD 33,8 ms.
+
+- **RMSSD:** praticamente o mesmo de 5 min (razão 0,99, ~3 ms pra cima ou
+  pra baixo num valor de ~34). Ele só olha batimentos vizinhos, então 60 s
+  já têm diferenças suficientes.
+- **SDNN:** sai ~7% menor e oscila mais (~9 ms), porque 60 s não pegam as
+  variações lentas. Num registro chegou a 65% do valor de 5 min.
+
+Pra comparação, com outras janelas (mesma conta):
+
+| Janela | SDNN, razão | SDNN, RMS | RMSSD, razão | RMSSD, RMS |
+|---|---|---|---|---|
+| 30 s | 0,83 | 13,8 ms | 0,96 | 4,4 ms |
+| **60 s** | **0,93** | **9,2 ms** | **0,99** | **2,9 ms** |
+| 120 s | 0,97 | 6,0 ms | 1,00 | 2,0 ms |
+
 Um batimento sai da janela quando `n_atual - n_pico >= 6000` (60 s a
 100 Hz). A janela é contada pelo `n_pico`, sem a `fracao`: a diferença é de
 no máximo 10 ms na borda da janela, e assim o Python e o C decidem igual,

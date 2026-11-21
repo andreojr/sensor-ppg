@@ -142,3 +142,22 @@ def test_vetor_bordas_enche_o_buffer():
         h.processa(b)
         cheio = cheio or len(h.itens) == hrv.CAP
     assert cheio
+
+
+def test_hrv_janela_rr_alternado():
+    # RR alternando 800/850 ms: RMSSD = 50 em qualquer janela; SDNN ~25.
+    rr = np.array([800.0 if k % 2 else 850.0 for k in range(600)])
+    t = np.concatenate([[0.0], np.cumsum(rr) / 1000])
+    for janela in (60.0, 300.0):
+        r = hrv.hrv_janela(t, janela, a_partir_s=300.0)
+        assert len(r) > 0
+        assert np.allclose(r[:, 1], 50.0)
+        assert np.allclose(r[:, 0], 25.0, rtol=0.02)
+
+
+def test_hrv_janela_ignora_rr_fora_da_faixa():
+    rr = np.full(100, 1000.0)
+    rr[50] = 2500.0  # rejeitado: sem ele e sem as diferenças vizinhas, tudo constante
+    t = np.concatenate([[0.0], np.cumsum(rr) / 1000])
+    r = hrv.hrv_janela(t, 60.0, a_partir_s=60.0)
+    assert np.allclose(r, 0.0)

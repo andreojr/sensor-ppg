@@ -335,13 +335,65 @@ def gera_vetores() -> list:
     ]
 
 
+# ---- Janela curta contra a de 5 min --------------------------------------------
+
+
+def hrv_janela(t_s: np.ndarray, janela_s: float, a_partir_s: float) -> np.ndarray:
+    """SDNN e RMSSD dos RR que terminam nos últimos janela_s, a cada batimento.
+
+    Cálculo direto (sem o estado do módulo), com os RR exatos e a mesma faixa
+    de RR aceitos. Só a partir de t >= a_partir_s, pra que janelas de tamanhos
+    diferentes sejam comparadas nos mesmos batimentos. Devolve (k, 2): SDNN, RMSSD.
+    """
+    rr = np.diff(t_s) * 1000.0
+    t_fim = t_s[1:]
+    ok = (rr >= RR_MIN_MS) & (rr <= RR_MAX_MS)
+    saida = []
+    for k in np.flatnonzero(t_fim >= a_partir_s):
+        dentro = (t_fim > t_fim[k] - janela_s) & (t_fim <= t_fim[k])
+        sel = dentro & ok
+        par = sel[1:] & sel[:-1]  # diferença só entre dois RR aceitos seguidos
+        saida.append((sdnn(rr[sel]), rmssd_de_difs(np.diff(rr)[par])))
+    return np.array(saida).reshape(-1, 2)
+
+
+def compara_janelas(registros: list[physionet.Registro], curta_s: float = JANELA_S,
+                    longa_s: float = 300.0) -> str:
+    """Quanto o HRV da janela curta se afasta do da janela de 5 min (o padrão)."""
+    linhas = ["| Medida | 60 s − 5 min, mediana | diferença típica (RMS) | razão 60 s / 5 min |",
+              "|---|---|---|---|"]
+    por_registro = []
+    for r in registros:
+        t = r.t_picos_ecg
+        a_partir = t[0] + longa_s
+        c = hrv_janela(t, curta_s, a_partir)
+        lg = hrv_janela(t, longa_s, a_partir)
+        por_registro.append((np.median(c - lg, axis=0), np.sqrt(np.mean((c - lg) ** 2, axis=0)),
+                             np.median(c / lg, axis=0), np.median(lg, axis=0)))
+    vies, rms, razao, ref = (np.array([p[i] for p in por_registro]) for i in range(4))
+    for j, nome in enumerate(("SDNN", "RMSSD")):
+        linhas.append(f"| {nome} | {np.median(vies[:, j]):+.1f} ms "
+                      f"({np.min(vies[:, j]):+.1f} a {np.max(vies[:, j]):+.1f}) "
+                      f"| {np.median(rms[:, j]):.1f} ms (pior {np.max(rms[:, j]):.1f}) "
+                      f"| {np.median(razao[:, j]):.2f} ({np.min(razao[:, j]):.2f} a "
+                      f"{np.max(razao[:, j]):.2f}) |")
+    linhas.append(f"\nValor de 5 min, mediana dos registros: SDNN {np.median(ref[:, 0]):.1f} ms, "
+                  f"RMSSD {np.median(ref[:, 1]):.1f} ms. {len(registros)} registros, "
+                  f"comparados a cada batimento depois de {longa_s:g} s.")
+    return "\n".join(linhas)
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--vetores", action="store_true", help="grava testes/hrv/vetores/")
+    p.add_argument("--janelas", action="store_true", help="compara a janela de 60 s com 5 min")
     a = p.parse_args()
     if a.vetores:
         for caminho in gera_vetores():
             print(caminho)
+        return
+    if a.janelas:
+        print(compara_janelas([physionet.carrega(f"s{i}_sit") for i in range(1, 23)]))
         return
     nomes = [f"s{i}_sit" for i in range(1, 23)]
     erros = []
