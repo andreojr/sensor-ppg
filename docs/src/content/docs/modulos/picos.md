@@ -57,7 +57,7 @@ atraso, porque o detector precisa da amostra seguinte para saber que passou
 do máximo.
 
 **Parâmetros:** `TAU_ENV_S = 1 s`, `LIMIAR = 0,4`, `REFRAT_S = 0,3 s`. Uma
-varredura (limiar 0,3 a 0,6; refratário 0,25 a 0,35 s; envelope de 1 a 3 s)
+varredura (feita com o filtrado antigo, de fase zero, antes do FIR do #108) (limiar 0,3 a 0,6; refratário 0,25 a 0,35 s; envelope de 1 a 3 s)
 mostrou que a **mediana** do erro de BPM ficou em 0,07 bpm em todas as
 combinações que terminaram de rodar: o que muda é o erro nos registros com movimento. O envelope de 1 s
 foi o que mais reduziu esse erro (média de 6,0 para 2,5 bpm). Os valores
@@ -72,31 +72,42 @@ instantes e `rr_valido` exatos, `fracao`, `rr_ms` e BPM com tolerância de 0,01.
 
 Contra o ECG do PhysioNet (Pulse Transit Time PPG): 5 pessoas × (sentado,
 andando, correndo), 60 s de cada registro a partir de 30 s, sobre o `filtrado_ir`
-da fonte falsa. Reproduzir: `uv run python -m analise.picos_validacao`.
+da fonte falsa (o FIR do módulo `filtro`, com o atraso de `PPG_ATRASO_AMOSTRAS`
+descontado pelo picos). Reproduzir: `uv run python -m analise.picos_validacao`.
 
-O pico do PPG chega **110 a 160 ms depois** do pico R (tempo de trânsito do pulso),
+O pico do PPG chega **100 a 150 ms depois** do pico R (tempo de trânsito do pulso),
 então o atraso de cada registro é estimado e descontado antes de contar. Os
 2,6 s do início (aquecimento) ficam fora da conta. Acerto: pico do PPG a
 menos de 150 ms do R mais o atraso.
 
 | Atividade | Registros | Sensibilidade | Precisão | Erro do BPM (mediana) |
 |---|---|---|---|---|
-| sentado | 5 | 98,7 a 100% | 98,3 a 98,7% | 0,07 bpm |
-| correndo | 5 | 83 a 100% | 95 a 99% | 0,07 bpm |
-| andando | 5 | 59 a 99% | 80 a 98% | 1,02 bpm |
+| sentado | 5 | 50 a 98,6% | 48,6 a 97,3% | 0,11 bpm |
+| correndo | 5 | 82 a 96% | 90 a 96% | 1,41 bpm |
+| andando | 5 | 73 a 96% | 83 a 94% | 2,03 bpm |
 
-Média dos 15: **sensibilidade 94,3%, precisão 95,4%, erro de BPM de 2,45 bpm**.
+Média dos 15: **sensibilidade 88,4%, precisão 89,5%, erro de BPM de 2,10 bpm**.
+Com o filtrado antigo (fase zero) eram 94,3%, 95,4% e 2,45 bpm.
 O "erro do BPM" aqui é o do BPM médio do trecho de 60 s (60000 / média dos RR
 válidos detectados) contra o do ECG, não o `picos_bpm()` batimento a
 batimento (últimos 8 RR).
-O erro do intervalo RR (nos pares de acertos seguidos) tem mediana de 4 a 5 ms
-sentado e de 8 a 25 ms em movimento.
+O erro do intervalo RR (nos pares de acertos seguidos) tem mediana de 3 a 5 ms
+sentado e de 8 a 45 ms em movimento.
 
 **Limitação conhecida:** em `s2_walk` e `s2_run` o movimento gera artefatos
 maiores que o pulso, e o detector segue os passos em vez do coração (erro de
-BPM de 25 e 8 bpm; sensibilidade de 59 e 83%). Nenhum parâmetro resolve isso:
+BPM de 17 e 4 bpm; sensibilidade de 73 e 82%). Nenhum parâmetro resolve isso:
 é o papel do módulo `qualidade` marcar esse trecho como inutilizável
 (`usavel = false`), e o laço principal descarta os batimentos dele.
+
+**Pendente com o filtro FIR (`s3_sit`):** o FIR de fase linear deixa uma
+corcova de 32 a 41% do pico sistólico uns 200 a 250 ms antes do batimento
+seguinte (o filtro de fase zero antigo não deixava). Ela passa do limiar
+(`0,4 * env`, com o envelope já decaído), vira batimento, e o refratário de
+300 ms bloqueia o pico verdadeiro logo depois: sensibilidade de 50% nesse
+registro, que antes dava 100%. Resolver no detector (limiar, envelope ou
+trocar o candidato pelo maior dentro do refratário) ou no filtro; fica pros
+donos do `picos/` e do `filtro/`.
 
 **O BPM não expira sozinho:** depois de 4 RR válidos, `picos_bpm()` continua
 `valido` com o último valor mesmo que não chegue batimento novo (dedo

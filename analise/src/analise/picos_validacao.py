@@ -1,7 +1,7 @@
 """Validação do protótipo de picos contra o ECG do PhysioNet.
 
 O gabarito são os picos R. O pico do PPG chega depois do R (tempo de trânsito
-do pulso, de 110 a 160 ms nos 15 registros), então o atraso de cada registro é estimado e
+do pulso, de 100 a 150 ms nos 15 registros), então o atraso de cada registro é estimado e
 descontado antes de contar acertos. Só o BPM e os intervalos importam pro
 resto da cadeia.
 
