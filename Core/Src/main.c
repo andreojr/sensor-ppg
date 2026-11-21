@@ -519,7 +519,7 @@ static void decima(const max30102_amostra_t *amostra)
 
   ciclos_soma += dt;
   ciclos_max = dt > ciclos_max ? dt : ciclos_max;
-  char linha[64];
+  char linha[80]; /* linha de ciclos: até 67 B com contadores de 10 dígitos */
   if (++ciclos_conta == MAX30102_FS_HZ * 10u)
   {
     int tam = snprintf(linha, sizeof linha, "# decimacao: ciclos med %lu max %lu (orcamento %lu)\n",
