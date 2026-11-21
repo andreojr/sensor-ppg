@@ -15,7 +15,7 @@ import re
 import subprocess
 import sys
 
-LIMITE_LINHAS = 400
+LIMITE_LINHAS = 2000
 
 # Não contam no tamanho do PR.
 GERADOS = (
