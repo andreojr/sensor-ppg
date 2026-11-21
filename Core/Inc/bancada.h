@@ -1,10 +1,10 @@
 /*
  * bancada.h: medição de ciclos (DWT) e conferência do PDS na placa.
  *
- * bancada_decimacao() só existe com -DBANCADA_DECIMACAO=ON no CMake: toca a
- * fonte falsa a 400 Hz (o vetor do teste no PC) na decimação, confere com a
- * saída do Python e mede os ciclos. O resultado sai pela serial como
- * comentário ("# bancada ...").
+ * As bancadas só existem com a opção do CMake ligada (-DBANCADA_DECIMACAO=ON,
+ * -DBANCADA_FILTRO=ON): tocam a fonte falsa (o vetor do teste no PC) no
+ * módulo, conferem com a saída do Python e medem os ciclos. O resultado sai
+ * pela serial como comentário ("# bancada ...").
  */
 #ifndef BANCADA_H
 #define BANCADA_H
@@ -17,6 +17,16 @@
 /* Orçamento da decimação: 1% da CPU por amostra do sensor (96 MHz / 400 Hz / 100). */
 #define BANCADA_ORCAMENTO_DECIMACAO 2400u
 
+/* Orçamento do filtro: 2% da CPU por amostra a 100 Hz (96 MHz / 100 Hz * 2 / 100). */
+#define BANCADA_ORCAMENTO_FILTRO 19200u
+
+/* Ciclos de um módulo: média e máximo desde o último relato. */
+typedef struct {
+    uint64_t soma;
+    uint32_t max;
+    uint32_t conta;
+} ciclos_t;
+
 /* Liga o contador de ciclos do núcleo (DWT->CYCCNT). */
 void ciclos_liga(void);
 
@@ -25,9 +35,24 @@ static inline uint32_t ciclos_agora(void)
     return DWT->CYCCNT;
 }
 
+static inline void ciclos_conta(ciclos_t *c, uint32_t dt)
+{
+    c->soma += dt;
+    c->max = dt > c->max ? dt : c->max;
+    c->conta++;
+}
+
+/* Manda "# <nome>: ciclos med X max Y (orcamento Z)" pela serial e zera. */
+void ciclos_relata(ciclos_t *c, const char *nome, uint32_t orcamento);
+
 #ifdef BANCADA_DECIMACAO
 /* Roda a fonte falsa na decimação e manda o resultado pela serial. true se passou. */
 bool bancada_decimacao(void);
+#endif
+
+#ifdef BANCADA_FILTRO
+/* Roda o bruto da fonte falsa no filtro e manda o resultado pela serial. true se passou. */
+bool bancada_filtro(void);
 #endif
 
 #endif /* BANCADA_H */
