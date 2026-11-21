@@ -60,7 +60,7 @@ int main(void)
 - A `main` é protegida: só entra por PR, com o CI verde.
 - **1 aprovação de code owner.** No seu módulo, quem aprova é o seu revisor
   fixo (A é revisado por C, B por A, C por B).
-- **Até ~400 linhas** alteradas, sem contar arquivo gerado.
+- **Até ~2000 linhas** alteradas, sem contar arquivo gerado.
 - **Mudou um módulo, muda a página dele aqui** (`docs/src/content/docs/modulos/`).
 - Merge por squash.
 

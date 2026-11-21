@@ -2,6 +2,8 @@
 
 O firmware manda, a SENSOR_FS_HZ, uma linha "n,ir,vermelho" por amostra
 (ver docs/src/content/docs/firmware.md). Linhas com "#" são comentário.
+Linhas "b,n,ir,vermelho" são o bruto que a placa decimou pra 100 Hz: vão pra
+um segundo CSV, <nome>_bruto.csv, ao lado do primeiro.
 
 Uso:
     uv run python -m analise.captura COM3 --segundos 30
@@ -36,6 +38,7 @@ class Fonte(Protocol):
 class Resumo:
     amostras: int = 0
     invalidas: int = 0
+    brutos: int = 0  # linhas "b,..." (bruto decimado na placa)
     saltos: list[tuple[int, int]] = field(default_factory=list)  # (n antes, n depois)
     comentarios: list[str] = field(default_factory=list)
     segundos: float = 0.0
@@ -57,12 +60,28 @@ def le_linha(linha: str) -> tuple[int, int, int] | None:
     return n, ir, vermelho
 
 
+def le_bruto(linha: str) -> tuple[int, float, float] | None:
+    """Converte "b,n,ir,vermelho" (bruto decimado na placa). None se não for."""
+    partes = linha.strip().split(",")
+    if len(partes) != 4 or partes[0] != "b":
+        return None
+    try:
+        return int(partes[1]), float(partes[2]), float(partes[3])
+    except ValueError:
+        return None
+
+
+def destino_bruto(destino: Path) -> Path:
+    return destino.with_name(destino.stem + "_bruto.csv")
+
+
 def grava(fonte: Fonte, destino: Path, segundos: float | None = None) -> Resumo:
     """Lê linhas da fonte e grava as amostras em CSV até o tempo acabar (ou Ctrl+C)."""
     resumo = Resumo()
     destino.parent.mkdir(parents=True, exist_ok=True)
     anterior: int | None = None
     inicio = time.monotonic()
+    arquivo_bruto = None
     with destino.open("w", newline="", encoding="utf-8") as arquivo:
         escritor = csv.writer(arquivo)
         escritor.writerow(COLUNAS)
@@ -73,6 +92,19 @@ def grava(fonte: Fonte, destino: Path, segundos: float | None = None) -> Resumo:
                     continue
                 if linha.startswith("#"):
                     resumo.comentarios.append(linha)
+                    continue
+                if linha.startswith("b,"):
+                    bruto = le_bruto(linha)
+                    if bruto is None:
+                        resumo.invalidas += 1
+                        continue
+                    if arquivo_bruto is None:
+                        arquivo_bruto = destino_bruto(destino).open(
+                            "w", newline="", encoding="utf-8")
+                        escritor_bruto = csv.writer(arquivo_bruto)
+                        escritor_bruto.writerow(COLUNAS)
+                    escritor_bruto.writerow(bruto)
+                    resumo.brutos += 1
                     continue
                 amostra = le_linha(linha)
                 if amostra is None:
@@ -85,6 +117,9 @@ def grava(fonte: Fonte, destino: Path, segundos: float | None = None) -> Resumo:
                 resumo.amostras += 1
         except KeyboardInterrupt:
             pass
+        finally:
+            if arquivo_bruto is not None:
+                arquivo_bruto.close()
     resumo.segundos = time.monotonic() - inicio
     return resumo
 
@@ -106,6 +141,8 @@ def main(argv: list[str] | None = None) -> None:
           f"({resumo.amostras / max(resumo.segundos, 1e-9):.1f}/s; esperado {SENSOR_FS_HZ}/s)")
     print(f"saltos no n: {len(resumo.saltos)} ({resumo.perdidas} amostras perdidas); "
           f"linhas inválidas: {resumo.invalidas}")
+    if resumo.brutos:
+        print(f"{resumo.brutos} amostras do bruto decimado em {destino_bruto(destino)}")
     for c in resumo.comentarios:
         print(f"  {c}")
 
