@@ -81,7 +81,8 @@ primeira entrada, o histórico vale a primeira entrada, e por isso o DC não
 tem transiente no começo.
 
 Na placa, amostra perdida pelo sensor (`# perdidas`) entra na decimação como
-a última amostra repetida, e o $n$ continua alinhado com o tempo.
+a última amostra lida repetida, depois das lidas (sem rollover, a FIFO cheia
+descarta as novas), e o $n$ continua alinhado com o tempo.
 
 ### Implementação em C
 
