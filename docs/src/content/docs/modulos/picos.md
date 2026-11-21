@@ -74,7 +74,7 @@ Contra o ECG do PhysioNet (Pulse Transit Time PPG): 5 pessoas × (sentado,
 andando, correndo), 60 s de cada registro a partir de 30 s, sobre o `filtrado_ir`
 da fonte falsa. Reproduzir: `uv run python -m analise.picos_validacao`.
 
-O pico do PPG chega **110 a 180 ms depois** do pico R (tempo de trânsito do pulso),
+O pico do PPG chega **110 a 160 ms depois** do pico R (tempo de trânsito do pulso),
 então o atraso de cada registro é estimado e descontado antes de contar. Os
 2,6 s do início (aquecimento) ficam fora da conta. Acerto: pico do PPG a
 menos de 150 ms do R mais o atraso.
@@ -83,9 +83,12 @@ menos de 150 ms do R mais o atraso.
 |---|---|---|---|---|
 | sentado | 5 | 98,7 a 100% | 98,3 a 98,7% | 0,07 bpm |
 | correndo | 5 | 83 a 100% | 95 a 99% | 0,07 bpm |
-| andando | 5 | 59 a 99% | 80 a 98% | 0,19 bpm |
+| andando | 5 | 59 a 99% | 80 a 98% | 1,02 bpm |
 
 Média dos 15: **sensibilidade 94,3%, precisão 95,4%, erro de BPM de 2,45 bpm**.
+O "erro do BPM" aqui é o do BPM médio do trecho de 60 s (60000 / média dos RR
+válidos detectados) contra o do ECG, não o `picos_bpm()` batimento a
+batimento (últimos 8 RR).
 O erro do intervalo RR (nos pares de acertos seguidos) tem mediana de 4 a 5 ms
 sentado e de 8 a 25 ms em movimento.
 
@@ -94,3 +97,8 @@ maiores que o pulso, e o detector segue os passos em vez do coração (erro de
 BPM de 25 e 8 bpm; sensibilidade de 59 e 83%). Nenhum parâmetro resolve isso:
 é o papel do módulo `qualidade` marcar esse trecho como inutilizável
 (`usavel = false`), e o laço principal descarta os batimentos dele.
+
+**O BPM não expira sozinho:** depois de 4 RR válidos, `picos_bpm()` continua
+`valido` com o último valor mesmo que não chegue batimento novo (dedo
+retirado, sinal parado). Quem tira o "--" do display nesse caso é a
+`qualidade` (`dedo_presente`).
