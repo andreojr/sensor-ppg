@@ -125,8 +125,10 @@ class Picos:
             return None
 
         # Vértice da parábola por (base-1, y0), (base, y1), (base+1, y2).
-        # O denominador é negativo num máximo; y1 > y0 e y1 >= y2 o garante.
-        d = F32(0.5) * (y0 - y2) / (y0 - F32(2) * y1 + y2)
+        # O denominador é negativo num máximo; y1 > y0 e y1 >= y2 o garante. Só
+        # zera por arredondamento num platô (y1 == y2): aí o pico fica em base.
+        den = y0 - F32(2) * y1 + y2
+        d = F32(0.5) * (y0 - y2) / den if den != 0 else F32(0)
         f = d - F32(ATRASO_AMOSTRAS)
         k = math.floor(f)
         n_pico = base + k

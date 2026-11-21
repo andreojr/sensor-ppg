@@ -6,8 +6,8 @@
 
 #include <math.h>
 
-#define ESPERA 200u        /* ESPERA_S * PPG_FS_HZ */
-#define REFRAT 30u         /* REFRAT_S * PPG_FS_HZ */
+#define ESPERA (2u * PPG_FS_HZ)       /* ESPERA_S = 2 s */
+#define REFRAT (3u * PPG_FS_HZ / 10u) /* REFRAT_S = 0,3 s */
 #define LIMIAR 0.4f
 #define DECAI 0.9900498390197754f /* exp(-1 / (TAU_ENV_S * PPG_FS_HZ)) em float */
 #define RR_MIN_MS 300.0f
@@ -51,7 +51,10 @@ static bool batimento(picos_t *p, uint32_t base, float y0, float y1, float y2,
         return false;
 
     /* Vértice da parábola por (base-1, y0), (base, y1), (base+1, y2). */
-    float d = 0.5f * (y0 - y2) / (y0 - 2.0f * y1 + y2);
+    /* O denominador só zera por arredondamento num platô (y1 == y2): aí o
+       pico fica em base. */
+    float den = y0 - 2.0f * y1 + y2;
+    float d = den != 0.0f ? 0.5f * (y0 - y2) / den : 0.0f;
     float f = d - PPG_ATRASO_AMOSTRAS;
     float k = floorf(f);
     int32_t n_pico = (int32_t)base + (int32_t)k;

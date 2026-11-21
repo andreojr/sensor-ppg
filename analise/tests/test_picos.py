@@ -101,3 +101,11 @@ def test_nan_nao_estraga_o_envelope():
     env = p.env
     p.processa(float("nan"))
     assert 0 < p.env < env
+
+
+def test_plato_com_denominador_zero_nao_quebra():
+    # y0 meio ulp abaixo de y1 == y2 = 1: o denominador da parábola zera.
+    p = Picos()
+    y0 = float(np.nextafter(np.float32(1), np.float32(0)))
+    b = p._batimento(500, y0, 1.0, 1.0)
+    assert b is not None and b.n_pico == 500 and b.fracao == 0.0
