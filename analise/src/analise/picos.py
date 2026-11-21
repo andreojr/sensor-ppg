@@ -35,11 +35,11 @@ from pathlib import Path
 
 import numpy as np
 
-from analise import FS_HZ
+from analise import FS_HZ, filtro
 
 F32 = np.float32
 
-ATRASO_AMOSTRAS = 0.0  # PPG_ATRASO_AMOSTRAS do ppg.h
+ATRASO_AMOSTRAS = float(filtro.ATRASO)  # PPG_ATRASO_AMOSTRAS do ppg.h
 ESPERA_S = 2.0  # sem detectar enquanto o envelope não conhece o sinal
 TAU_ENV_S = 1.0  # decaimento do envelope
 LIMIAR = 0.4  # fração do envelope que um pico precisa ter
@@ -84,6 +84,7 @@ class Picos:
         self.x2 = F32(0)  # x[n-2]
         self.env = F32(0)
         self.ultimo: Batimento | None = None
+        self.ultimo_base = 0  # n (sem descontar o atraso) do último batimento
         self.rr_tipico = F32(0)  # 0 = ainda não conhece
         self.rrs: list[float] = []  # últimos RR válidos
 
@@ -121,7 +122,8 @@ class Picos:
 
     def _batimento(self, base: int, y0: float, y1: float, y2: float) -> Batimento | None:
         """Candidato em `base` com vizinhos y0, y1 (o pico), y2."""
-        if self.ultimo is not None and base - self.ultimo.n_pico < REFRAT:
+        # Refratário no n da entrada, sem descontar o atraso (o n_pico já vem descontado).
+        if self.ultimo is not None and base - self.ultimo_base < REFRAT:
             return None
 
         # Vértice da parábola por (base-1, y0), (base, y1), (base+1, y2).
@@ -155,6 +157,7 @@ class Picos:
 
         b = Batimento(n_pico, fracao, rr_valido, rr_ms)
         self.ultimo = b
+        self.ultimo_base = base
         return b
 
 

@@ -25,6 +25,7 @@ typedef struct {
     float env;             /* envelope de pico, com decaimento */
     bool tem_ultimo;       /* já houve um batimento */
     uint32_t ultimo_n;     /* n_pico do último batimento */
+    uint32_t ultimo_base;  /* n da entrada (sem descontar o atraso) do último batimento */
     float ultimo_fracao;   /* fracao do último batimento */
     float rr_tipico;       /* 0 = ainda não conhece */
     float rrs[PICOS_BPM_JANELA]; /* últimos RR válidos, do mais antigo ao mais novo */

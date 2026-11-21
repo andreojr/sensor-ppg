@@ -26,6 +26,7 @@ void picos_init(picos_t *p)
     p->env = 0.0f;
     p->tem_ultimo = false;
     p->ultimo_n = 0;
+    p->ultimo_base = 0;
     p->ultimo_fracao = 0.0f;
     p->rr_tipico = 0.0f;
     for (uint32_t i = 0; i < PICOS_BPM_JANELA; i++)
@@ -47,7 +48,8 @@ static void guarda_rr(picos_t *p, float rr_ms)
 static bool batimento(picos_t *p, uint32_t base, float y0, float y1, float y2,
                       ppg_batimento_t *saida)
 {
-    if (p->tem_ultimo && base - p->ultimo_n < REFRAT)
+    /* Refratário no n da entrada, sem descontar o atraso (ultimo_n já vem descontado). */
+    if (p->tem_ultimo && base - p->ultimo_base < REFRAT)
         return false;
 
     /* Vértice da parábola por (base-1, y0), (base, y1), (base+1, y2). */
@@ -86,6 +88,7 @@ static bool batimento(picos_t *p, uint32_t base, float y0, float y1, float y2,
 
     p->tem_ultimo = true;
     p->ultimo_n = (uint32_t)n_pico;
+    p->ultimo_base = base;
     p->ultimo_fracao = fracao;
 
     saida->valido = true;

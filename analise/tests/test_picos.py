@@ -1,7 +1,11 @@
 import numpy as np
 
 from analise import FS_HZ
-from analise.picos import ESPERA, Picos, detecta
+from analise.picos import ATRASO_AMOSTRAS, ESPERA, Picos, detecta
+
+# A senoide entra direto, sem o filtro: o instante na entrada é n_pico + o atraso
+# que o picos desconta (PPG_ATRASO_AMOSTRAS).
+A = round(ATRASO_AMOSTRAS)
 
 
 def senoide(f_hz: float, segundos: float, amp: float = 1.0) -> np.ndarray:
@@ -24,7 +28,7 @@ def test_instante_com_fracao():
     esperado = (np.arange(30) + 0.25) / 1.2 * FS_HZ
     for x in b:
         assert 0.0 <= x.fracao < 1.0
-        assert np.min(np.abs(esperado - x.instante)) < 0.1
+        assert np.min(np.abs(esperado - (x.instante + A))) < 0.1
 
 
 def test_sem_sinal_sem_batimento():
@@ -33,13 +37,17 @@ def test_sem_sinal_sem_batimento():
 
 def test_nada_antes_do_aquecimento():
     b, _ = detecta(senoide(1.2, 30))
-    assert all(x.n_pico >= ESPERA - 1 for x in b)
+    assert all(x.n_pico + A >= ESPERA - 1 for x in b)
 
 
 def test_periodo_refratario():
     """Segundo máximo 150 ms depois do primeiro (onda dicrótica forte) é rejeitado."""
-    x = senoide(1.2, 30) + 0.9 * np.roll(senoide(1.2, 30), 15)
+    t = np.arange(30 * FS_HZ) / FS_HZ
+    x = np.zeros_like(t)
+    for c in np.arange(0.5, 30, 0.8):  # 75 bpm
+        x += np.exp(-(((t - c) / 0.04) ** 2)) + 0.7 * np.exp(-(((t - c - 0.15) / 0.04) ** 2))
     b, _ = detecta(x.astype(np.float32))
+    assert len(b) > 30
     assert all(y.rr_ms > 300 for y in b[1:])
 
 
@@ -48,7 +56,7 @@ def test_pico_pequeno_e_rejeitado():
     x = senoide(1.0, 20)
     x[1250:1350] *= 0.05  # um ciclo pequeno no meio
     b, _ = detecta(x)
-    n = np.array([y.n_pico for y in b])
+    n = np.array([y.n_pico + A for y in b])
     assert not np.any((n > 1250) & (n < 1350))
 
 
@@ -108,4 +116,4 @@ def test_plato_com_denominador_zero_nao_quebra():
     p = Picos()
     y0 = float(np.nextafter(np.float32(1), np.float32(0)))
     b = p._batimento(500, y0, 1.0, 1.0)
-    assert b is not None and b.n_pico == 500 and b.fracao == 0.0
+    assert b is not None and b.n_pico == 500 - A and b.fracao == 0.0
