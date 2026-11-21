@@ -219,7 +219,7 @@ sem o MAX30102), a placa toca os 613 batimentos de `s1_sit` no
 
 ```text
 # bancada hrv: 613 batimentos, 557 validos, 0 fora da tolerancia, erro max 0 milesimos de ms
-# bancada hrv: ciclos por batimento med 11381 max 12861 (orcamento 20000): OK
+# bancada hrv: ciclos por batimento med 11401 max 12876 (orcamento 20000): OK
 ```
 
 **Orçamento:** 20 000 ciclos por batimento (~0,2 ms a 96 MHz). A 200 bpm
@@ -232,7 +232,7 @@ de 49 KB, por causa do vetor; RAM +3,3 KB do `hrv_t`).
 **Resultado na placa** (Black Pill STM32F411, build Debug `-O0`, 21/11/2026):
 as duas linhas acima, exatamente. Os 613 batimentos batem com o Python
 (557 saídas válidas, as mesmas do PC), com erro menor que 0,0005 ms. O custo
-é de 11 381 ciclos em média e 12 861 no pior batimento: 0,13 ms a 96 MHz,
+é de 11 401 ciclos em média e 12 876 no pior batimento: 0,13 ms a 96 MHz,
 dentro do orçamento de 20 000. A 200 bpm, isso dá 0,04% da CPU. Num build
 Release (`-O2`) deve cair bastante, mas não foi medido.
 

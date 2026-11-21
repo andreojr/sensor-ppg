@@ -6,18 +6,15 @@
 #include <math.h>
 #include <stdio.h>
 
+#include "bancada.h"
 #include "hrv/hrv.h"
-#include "main.h"
 #include "serial.h"
 /* O mesmo vetor do teste no PC (testes/ entra no include path com a opção). */
 #include "hrv/vetores/s1_sit.h"
 
 bool bancada_hrv(void)
 {
-    /* Contador de ciclos do núcleo (DWT). */
-    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
-    DWT->CYCCNT = 0;
-    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+    ciclos_liga(); /* bancada.h; roda antes do ciclos_liga() do main */
 
     static hrv_t h; /* ~3,3 KiB: fora da pilha */
     hrv_init(&h);
@@ -29,9 +26,9 @@ bool bancada_hrv(void)
         ppg_batimento_t b = {s1_sit_valido[i] != 0, (uint32_t)s1_sit_n_pico[i], s1_sit_fracao[i],
                              s1_sit_rr_valido[i] != 0, s1_sit_rr_ms[i]};
         ppg_hrv_t s = {0};
-        uint32_t t0 = DWT->CYCCNT;
+        uint32_t t0 = ciclos_agora();
         bool escreveu = hrv_processa(&h, &b, &s);
-        uint32_t dt = DWT->CYCCNT - t0;
+        uint32_t dt = ciclos_agora() - t0;
         soma_ciclos += dt;
         if (dt > max_ciclos)
             max_ciclos = dt;

@@ -8,7 +8,8 @@ Código que usa HAL, em `Core/Inc` e `Core/Src` (fora de `pds/`).
 | Parte | Responsável | Estado |
 |---|---|---|
 | Leitura do MAX30102 (I2C1, FIFO, INT no PB5) | João | feita: `max30102.c` |
-| Serial pro PC (USART1 a 921600 com DMA, adaptador USB-serial) | João | feita: `serial.c`, manda o sinal cru |
+| Serial pro PC (USART1 a 921600 com DMA, adaptador USB-serial) | João | feita: `serial.c`, manda o sinal cru e o bruto decimado |
+| Decimação na placa (400 → 100 Hz) e ciclos (DWT) | João | feita: `main.c` e `bancada.c`; ver [Decimação](../modulos/decimacao/) |
 | Bancada do HRV na placa (`-DBANCADA_HRV=ON`) | André | feita: `bancada_hrv.c`, passou na placa; ver [HRV](../modulos/hrv/) |
 | Fonte falsa (PhysioNet em flash) | André | a fazer |
 | Timer, filas e laço principal (TIM2 a 100 Hz já configurado) | André | a fazer |
@@ -74,21 +75,35 @@ INT ficar baixo, não vem outra borda de descida, e sem isso a leitura travaria.
 
 ```text
 # MAX30102 400 Hz: n,ir,vermelho
+# decimacao 100 Hz: b,n,ir,vermelho
 0,112034,98765
 1,112040,98771
 ...
+b,0,112036.41,98768.02
+...
+# decimacao: ciclos med ... max ... (orcamento 2400)
 ```
 
 - `n` é o índice da amostra a 400 Hz desde o boot. Se o sensor descartar
   amostras, sai uma linha `# perdidas: K` e o `n` pula K. Com isso o PC confere
   que nada se perdeu: os `n` têm que vir em sequência.
 - `ir` e `vermelho` são as contagens cruas do ADC (0 a 262143), com DC.
+- Linhas que começam com `b,` são o **bruto a 100 Hz** que a placa decimou
+  (`decimacao_processa()`), com 2 casas: uma a cada 4 amostras do sensor,
+  com o `n` a 100 Hz. A saída `n` é o instante da amostra `4n` do sensor e
+  sai 60 ms depois dela. Amostra perdida entra na decimação como a última
+  repetida, e o `n` do bruto não pula.
+- A cada 10 s, `# decimacao: ciclos med X max Y` mede o
+  `decimacao_processa()` com o contador de ciclos do núcleo (DWT). O
+  orçamento é 1% da CPU: 96 MHz / 400 Hz / 100 = 2400 ciclos por amostra.
 - Linhas que começam com `#` são comentário. Se o sensor não responder no
-  boot, sai `# erro: MAX30102 nao respondeu na I2C1` e a placa para.
+  boot, sai `# erro: MAX30102 nao respondeu na I2C1` e a placa para. Se a
+  taxa do sensor não tiver filtro de decimação, sai
+  `# erro: decimacao sem filtro para essa taxa do MAX30102` e a placa para.
 
-São no máximo uns 25 bytes × 400 Hz ≈ 10 kB/s, cerca de 11% dos ~92 kB/s da
-serial. O envio usa DMA com buffer duplo: o laço preenche um buffer de 1 KiB
-enquanto o DMA manda o outro.
+São no máximo uns 25 bytes × 400 Hz + 30 bytes × 100 Hz ≈ 13 kB/s, cerca de
+14% dos ~92 kB/s da serial. O envio usa DMA com buffer duplo: o laço preenche um buffer de 2 KiB
+(cabe a pior leitura: FIFO cheia, linhas `b,` e o resumo dos ciclos) enquanto o DMA manda o outro.
 
 ## Rodar na placa e ver a leitura
 
@@ -126,12 +141,34 @@ passam de 100 000 e oscilam ~1% com o pulso.
 
 Pra gravar em CSV e plotar, dentro de `analise/` (o CSV vai pra
 `analise/dados/`, que não entra no git). No fim, a captura mostra a taxa medida
-e quantas amostras se perderam:
+e quantas amostras se perderam. As linhas `b,` vão pra um segundo CSV,
+`<nome>_bruto.csv`, e o `--confere` compara a decimação da placa com a do
+Python no mesmo sinal:
 
 ```bash
 uv run python -m analise.captura COM3 --segundos 30
 uv run python -m analise.plota dados/sensor_<data>_<hora>.csv
+uv run python -m analise.decimacao --confere dados/sensor_<data>_<hora>.csv
 ```
+
+### Bancada da decimação (fonte falsa)
+
+Com `-DBANCADA_DECIMACAO=ON`, na partida a placa toca a fonte falsa a 400 Hz
+(o vetor de `testes/decimacao/vetores/sensor_400hz.h`, ~40 KB na flash) na
+decimação, confere com a saída do Python e mede os ciclos. Sai pela serial,
+antes das amostras:
+
+```bash
+cmake --preset Debug -DBANCADA_DECIMACAO=ON
+cmake --build --preset Debug
+```
+
+```text
+# bancada decimacao: 994 saidas (esperado 994), 0 fora da tolerancia, erro max 8 milesimos
+# bancada decimacao: ciclos por amostra med ... max ... (orcamento 2400): OK
+```
+
+A opção fica guardada no cache do CMake: volte com `-DBANCADA_DECIMACAO=OFF`.
 
 | Sintoma | Causa provável |
 |---|---|

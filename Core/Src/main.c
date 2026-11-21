@@ -23,7 +23,9 @@
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
 
+#include "bancada.h"
 #include "bancada_hrv.h"
+#include "decimacao/decimacao.h"
 #include "max30102.h"
 #include "serial.h"
 
@@ -57,6 +59,13 @@ DMA_HandleTypeDef hdma_usart1_tx;
 static volatile bool sensor_int;
 static uint32_t indice; /* nº da amostra a MAX30102_FS_HZ desde o início */
 static volatile max30102_amostra_t ultima; /* pra olhar no Live Watch do debugger */
+static decimacao_t decimacao;              /* sensor -> bruto a PPG_FS_HZ */
+static max30102_amostra_t anterior;        /* repetida no lugar das perdidas */
+
+/* Ciclos do decimacao_processa(), resumidos pela serial a cada MAX30102_FS_HZ * 10 amostras. */
+static uint32_t ciclos_max;
+static uint64_t ciclos_soma;
+static uint32_t ciclos_conta;
 
 /* USER CODE END PV */
 
@@ -70,6 +79,7 @@ static void MX_USART1_UART_Init(void);
 static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
 static void envia_amostras(void);
+static void decima(const max30102_amostra_t *amostra);
 static void destrava_i2c1(void);
 
 /* USER CODE END PFP */
@@ -126,10 +136,24 @@ int main(void)
     HAL_UART_Transmit(&huart1, (const uint8_t *)erro, sizeof erro - 1, 100);
     Error_Handler();
   }
-  char cabecalho[48];
-  int n = snprintf(cabecalho, sizeof cabecalho, "# MAX30102 %u Hz: n,ir,vermelho\n",
-                   MAX30102_FS_HZ);
+  char cabecalho[96];
+  int n = snprintf(cabecalho, sizeof cabecalho,
+                   "# MAX30102 %u Hz: n,ir,vermelho\n# decimacao %u Hz: b,n,ir,vermelho\n",
+                   MAX30102_FS_HZ, PPG_FS_HZ);
   serial_escreve(cabecalho, (uint32_t)n);
+  ciclos_liga();
+#ifdef BANCADA_DECIMACAO
+  /* Fonte falsa na decimação; as amostras do sensor desse intervalo podem
+     sair como "# perdidas". O resultado (OK/FALHOU) sai na serial; a placa
+     segue lendo o sensor mesmo se falhar. */
+  (void)bancada_decimacao();
+#endif
+  if (!decimacao_init(&decimacao, MAX30102_FS_HZ))
+  {
+    static const char erro[] = "# erro: decimacao sem filtro para essa taxa do MAX30102\n";
+    HAL_UART_Transmit(&huart1, (const uint8_t *)erro, sizeof erro - 1, 100);
+    Error_Handler();
+  }
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -447,23 +471,77 @@ static void envia_amostras(void)
   {
     return;
   }
-  if (perdidas > 0)
-  {
-    int tam = snprintf(linha, sizeof linha, "# perdidas: %lu\n", (unsigned long)perdidas);
-    serial_escreve(linha, (uint32_t)tam);
-    indice += perdidas;
-  }
   for (uint32_t i = 0; i < n; i++)
   {
     int tam = snprintf(linha, sizeof linha, "%lu,%lu,%lu\n", (unsigned long)indice,
                        (unsigned long)amostras[i].ir, (unsigned long)amostras[i].vermelho);
     serial_escreve(linha, (uint32_t)tam);
+    decima(&amostras[i]);
+    anterior = amostras[i];
     indice++;
+  }
+  /* Sem rollover, a FIFO cheia descarta as amostras novas: as perdidas vêm
+     depois das que foram lidas. A decimação recebe a última amostra no lugar
+     delas, e o n (cru e bruto) continua alinhado com o tempo do sensor. */
+  if (perdidas > 0)
+  {
+    int tam = snprintf(linha, sizeof linha, "# perdidas: %lu\n", (unsigned long)perdidas);
+    serial_escreve(linha, (uint32_t)tam);
+    for (uint32_t i = 0; indice > 0 && i < perdidas; i++)
+    {
+      decima(&anterior);
+    }
+    indice += perdidas;
   }
   if (n > 0)
   {
     ultima.ir = amostras[n - 1].ir;
     ultima.vermelho = amostras[n - 1].vermelho;
+  }
+}
+
+/* Centésimos com sinal, sem printf de float (o nano.specs não tem). Parte
+   inteira e fração separadas: v * 100 perto de 2,6e7 já perde os centésimos
+   no float. */
+static int centesimos(char *s, size_t tam, float v)
+{
+  long inteira = (long)v;
+  float fracao = v - (float)inteira; /* exata, mesmo sinal de v */
+  long c = inteira * 100L + (long)(fracao * 100.0f + (v < 0.0f ? -0.5f : 0.5f));
+  unsigned long a = (unsigned long)(c < 0 ? -c : c);
+  return snprintf(s, tam, "%s%lu.%02lu", c < 0 ? "-" : "", a / 100u, a % 100u);
+}
+
+/* Uma amostra do sensor na decimação. A cada 4, uma linha "b,n,ir,vermelho"
+   com o bruto a PPG_FS_HZ; a cada 10 s, um resumo dos ciclos. */
+static void decima(const max30102_amostra_t *amostra)
+{
+  decimacao_entrada_t e = {amostra->ir, amostra->vermelho};
+  ppg_amostra_t s;
+  uint32_t t0 = ciclos_agora();
+  bool saiu = decimacao_processa(&decimacao, &e, &s);
+  uint32_t dt = ciclos_agora() - t0;
+
+  ciclos_soma += dt;
+  ciclos_max = dt > ciclos_max ? dt : ciclos_max;
+  char linha[80]; /* linha de ciclos: até 67 B com contadores de 10 dígitos */
+  if (++ciclos_conta == MAX30102_FS_HZ * 10u)
+  {
+    int tam = snprintf(linha, sizeof linha, "# decimacao: ciclos med %lu max %lu (orcamento %lu)\n",
+                       (unsigned long)(ciclos_soma / ciclos_conta), (unsigned long)ciclos_max,
+                       (unsigned long)BANCADA_ORCAMENTO_DECIMACAO);
+    serial_escreve(linha, (uint32_t)tam);
+    ciclos_soma = ciclos_max = ciclos_conta = 0;
+  }
+
+  if (saiu)
+  {
+    char ir[24];
+    char vermelho[24];
+    centesimos(ir, sizeof ir, s.ir);
+    centesimos(vermelho, sizeof vermelho, s.vermelho);
+    int tam = snprintf(linha, sizeof linha, "b,%lu,%s,%s\n", (unsigned long)s.n, ir, vermelho);
+    serial_escreve(linha, (uint32_t)tam);
   }
 }
 
