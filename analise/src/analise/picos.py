@@ -97,17 +97,26 @@ class Picos:
             soma += F32(rr)
         return True, float(F32(60000.0) / (soma / F32(len(self.rrs))))
 
-    def processa(self, x: float) -> Batimento | None:
-        """picos_processa: devolve o batimento se esta amostra fechou um pico."""
+    def processa(self, x: float, n: int | None = None) -> Batimento | None:
+        """picos_processa: devolve o batimento se esta amostra fechou um pico.
+
+        n é o da cadeia (ppg_amostra_t.n); sem ele, conta desde o init.
+        """
         x = F32(x)
-        self.env = max(x, F32(self.env * DECAI))
-        n = self.n
+        decaido = F32(self.env * DECAI)
+        # Nessa ordem, como o `x > decaido ? x : decaido` do C: com x NaN fica o
+        # decaido (max(x, decaido) devolveria o NaN e estragaria o envelope).
+        self.env = max(decaido, x)
+        if n is None:
+            n = self.n
         pico = None
-        # Máximo local em x[n-1], visto com uma amostra de atraso.
-        if n >= ESPERA and self.x1 > self.x2 and self.x1 >= x and self.x1 > F32(LIMIAR) * self.env:
+        # Máximo local em x[n-1], visto com uma amostra de atraso. self.n só
+        # conta o aquecimento desde o init.
+        if (self.n >= ESPERA and n > 0 and self.x1 > self.x2 and self.x1 >= x
+                and self.x1 > F32(LIMIAR) * self.env):
             pico = self._batimento(n - 1, self.x2, self.x1, x)
         self.x2, self.x1 = self.x1, x
-        self.n = n + 1
+        self.n += 1
         return pico
 
     def _batimento(self, base: int, y0: float, y1: float, y2: float) -> Batimento | None:

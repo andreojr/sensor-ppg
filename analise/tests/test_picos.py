@@ -79,3 +79,25 @@ def test_reinicia_zera_o_estado():
     q = Picos()
     entrada = senoide(1.2, 10)
     assert [p.processa(x) for x in entrada] == [q.processa(x) for x in entrada]
+
+
+def test_n_pico_segue_o_n_da_cadeia():
+    entrada = senoide(1.2, 10)
+    p, q = Picos(), Picos()
+    a = [p.processa(x) for x in entrada]
+    b = [q.processa(x, 5000 + i) for i, x in enumerate(entrada)]
+    picos_a = [y for y in a if y is not None]
+    picos_b = [y for y in b if y is not None]
+    assert picos_a and len(picos_a) == len(picos_b)
+    for ya, yb in zip(picos_a, picos_b, strict=True):
+        assert yb.n_pico == ya.n_pico + 5000
+        assert (yb.fracao, yb.rr_ms, yb.rr_valido) == (ya.fracao, ya.rr_ms, ya.rr_valido)
+
+
+def test_nan_nao_estraga_o_envelope():
+    p = Picos()
+    for x in senoide(1.0, 6):
+        p.processa(x)
+    env = p.env
+    p.processa(float("nan"))
+    assert 0 < p.env < env

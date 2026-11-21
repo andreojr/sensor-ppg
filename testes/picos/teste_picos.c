@@ -24,7 +24,9 @@ typedef struct {
     float tol;
 } caso_t;
 
-static int roda(const caso_t *c)
+/* desloca: n da cadeia começa aqui (o n_pico tem que andar junto).
+   reinicia: o detector já processou outro sinal antes do picos_init de novo. */
+static int roda(const caso_t *c, uint32_t desloca, bool reinicia)
 {
     int32_t n_pico[MAX_BATIMENTOS], rr_valido[MAX_BATIMENTOS], bpm_valido[MAX_BATIMENTOS];
     float fracao[MAX_BATIMENTOS], rr_ms[MAX_BATIMENTOS], bpm[MAX_BATIMENTOS];
@@ -32,15 +34,25 @@ static int roda(const caso_t *c)
 
     picos_t p;
     picos_init(&p);
+    if (reinicia) {
+        ppg_batimento_t lixo;
+        for (uint32_t i = 0; i < 1000u; i++) {
+            ppg_amostra_t x = {.n = i, .ir = (i % 70u < 5u) ? 1.0f : 0.0f, .vermelho = 0.0f};
+            picos_processa(&p, &x, &lixo);
+        }
+        picos_init(&p);
+    }
+    int invalidos = 0;
     for (uint32_t i = 0; i < c->n_entrada; i++) {
-        ppg_amostra_t x = {.n = i, .ir = c->entrada[i], .vermelho = 0.0f};
+        ppg_amostra_t x = {.n = desloca + i, .ir = c->entrada[i], .vermelho = 0.0f};
         ppg_batimento_t b;
         if (!picos_processa(&p, &x, &b))
             continue;
+        invalidos += !b.valido;
         if (n < MAX_BATIMENTOS) {
             ppg_bpm_t v;
             picos_bpm(&p, &v);
-            n_pico[n] = (int32_t)b.n_pico;
+            n_pico[n] = (int32_t)(b.n_pico - desloca);
             fracao[n] = b.fracao;
             rr_valido[n] = b.rr_valido ? 1 : 0;
             rr_ms[n] = b.rr_ms;
@@ -50,9 +62,9 @@ static int roda(const caso_t *c)
         n++;
     }
 
-    printf("== %s: %u batimentos (esperado %u)\n", c->nome, (unsigned)n,
-           (unsigned)c->n_batimentos);
-    if (n != c->n_batimentos || n > MAX_BATIMENTOS)
+    printf("== %s (n desde %u%s): %u batimentos (esperado %u)\n", c->nome, (unsigned)desloca,
+           reinicia ? ", reiniciado" : "", (unsigned)n, (unsigned)c->n_batimentos);
+    if (n != c->n_batimentos || n > MAX_BATIMENTOS || invalidos)
         return 1;
 
     return confere_int("n_pico", n_pico, c->n_pico, n)
@@ -75,7 +87,10 @@ int main(void)
     };
 
     int falhas = 0;
-    for (uint32_t i = 0; i < sizeof casos / sizeof casos[0]; i++)
-        falhas += roda(&casos[i]);
+    for (uint32_t i = 0; i < sizeof casos / sizeof casos[0]; i++) {
+        falhas += roda(&casos[i], 0u, false);
+        /* n da cadeia não começa no init do picos, e reiniciar zera tudo. */
+        falhas += roda(&casos[i], 123456u, true);
+    }
     return falhas ? 1 : 0;
 }

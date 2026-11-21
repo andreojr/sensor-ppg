@@ -100,9 +100,11 @@ bool picos_processa(picos_t *p, const ppg_amostra_t *filtrado, ppg_batimento_t *
     p->env = x > decaido ? x : decaido;
 
     bool pico = false;
-    /* Máximo local em x[n-1], visto com uma amostra de atraso. */
-    if (p->n >= ESPERA && p->x1 > p->x2 && p->x1 >= x && p->x1 > LIMIAR * p->env)
-        pico = batimento(p, p->n - 1u, p->x2, p->x1, x, saida);
+    /* Máximo local em x[n-1], visto com uma amostra de atraso. O n é o da
+       cadeia (ppg.h); p->n só conta o aquecimento desde o init. */
+    if (p->n >= ESPERA && filtrado->n > 0u && p->x1 > p->x2 && p->x1 >= x &&
+        p->x1 > LIMIAR * p->env)
+        pico = batimento(p, filtrado->n - 1u, p->x2, p->x1, x, saida);
 
     p->x2 = p->x1;
     p->x1 = x;

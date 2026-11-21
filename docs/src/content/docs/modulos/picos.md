@@ -41,8 +41,10 @@ por vez**, sem guardar o sinal: só o estado de `picos_t`. Tudo em `float`.
    do batimento anterior é rejeitado. Corta a onda dicrótica e ruído colado
    no pico.
 4. **Instante por interpolação parabólica** nos 3 pontos em volta do máximo.
-   `n_pico` é a amostra inteira, `fracao` em [0, 1) é a parte fracionária, e
-   `PPG_ATRASO_AMOSTRAS` do `ppg.h` é descontado.
+   `n_pico` é a amostra inteira, no mesmo `n` da cadeia que vem na entrada
+   (`ppg_amostra_t.n`, contado desde a decimação, não desde o `picos_init`),
+   `fracao` em [0, 1) é a parte fracionária, e `PPG_ATRASO_AMOSTRAS` do
+   `ppg.h` é descontado.
 5. **Rejeição de intervalo errado:** o RR só é válido (`rr_valido`) entre 300 e
    2000 ms e entre 0,7 e 1,4 vez o RR típico (média móvel dos RR). Um
    batimento perdido faz o RR dobrar e fica de fora, e o HRV ignora esse par.
