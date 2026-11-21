@@ -11,6 +11,7 @@ Código que usa HAL, em `Core/Inc` e `Core/Src` (fora de `pds/`).
 | Serial pro PC (USART1 a 921600 com DMA, adaptador USB-serial) | João | feita: `serial.c`, manda o sinal cru, o bruto decimado e o filtrado |
 | Decimação na placa (400 → 100 Hz) e ciclos (DWT) | João | feita: `main.c` e `bancada.c`; ver [Decimação](../modulos/decimacao/) |
 | Filtro na placa (bruto → filtrado) | João | feito: `main.c` e `bancada.c`; ver [Filtro](../modulos/filtro/) |
+| Bancada do HRV na placa (`-DBANCADA_HRV=ON`) | André | feita: `bancada_hrv.c`, passou na placa; ver [HRV](../modulos/hrv/) |
 | Fonte falsa (PhysioNet em flash) | André | a fazer |
 | Timer, filas e laço principal (TIM2 a 100 Hz já configurado) | André | a fazer |
 | Display OLED (I2C3) | Celso | a fazer |
@@ -262,6 +263,15 @@ periférico em uso mudar sozinho.
 
 Toolchain **CMake**. O código nosso fica fora de `Core/*/pds/` ou dentro dos
 blocos `USER CODE`, que o CubeMX preserva.
+
+## Bancada do HRV (`bancada_hrv.c`)
+
+Com `-DBANCADA_HRV=ON` no CMake, a placa, logo depois de `serial_init()` e
+antes do sensor, toca as marcas de batimento da fonte falsa (`s1_sit`, o
+mesmo vetor de `testes/hrv/vetores/`) no `hrv_processa()`, confere com a
+saída do Python e mede os ciclos por batimento com o contador do núcleo
+(DWT). O resultado sai em duas linhas `# bancada hrv: ...`. Sem a opção, nada
+disso entra no firmware. Procedimento e orçamento em [HRV](../modulos/hrv/).
 
 ## Regras
 

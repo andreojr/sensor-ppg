@@ -24,6 +24,7 @@
 #include <stdio.h>
 
 #include "bancada.h"
+#include "bancada_hrv.h"
 #include "decimacao/decimacao.h"
 #include "filtro/filtro.h"
 #include "max30102.h"
@@ -125,6 +126,10 @@ int main(void)
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
   serial_init(&huart1);
+#ifdef BANCADA_HRV
+  /* Fonte falsa no HRV, antes do sensor (roda mesmo sem o MAX30102). */
+  (void)bancada_hrv();
+#endif
   destrava_i2c1();
   if (max30102_init(&hi2c1) != HAL_OK)
   {

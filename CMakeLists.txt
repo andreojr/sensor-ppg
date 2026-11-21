@@ -51,6 +51,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/Core/Src/max30102.c
     ${CMAKE_SOURCE_DIR}/Core/Src/serial.c
     ${CMAKE_SOURCE_DIR}/Core/Src/bancada.c
+    ${CMAKE_SOURCE_DIR}/Core/Src/bancada_hrv.c
     ${PDS_SOURCES}
 )
 
@@ -65,6 +66,15 @@ if(BANCADA_FILTRO)
     target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE BANCADA_FILTRO)
 endif()
 if(BANCADA_DECIMACAO OR BANCADA_FILTRO)
+    target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/testes)
+endif()
+
+# Bancada do HRV: na partida, toca as marcas de batimento da fonte falsa no
+# hrv/ e confere com o Python (o vetor de testes/hrv/).
+# cmake --preset Debug -DBANCADA_HRV=ON
+option(BANCADA_HRV "Confere o HRV na placa com a fonte falsa" OFF)
+if(BANCADA_HRV)
+    target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE BANCADA_HRV)
     target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/testes)
 endif()
 
