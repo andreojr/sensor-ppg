@@ -11,8 +11,9 @@ Quatro saídas, do mesmo trecho de s1_sit:
                   decimação.
   bruto_100hz     saída da decimação: 100 Hz, com DC. Decimado pelo scipy
                   (FIR, fase zero), que é a referência da decimação nossa.
-  filtrado_100hz  saída do filtro: passa-faixa 0,5 a 4 Hz pelo scipy, fase
-                  zero (atraso 0). Referência do filtro nosso.
+  filtrado_100hz  saída do filtro: o FIR nosso (analise.filtro), 0,5 a 4 Hz,
+                  atrasado de PPG_ATRASO_AMOSTRAS como na placa. Quem acha o
+                  pico aqui subtrai o atraso, igual na cadeia de verdade.
   batimentos      marcas de pico R do ECG, como ppg_batimento_t: n_pico a
                   100 Hz e rr_ms. Fazem o papel do módulo picos/ até ele
                   existir, e são o gabarito do BPM e do HRV.
@@ -70,8 +71,10 @@ class FonteFalsa:
 def gera(
     r: physionet.Registro, inicio_s: float = INICIO_S, duracao_s: float = DURACAO_S
 ) -> FonteFalsa:
-    # Recorta com margem; os filtros de fase zero (filtfilt) têm transiente nas
-    # bordas, e a margem é descartada no fim.
+    # Recorta com margem: a reamostragem tem transiente nas bordas e o FIR do
+    # filtrado precisa de FILTRO_N amostras antes do trecho; a margem é
+    # descartada no fim. Com inicio_s < MARGEM_S a margem encolhe e o começo
+    # do filtrado ainda tem a janela do FIR incompleta.
     margem = min(MARGEM_S, inicio_s)
     largo = r.recorta(inicio_s - margem, inicio_s + duracao_s + margem)
     trecho = r.recorta(inicio_s, inicio_s + duracao_s)
@@ -94,9 +97,11 @@ def gera(
     ]
     bruto = [x[corte] for x in bruto_largo]
 
-    # Passa-faixa 0,5 a 4 Hz, fase zero (filtfilt): atraso 0, média zero.
-    sos = signal.butter(ORDEM_FILTRO, BANDA_HZ, btype="band", fs=FS_HZ, output="sos")
-    filtrado = [signal.sosfiltfilt(sos, x - x.mean())[corte] for x in bruto_largo]
+    # O filtro nosso (FIR, atraso PPG_ATRASO_AMOSTRAS), sobre o bruto com margem:
+    # a janela do FIR já está cheia no começo do trecho.
+    from analise import filtro
+
+    filtrado = [filtro.filtra(x)[corte] for x in bruto_largo]
 
     # Picos do ECG na grade de 100 Hz. rr_ms do primeiro é 0 (não há anterior).
     n_pico = np.round(trecho.t_picos_ecg * FS_HZ).astype(np.uint32)
@@ -176,7 +181,8 @@ def escreve_c(f: FonteFalsa, pasta: Path) -> tuple[Path, Path]:
         + "/* Como o sensor entrega: contagens do ADC a FONTE_SENSOR_FS_HZ. */\n"
         + "extern const uint32_t fonte_sensor_ir[FONTE_SENSOR_N];\n"
         + "extern const uint32_t fonte_sensor_vermelho[FONTE_SENSOR_N];\n\n"
-        + "/* Saída da decimação (com DC) e do filtro (0,5 a 4 Hz), a PPG_FS_HZ. */\n"
+        + "/* Saída da decimação (com DC) e do filtro (0,5 a 4 Hz, atrasado de\n"
+        + "   PPG_ATRASO_AMOSTRAS), a PPG_FS_HZ. */\n"
         + "extern const float fonte_bruto_ir[FONTE_N];\n"
         + "extern const float fonte_bruto_vermelho[FONTE_N];\n"
         + "extern const float fonte_filtrado_ir[FONTE_N];\n"

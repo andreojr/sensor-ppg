@@ -8,8 +8,10 @@ Código que usa HAL, em `Core/Inc` e `Core/Src` (fora de `pds/`).
 | Parte | Responsável | Estado |
 |---|---|---|
 | Leitura do MAX30102 (I2C1, FIFO, INT no PB5) | João | feita: `max30102.c` |
-| Serial pro PC (USART1 a 921600 com DMA, adaptador USB-serial) | João | feita: `serial.c`, manda o sinal cru e o bruto decimado |
+| Serial pro PC (USART1 a 921600 com DMA, adaptador USB-serial) | João | feita: `serial.c`, manda o sinal cru, o bruto decimado e o filtrado |
 | Decimação na placa (400 → 100 Hz) e ciclos (DWT) | João | feita: `main.c` e `bancada.c`; ver [Decimação](../modulos/decimacao/) |
+| Filtro na placa (bruto → filtrado) | João | feito: `main.c` e `bancada.c`; ver [Filtro](../modulos/filtro/) |
+| Bancada do HRV na placa (`-DBANCADA_HRV=ON`) | André | feita: `bancada_hrv.c`, passou na placa; ver [HRV](../modulos/hrv/) |
 | Fonte falsa (PhysioNet em flash) | André | a fazer |
 | Timer, filas e laço principal (TIM2 a 100 Hz já configurado) | André | a fazer |
 | Display OLED (I2C3) | Celso | a fazer |
@@ -75,12 +77,15 @@ INT ficar baixo, não vem outra borda de descida, e sem isso a leitura travaria.
 ```text
 # MAX30102 400 Hz: n,ir,vermelho
 # decimacao 100 Hz: b,n,ir,vermelho
+# filtro 100 Hz, atraso 100: f,n,ir,vermelho
 0,112034,98765
 1,112040,98771
 ...
 b,0,112036.41,98768.02
+f,0,0.00,0.00
 ...
 # decimacao: ciclos med ... max ... (orcamento 2400)
+# filtro: ciclos med ... max ... (orcamento 19200)
 ```
 
 - `n` é o índice da amostra a 400 Hz desde o boot. Se o sensor descartar
@@ -92,17 +97,23 @@ b,0,112036.41,98768.02
   com o `n` a 100 Hz. A saída `n` é o instante da amostra `4n` do sensor e
   sai 60 ms depois dela. Amostra perdida entra na decimação como a última
   repetida, e o `n` do bruto não pula.
-- A cada 10 s, `# decimacao: ciclos med X max Y` mede o
-  `decimacao_processa()` com o contador de ciclos do núcleo (DWT). O
-  orçamento é 1% da CPU: 96 MHz / 400 Hz / 100 = 2400 ciclos por amostra.
+- Linhas que começam com `f,` são o **filtrado** (`filtro_processa()`, 0,5
+  a 4 Hz, média zero), uma por linha `b,`, com o mesmo `n`. O sinal está
+  atrasado de `PPG_ATRASO_AMOSTRAS` (100 amostras = 1 s) e vale depois dos
+  primeiros 2 s.
+- A cada 10 s, `# decimacao: ...` e `# filtro: ciclos med X max Y` medem o
+  `decimacao_processa()` e o `filtro_processa()` com o contador de ciclos do
+  núcleo (DWT). Os orçamentos são 1% da CPU pra decimação (96 MHz / 400 Hz /
+  100 = 2400 ciclos por amostra do sensor) e 2% pro filtro (19 200 ciclos
+  por amostra a 100 Hz).
 - Linhas que começam com `#` são comentário. Se o sensor não responder no
   boot, sai `# erro: MAX30102 nao respondeu na I2C1` e a placa para. Se a
   taxa do sensor não tiver filtro de decimação, sai
   `# erro: decimacao sem filtro para essa taxa do MAX30102` e a placa para.
 
-São no máximo uns 25 bytes × 400 Hz + 30 bytes × 100 Hz ≈ 13 kB/s, cerca de
-14% dos ~92 kB/s da serial. O envio usa DMA com buffer duplo: o laço preenche um buffer de 2 KiB
-(cabe a pior leitura: FIFO cheia, linhas `b,` e o resumo dos ciclos) enquanto o DMA manda o outro.
+São no máximo uns 25 bytes × 400 Hz + 2 × 30 bytes × 100 Hz ≈ 16 kB/s, cerca
+de 17% dos ~92 kB/s da serial. O envio usa DMA com buffer duplo: o laço preenche um buffer de 3 KiB
+(cabe a pior leitura: FIFO cheia, linhas `b,` e `f,` e o resumo dos ciclos) enquanto o DMA manda o outro.
 
 ## Rodar na placa e ver a leitura
 
@@ -140,14 +151,15 @@ passam de 100 000 e oscilam ~1% com o pulso.
 
 Pra gravar em CSV e plotar, dentro de `analise/` (o CSV vai pra
 `analise/dados/`, que não entra no git). No fim, a captura mostra a taxa medida
-e quantas amostras se perderam. As linhas `b,` vão pra um segundo CSV,
-`<nome>_bruto.csv`, e o `--confere` compara a decimação da placa com a do
-Python no mesmo sinal:
+e quantas amostras se perderam. As linhas `b,` e `f,` vão pra
+`<nome>_bruto.csv` e `<nome>_filtrado.csv`, e cada `--confere` compara o
+módulo da placa com o do Python no mesmo sinal:
 
 ```bash
 uv run python -m analise.captura COM3 --segundos 30
 uv run python -m analise.plota dados/sensor_<data>_<hora>.csv
 uv run python -m analise.decimacao --confere dados/sensor_<data>_<hora>.csv
+uv run python -m analise.filtro --confere dados/sensor_<data>_<hora>.csv
 ```
 
 ### Bancada da decimação (fonte falsa)
@@ -168,6 +180,18 @@ cmake --build --preset Debug
 ```
 
 A opção fica guardada no cache do CMake: volte com `-DBANCADA_DECIMACAO=OFF`.
+
+### Bancada do filtro (fonte falsa)
+
+Igual, com `-DBANCADA_FILTRO=ON`: os 60 s do bruto da fonte falsa (o vetor de
+`testes/filtro/vetores/bruto_100hz.h`, ~96 KB na flash) passam pelo filtro e
+são conferidos com o Python. As duas bancadas podem ser ligadas juntas
+(~167 KB de flash).
+
+```text
+# bancada filtro: 6000 saidas, 0 fora da tolerancia, erro max 0 milesimos
+# bancada filtro: ciclos por amostra med ... max ... (orcamento 19200): OK
+```
 
 | Sintoma | Causa provável |
 |---|---|
@@ -239,6 +263,15 @@ periférico em uso mudar sozinho.
 
 Toolchain **CMake**. O código nosso fica fora de `Core/*/pds/` ou dentro dos
 blocos `USER CODE`, que o CubeMX preserva.
+
+## Bancada do HRV (`bancada_hrv.c`)
+
+Com `-DBANCADA_HRV=ON` no CMake, a placa, logo depois de `serial_init()` e
+antes do sensor, toca as marcas de batimento da fonte falsa (`s1_sit`, o
+mesmo vetor de `testes/hrv/vetores/`) no `hrv_processa()`, confere com a
+saída do Python e mede os ciclos por batimento com o contador do núcleo
+(DWT). O resultado sai em duas linhas `# bancada hrv: ...`. Sem a opção, nada
+disso entra no firmware. Procedimento e orçamento em [HRV](../modulos/hrv/).
 
 ## Regras
 

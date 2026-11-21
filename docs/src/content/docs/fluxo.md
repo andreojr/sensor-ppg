@@ -7,7 +7,7 @@ O detalhe está no
 [CONTRIBUTING.md](https://github.com/andreojr/sensor-ppg/blob/main/CONTRIBUTING.md).
 Resumo:
 
-## Cada item passa por 5 passos (um PR cada)
+## Cada item passa por 5 passos (um PR cada, ou vários num PR só)
 
 1. **Python** (`analise/`): protótipo validado no PhysioNet, com o ECG como
    gabarito.

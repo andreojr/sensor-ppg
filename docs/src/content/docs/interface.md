@@ -52,10 +52,18 @@ O bruto não traz o DC separado: separar AC e DC é trabalho do `spo2` e da
 ## Atraso do filtro
 
 `PPG_ATRASO_AMOSTRAS` diz quantas amostras o filtro atrasa o sinal. É `float`,
-porque um FIR com número par de coeficientes ou um IIR atrasam valor
-fracionário. O filtro repete na saída o `n` da amostra de entrada, e o módulo
-`picos` subtrai o atraso do instante do pico. Quando o filtro mudar (IIR ou
-FIR), o dono do `filtro` atualiza a constante.
+porque um FIR com número par de coeficientes atrasa valor fracionário. O filtro
+repete na saída o `n` da amostra de entrada, e o módulo `picos` subtrai o
+atraso do instante do pico. Quando o filtro mudar, o dono do `filtro` atualiza
+a constante.
+
+**Valor atual: `100.0f`** (1 s). O filtro é um FIR de fase linear com 201
+coeficientes, e o atraso é o mesmo em todas as frequências. Por isso uma
+constante corrige o pico com qualquer FC. Com um IIR isso não valeria: o pico
+andaria de −183 a +56 ms conforme a FC (ver [Filtro](../modulos/filtro/)).
+
+O `filtrado_100hz` da fonte falsa sai do mesmo FIR, com o mesmo atraso: quem
+testa com ela também subtrai `PPG_ATRASO_AMOSTRAS`.
 
 ## Resultados
 

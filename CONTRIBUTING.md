@@ -21,7 +21,10 @@ PR.
 
 ## Fluxo de cada item
 
-Cada passo é um PR próprio:
+Os passos podem ir um por PR ou vários juntos num PR só (como a decimação, #105,
+e o HRV no tempo, #107), desde que o PR caiba no limite de linhas do CI e a
+descrição marque quais passos ele cobre. Passo que depende de outro módulo
+(por exemplo, o 5 do HRV, que precisa do `picos/`) fica para um PR depois.
 
 1. **Protótipo em Python** (`analise/`), validado no PhysioNet com o ECG como
    gabarito.
