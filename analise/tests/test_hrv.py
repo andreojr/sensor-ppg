@@ -198,3 +198,12 @@ def test_confere_placa_desde_o_boot_e_no_meio():
     errado = h.copy()
     errado[-10, 1] = 0  # um válido que virou inválido
     assert not confere_placa(p, errado)["ok"]
+
+
+def test_confere_par_cortado_nas_pontas_e_sem_validos():
+    from analise.hrv import confere_placa
+
+    p, h = _placa_hrv()
+    assert confere_placa(p, h[:-1])["ok"]  # parou entre o último p, e o h,
+    assert confere_placa(p[11:], h[10:])["ok"]  # começou entre um p, e o h,
+    assert not confere_placa(p[:30], h[:30])["ok"]  # 30 batimentos: nenhum HRV válido

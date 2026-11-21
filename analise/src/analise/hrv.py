@@ -404,6 +404,10 @@ def confere_placa(picos_placa: np.ndarray, hrv_placa: np.ndarray) -> dict:
 
     picos_placa = depois_do_reset(picos_placa)
     hrv_placa = depois_do_reset(hrv_placa)
+    # A captura pode cortar o par p,/h, nas pontas (começou ou parou entre as duas).
+    if len(hrv_placa) and len(picos_placa) and hrv_placa[0, 0] < picos_placa[0, 0]:
+        hrv_placa = hrv_placa[1:]
+    picos_placa = picos_placa[: len(hrv_placa)]
     if len(picos_placa) != len(hrv_placa) or np.any(picos_placa[:, 0] != hrv_placa[:, 0]):
         raise ValueError("as linhas p, e h, não casam batimento a batimento")
     desde_boot = bool(picos_placa[0, 3] == 0 and picos_placa[0, 2] == 0)
@@ -440,8 +444,9 @@ def confere_placa(picos_placa: np.ndarray, hrv_placa: np.ndarray) -> dict:
         "sdnn_ms": float(np.median([v[0] for v in validos])) if validos else float("nan"),
         "rmssd_ms": float(np.median([v[1] for v in validos])) if validos else float("nan"),
     }
+    # Sem nenhum HRV válido comparado, não há o que aprovar (captura curta ou ruim).
     r["ok"] = bool(
-        comparados > 0
+        len(validos) > 0
         and valido_dif == 0
         and erro_sdnn <= TOL_HRV_MS
         and erro_rmssd <= TOL_HRV_MS
@@ -465,6 +470,11 @@ def main() -> None:
                 raise SystemExit(f"sem {arq.name}: a placa não mandou linhas de batimento")
         r = confere_placa(*(np.loadtxt(x, delimiter=",", skiprows=1, ndmin=2) for x in arqs))
         modo = "desde o boot" if r["desde_boot"] else f"no meio (depois de {JANELA_S} s)"
+        if r["validos"] == 0:
+            raise SystemExit(
+                f"captura {modo}: {r['batimentos']} batimentos comparados e nenhum com HRV válido; "
+                "capture mais tempo (3 min) em repouso, com o dedo parado"
+            )
         print(f"captura {modo}: {r['batimentos']} batimentos comparados, {r['validos']} com HRV válido")
         print(
             f"erro máximo: SDNN {r['erro_sdnn_ms']:.3f} ms, RMSSD {r['erro_rmssd_ms']:.3f} ms; "

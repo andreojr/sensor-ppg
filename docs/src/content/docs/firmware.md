@@ -12,7 +12,7 @@ Código que usa HAL, em `Core/Inc` e `Core/Src` (fora de `pds/`).
 | Decimação na placa (400 → 100 Hz) e ciclos (DWT) | João | feita: `main.c` e `bancada.c`; ver [Decimação](../modulos/decimacao/) |
 | Filtro na placa (bruto → filtrado) | João | feito: `main.c` e `bancada.c`; ver [Filtro](../modulos/filtro/) |
 | Picos na placa (filtrado → batimentos e BPM) | Celso / André | feito: `main.c` e `bancada.c`; ver [Picos](../modulos/picos/) |
-| HRV na placa (batimentos → SDNN e RMSSD) | André | feito: `main.c`, linhas `h,`; ver [HRV](../modulos/hrv/) |
+| HRV na placa (batimentos → SDNN e RMSSD) | André | código pronto: `main.c`, linhas `h,`; falta capturar; ver [HRV](../modulos/hrv/) |
 | Bancada do HRV na placa (`-DBANCADA_HRV=ON`) | André | feita: `bancada_hrv.c`, passou na placa; ver [HRV](../modulos/hrv/) |
 | Fonte falsa (PhysioNet em flash) | André | a fazer |
 | Timer, filas e laço principal (TIM2 a 100 Hz já configurado) | André | a fazer |
@@ -118,7 +118,7 @@ h,1234,1,48.27,33.10
   (mais 1 s do atraso do filtro).
 - Logo depois de cada `p,`, uma linha `h,` com a saída do HRV
   (`hrv_processa()` sobre o mesmo batimento): `n_pico`, `valido` (0/1, só
-  depois de 45 s de RR aceitos), SDNN e RMSSD em ms com 2 casas.
+  com 45 s de RR aceitos na janela e 20 diferenças), SDNN e RMSSD em ms com 2 casas.
 - A cada 10 s, `# decimacao: ...` e `# filtro: ciclos med X max Y` medem o
   `decimacao_processa()` e o `filtro_processa()` com o contador de ciclos do
   núcleo (DWT). Os orçamentos são 1% da CPU pra decimação (96 MHz / 400 Hz /
