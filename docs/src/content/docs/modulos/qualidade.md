@@ -275,8 +275,10 @@ ciclos de cada chamada. Esperado:
 
 **Orçamento:** 2 000 ciclos por amostra no pior caso (~21 µs a 96 MHz, 0,2%
 da CPU a 100 Hz). O pior caso é a amostra que fecha o bloco. Compila com o
-Arm GNU com e sem a opção, sem warnings (com a bancada, flash de 27 → 102 KB,
-por causa do vetor).
+Arm GNU com e sem a opção (e com as quatro bancadas juntas), sem warnings
+(com a bancada, a flash vai de 29 a 104 KB, por causa do vetor). No laço,
+os ciclos da qualidade no sensor real saem a cada 10 s, junto dos da
+decimação e do filtro (`# qualidade: ciclos med ... max ...`).
 
 **Resultado na placa:** *(preencher)*
 
