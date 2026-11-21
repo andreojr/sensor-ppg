@@ -141,13 +141,19 @@ int main(void)
   ciclos_liga();
 #ifdef BANCADA_DECIMACAO
   /* Fonte falsa na decimação; as amostras do sensor desse intervalo podem
-     sair como "# perdidas". */
-  bancada_decimacao();
+     sair como "# perdidas". O resultado (OK/FALHOU) sai na serial; a placa
+     segue lendo o sensor mesmo se falhar. */
+  (void)bancada_decimacao();
 #endif
 #ifdef BANCADA_FILTRO
-  bancada_filtro();
+  (void)bancada_filtro(); /* só informativo, como a da decimação */
 #endif
-  decimacao_init(&decimacao, MAX30102_FS_HZ);
+  if (!decimacao_init(&decimacao, MAX30102_FS_HZ))
+  {
+    static const char erro[] = "# erro: decimacao sem filtro para essa taxa do MAX30102\n";
+    HAL_UART_Transmit(&huart1, (const uint8_t *)erro, sizeof erro - 1, 100);
+    Error_Handler();
+  }
   filtro_init(&filtro);
   /* USER CODE END 2 */
 
@@ -466,18 +472,6 @@ static void envia_amostras(void)
   {
     return;
   }
-  if (perdidas > 0)
-  {
-    int tam = snprintf(linha, sizeof linha, "# perdidas: %lu\n", (unsigned long)perdidas);
-    serial_escreve(linha, (uint32_t)tam);
-    /* A decimação recebe a última amostra no lugar das perdidas: o n do bruto
-       continua alinhado com o tempo do sensor. */
-    for (uint32_t i = 0; indice > 0 && i < perdidas; i++)
-    {
-      decima(&anterior);
-    }
-    indice += perdidas;
-  }
   for (uint32_t i = 0; i < n; i++)
   {
     int tam = snprintf(linha, sizeof linha, "%lu,%lu,%lu\n", (unsigned long)indice,
@@ -487,6 +481,19 @@ static void envia_amostras(void)
     anterior = amostras[i];
     indice++;
   }
+  /* Sem rollover, a FIFO cheia descarta as amostras novas: as perdidas vêm
+     depois das que foram lidas. A decimação recebe a última amostra no lugar
+     delas, e o n (cru e bruto) continua alinhado com o tempo do sensor. */
+  if (perdidas > 0)
+  {
+    int tam = snprintf(linha, sizeof linha, "# perdidas: %lu\n", (unsigned long)perdidas);
+    serial_escreve(linha, (uint32_t)tam);
+    for (uint32_t i = 0; indice > 0 && i < perdidas; i++)
+    {
+      decima(&anterior);
+    }
+    indice += perdidas;
+  }
   if (n > 0)
   {
     ultima.ir = amostras[n - 1].ir;
@@ -494,10 +501,14 @@ static void envia_amostras(void)
   }
 }
 
-/* Centésimos com sinal, sem printf de float (o nano.specs não tem). */
+/* Centésimos com sinal, sem printf de float (o nano.specs não tem). Parte
+   inteira e fração separadas: v * 100 perto de 2,6e7 já perde os centésimos
+   no float. */
 static int centesimos(char *s, size_t tam, float v)
 {
-  long c = (long)(v * 100.0f + (v < 0.0f ? -0.5f : 0.5f));
+  long inteira = (long)v;
+  float fracao = v - (float)inteira; /* exata, mesmo sinal de v */
+  long c = inteira * 100L + (long)(fracao * 100.0f + (v < 0.0f ? -0.5f : 0.5f));
   unsigned long a = (unsigned long)(c < 0 ? -c : c);
   return snprintf(s, tam, "%s%lu.%02lu", c < 0 ? "-" : "", a / 100u, a % 100u);
 }

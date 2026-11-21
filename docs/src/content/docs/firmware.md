@@ -106,11 +106,13 @@ f,0,0.00,0.00
   100 = 2400 ciclos por amostra do sensor) e 2% pro filtro (19 200 ciclos
   por amostra a 100 Hz).
 - Linhas que começam com `#` são comentário. Se o sensor não responder no
-  boot, sai `# erro: MAX30102 nao respondeu na I2C1` e a placa para.
+  boot, sai `# erro: MAX30102 nao respondeu na I2C1` e a placa para. Se a
+  taxa do sensor não tiver filtro de decimação, sai
+  `# erro: decimacao sem filtro para essa taxa do MAX30102` e a placa para.
 
 São no máximo uns 25 bytes × 400 Hz + 2 × 30 bytes × 100 Hz ≈ 16 kB/s, cerca
-de 17% dos ~92 kB/s da serial. O envio usa DMA com buffer duplo: o laço preenche um buffer de 1 KiB
-enquanto o DMA manda o outro.
+de 17% dos ~92 kB/s da serial. O envio usa DMA com buffer duplo: o laço preenche um buffer de 3 KiB
+(cabe a pior leitura: FIFO cheia, linhas `b,` e `f,` e o resumo dos ciclos) enquanto o DMA manda o outro.
 
 ## Rodar na placa e ver a leitura
 
