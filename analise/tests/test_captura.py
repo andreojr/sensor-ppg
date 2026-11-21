@@ -48,6 +48,24 @@ def test_grava_csv_e_detecta_saltos(tmp_path):
     assert resumo.comentarios == ["# MAX30102 400 Hz: n,ir,vermelho", "# perdidas: 3"]
 
 
+def test_bruto_decimado_vai_pro_segundo_csv(tmp_path):
+    serial_falsa = io.BytesIO(
+        b"# decimacao 100 Hz: b,n,ir,vermelho\n"
+        b"0,100,200\n"
+        b"b,0,99.50,199.25\n"
+        b"1,101,201\n"
+        b"b,1,-0.07,12\n"
+        b"b,2,x,1\n"
+    )
+    destino = tmp_path / "x.csv"
+    resumo = captura.grava(serial_falsa, destino, segundos=0.1)
+    assert resumo.amostras == 2 and resumo.brutos == 2 and resumo.invalidas == 1
+    bruto = pd.read_csv(tmp_path / "x_bruto.csv")
+    assert list(bruto.columns) == list(captura.COLUNAS)
+    assert bruto["ir"].tolist() == [99.5, -0.07]
+    assert pd.read_csv(destino)["n"].tolist() == [0, 1]
+
+
 def test_plota_gera_png(tmp_path):
     csv = tmp_path / "x.csv"
     csv.write_text("n,ir,vermelho\n100,1,2\n101,3,4\n102,5,6\n", encoding="utf-8")

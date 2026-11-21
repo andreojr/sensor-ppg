@@ -50,8 +50,17 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
     ${CMAKE_SOURCE_DIR}/Core/Src/max30102.c
     ${CMAKE_SOURCE_DIR}/Core/Src/serial.c
+    ${CMAKE_SOURCE_DIR}/Core/Src/bancada.c
     ${PDS_SOURCES}
 )
+
+# Bancada: na partida, toca a fonte falsa na decimação e confere com o Python
+# (o vetor de testes/decimacao/). cmake --preset Debug -DBANCADA_DECIMACAO=ON
+option(BANCADA_DECIMACAO "Confere a decimação na placa com a fonte falsa" OFF)
+if(BANCADA_DECIMACAO)
+    target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE BANCADA_DECIMACAO)
+    target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/testes)
+endif()
 
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
