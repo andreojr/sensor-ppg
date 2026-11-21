@@ -140,6 +140,8 @@ class Picos:
         # zera por arredondamento num platô (y1 == y2): aí o pico fica em base.
         den = y0 - F32(2) * y1 + y2
         d = F32(0.5) * (y0 - y2) / den if den != 0 else F32(0)
+        if not math.isfinite(d):  # vizinho infinito: fica em base, como no C
+            d = F32(0)
         f = d - F32(ATRASO_AMOSTRAS)
         k = math.floor(f)
         n_pico = base + k
@@ -187,7 +189,11 @@ def detecta(filtrado: np.ndarray) -> tuple[list[Batimento], np.ndarray]:
     return batimentos, np.asarray(bpms)
 
 
-CASOS = (("s1_sit", "limpo, sentado"), ("s2_walk", "artefato de movimento: rr_valido e bpm falsos"))
+CASOS = (
+    ("s1_sit", "limpo, sentado"),
+    ("s2_walk", "artefato de movimento: rr_valido e bpm falsos"),
+    ("s3_sit", "corcova do FIR antes do batimento: exercita o candidato pendente"),
+)
 VETOR_DURACAO_S = 40.0
 
 

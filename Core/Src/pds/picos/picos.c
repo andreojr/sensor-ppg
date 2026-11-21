@@ -52,7 +52,9 @@ static void guarda_rr(picos_t *p, float rr_ms)
 /* Candidato em `base` (x[base] = y1, vizinhos y0 e y2). Fica pendente. */
 static void candidato(picos_t *p, uint32_t base, float y0, float y1, float y2)
 {
-    /* Refratário no n da entrada, sem descontar o atraso (ultimo_n já vem descontado). */
+    /* Refratário no n da entrada, sem descontar o atraso (ultimo_n já vem descontado).
+       Com n contínuo não dispara (o pendente só sai REFRAT depois); vale se houver
+       buraco no n. Quem faz o refratário no dia a dia é a regra do pendente abaixo. */
     if (p->tem_ultimo && base - p->ultimo_base < REFRAT)
         return;
     /* Dentro do refratário do pendente, só vale um pico maior (a corcova do FIR
@@ -65,6 +67,8 @@ static void candidato(picos_t *p, uint32_t base, float y0, float y1, float y2)
        pico fica em base. */
     float den = y0 - 2.0f * y1 + y2;
     float d = den != 0.0f ? 0.5f * (y0 - y2) / den : 0.0f;
+    if (!isfinite(d)) /* vizinho infinito: fica em base */
+        d = 0.0f;
     float f = d - PPG_ATRASO_AMOSTRAS;
     float k = floorf(f);
     int32_t n_pico = (int32_t)base + (int32_t)k;

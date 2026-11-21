@@ -59,7 +59,7 @@ por vez**, sem guardar o sinal: só o estado de `picos_t`. Tudo em `float`.
 Nos primeiros 2 s o detector só aprende o nível do sinal e não detecta (o
 primeiro batimento fica sem referência). O pico é visto com 1 amostra de
 atraso, porque o detector precisa da amostra seguinte para saber que passou
-do máximo, e o batimento sai até 300 ms depois do pico (o tempo do pendente).
+do máximo, e o batimento sai 300 ms (30 amostras) depois do pico (o tempo do pendente).
 O `n_pico` continua sendo o do pico.
 
 **Parâmetros:** `TAU_ENV_S = 1 s`, `LIMIAR = 0,3`, `REFRAT_S = 0,3 s`. Varredura
@@ -88,7 +88,7 @@ andando, correndo), 60 s de cada registro a partir de 30 s, sobre o `filtrado_ir
 da fonte falsa (o FIR do módulo `filtro`, com o atraso de `PPG_ATRASO_AMOSTRAS`
 descontado pelo picos). Reproduzir: `uv run python -m analise.picos_validacao`.
 
-O pico do PPG chega **100 a 150 ms depois** do pico R (tempo de trânsito do pulso),
+O pico do PPG chega **100 a 155 ms depois** do pico R (tempo de trânsito do pulso),
 então o atraso de cada registro é estimado e descontado antes de contar. Os
 2,6 s do início (aquecimento) ficam fora da conta. Acerto: pico do PPG a
 menos de 150 ms do R mais o atraso.

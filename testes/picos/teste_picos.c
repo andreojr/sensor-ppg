@@ -8,6 +8,7 @@
 #include "picos/picos.h"
 #include "vetores/s1_sit.h"
 #include "vetores/s2_walk.h"
+#include "vetores/s3_sit.h"
 
 #define MAX_BATIMENTOS 128u
 
@@ -108,6 +109,9 @@ int main(void)
         {"s2_walk", s2_walk_entrada, S2_WALK_ENTRADA_N, S2_WALK_N_PICO_N, s2_walk_n_pico,
          s2_walk_fracao, s2_walk_rr_valido, s2_walk_rr_ms, s2_walk_bpm_valido, s2_walk_bpm,
          S2_WALK_TOL},
+        {"s3_sit", s3_sit_entrada, S3_SIT_ENTRADA_N, S3_SIT_N_PICO_N, s3_sit_n_pico,
+         s3_sit_fracao, s3_sit_rr_valido, s3_sit_rr_ms, s3_sit_bpm_valido, s3_sit_bpm,
+         S3_SIT_TOL},
     };
 
     int falhas = 0;

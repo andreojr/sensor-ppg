@@ -134,3 +134,11 @@ def test_corcova_antes_do_pico_nao_toma_o_lugar():
     assert len(achados) >= 30
     assert all(np.min(np.abs(picos - a)) <= 1 for a in achados)
     assert all(y.rr_valido and abs(y.rr_ms - 800) < 10 for y in b[1:])
+
+
+def test_vizinho_infinito_nao_quebra():
+    x = senoide(1.2, 10)
+    x[524] = -np.inf
+    p = Picos()
+    for v in x:
+        p.processa(float(v))
