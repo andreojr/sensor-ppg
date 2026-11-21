@@ -8,9 +8,10 @@ Código que usa HAL, em `Core/Inc` e `Core/Src` (fora de `pds/`).
 | Parte | Responsável | Estado |
 |---|---|---|
 | Leitura do MAX30102 (I2C1, FIFO, INT no PB5) | João | feita: `max30102.c` |
-| Serial pro PC (USART1 a 921600 com DMA, adaptador USB-serial) | João | feita: `serial.c`, manda o sinal cru e o bruto decimado |
+| Serial pro PC (USART1 a 921600 com DMA, adaptador USB-serial) | João | feita: `serial.c`, manda o sinal cru e as saídas da cadeia (bruto, filtrado, respiração) |
 | Decimação na placa (400 → 100 Hz) e ciclos (DWT) | João | feita: `main.c` e `bancada.c`; ver [Decimação](../modulos/decimacao/) |
 | Filtro na placa (bruto → filtrado) | João | feito: `main.c` e `bancada.c`; ver [Filtro](../modulos/filtro/) |
+| Respiração na placa (bruto → rpm, 1 por segundo) | João | feita: `main.c` e `bancada.c`; ver [Respiração](../modulos/respiracao/) |
 | Fonte falsa (PhysioNet em flash) | André | a fazer |
 | Timer, filas e laço principal (TIM2 a 100 Hz já configurado) | André | a fazer |
 | Display OLED (I2C3) | Celso | a fazer |
@@ -77,14 +78,18 @@ INT ficar baixo, não vem outra borda de descida, e sem isso a leitura travaria.
 # MAX30102 400 Hz: n,ir,vermelho
 # decimacao 100 Hz: b,n,ir,vermelho
 # filtro 100 Hz, atraso 100: f,n,ir,vermelho
+# respiracao 1 Hz: r,n,rpm,valido
 0,112034,98765
 1,112040,98771
 ...
 b,0,112036.41,98768.02
 f,0,0.00,0.00
 ...
+r,99,0.00,0
+...
 # decimacao: ciclos med ... max ... (orcamento 2400)
 # filtro: ciclos med ... max ... (orcamento 19200)
+# respiracao: ciclos med ... max ... (orcamento 9600)
 ```
 
 - `n` é o índice da amostra a 400 Hz desde o boot. Se o sensor descartar
@@ -100,11 +105,16 @@ f,0,0.00,0.00
   a 4 Hz, média zero), uma por linha `b,`, com o mesmo `n`. O sinal está
   atrasado de `PPG_ATRASO_AMOSTRAS` (100 amostras = 1 s) e vale depois dos
   primeiros 2 s.
-- A cada 10 s, `# decimacao: ...` e `# filtro: ciclos med X max Y` medem o
-  `decimacao_processa()` e o `filtro_processa()` com o contador de ciclos do
-  núcleo (DWT). Os orçamentos são 1% da CPU pra decimação (96 MHz / 400 Hz /
-  100 = 2400 ciclos por amostra do sensor) e 2% pro filtro (19 200 ciclos
-  por amostra a 100 Hz).
+- Linhas que começam com `r,` são a **respiração** (`respiracao_processa()`):
+  uma por segundo, com o `n` do bruto que fechou a estimativa, as respirações
+  por minuto e `valido` (0 ou 1). Nos primeiros 60 s (a janela enchendo), sai
+  `valido` 0.
+- A cada 10 s, `# decimacao: ...`, `# filtro: ...` e
+  `# respiracao: ciclos med X max Y` medem cada `_processa()` com o contador
+  de ciclos do núcleo (DWT). Os orçamentos são 1% da CPU pra decimação
+  (96 MHz / 400 Hz / 100 = 2400 ciclos por amostra do sensor), 2% pro filtro
+  (19 200 ciclos por amostra a 100 Hz) e 1% pra respiração (9600, em média;
+  o espectro roda numa amostra por segundo).
 - Linhas que começam com `#` são comentário. Se o sensor não responder no
   boot, sai `# erro: MAX30102 nao respondeu na I2C1` e a placa para. Se a
   taxa do sensor não tiver filtro de decimação, sai
@@ -150,15 +160,16 @@ passam de 100 000 e oscilam ~1% com o pulso.
 
 Pra gravar em CSV e plotar, dentro de `analise/` (o CSV vai pra
 `analise/dados/`, que não entra no git). No fim, a captura mostra a taxa medida
-e quantas amostras se perderam. As linhas `b,` e `f,` vão pra
-`<nome>_bruto.csv` e `<nome>_filtrado.csv`, e cada `--confere` compara o
-módulo da placa com o do Python no mesmo sinal:
+e quantas amostras se perderam. As linhas `b,`, `f,` e `r,` vão pra
+`<nome>_bruto.csv`, `<nome>_filtrado.csv` e `<nome>_respiracao.csv`, e cada
+`--confere` compara o módulo da placa com o do Python no mesmo sinal:
 
 ```bash
 uv run python -m analise.captura COM3 --segundos 30
 uv run python -m analise.plota dados/sensor_<data>_<hora>.csv
 uv run python -m analise.decimacao --confere dados/sensor_<data>_<hora>.csv
 uv run python -m analise.filtro --confere dados/sensor_<data>_<hora>.csv
+uv run python -m analise.respiracao --confere dados/sensor_<data>_<hora>.csv
 ```
 
 ### Bancada da decimação (fonte falsa)
@@ -184,12 +195,23 @@ A opção fica guardada no cache do CMake: volte com `-DBANCADA_DECIMACAO=OFF`.
 
 Igual, com `-DBANCADA_FILTRO=ON`: os 60 s do bruto da fonte falsa (o vetor de
 `testes/filtro/vetores/bruto_100hz.h`, ~96 KB na flash) passam pelo filtro e
-são conferidos com o Python. As duas bancadas podem ser ligadas juntas
-(~167 KB de flash).
+são conferidos com o Python. As bancadas podem ser ligadas juntas.
 
 ```text
 # bancada filtro: 6000 saidas, 0 fora da tolerancia, erro max 0 milesimos
 # bancada filtro: ciclos por amostra med ... max ... (orcamento 19200): OK
+```
+
+### Bancada da respiração
+
+Com `-DBANCADA_RESPIRACAO=ON`: 5 min do bruto do `s1_sit` (o vetor de
+`testes/respiracao/vetores/s1_sit.h`, ~120 KB na flash), porque os 60 s da
+fonte falsa só enchem uma janela. As três bancadas juntas ocupam ~294 KB de
+flash.
+
+```text
+# bancada respiracao: 299 estimativas (esperado 299), 0 diferentes, erro max 0 milesimos de rpm
+# bancada respiracao: ciclos por amostra med ... max ... (orcamento 9600): OK
 ```
 
 | Sintoma | Causa provável |

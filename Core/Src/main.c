@@ -27,6 +27,7 @@
 #include "decimacao/decimacao.h"
 #include "filtro/filtro.h"
 #include "max30102.h"
+#include "respiracao/respiracao.h"
 #include "serial.h"
 
 /* USER CODE END Includes */
@@ -62,10 +63,12 @@ static volatile max30102_amostra_t ultima; /* pra olhar no Live Watch do debugge
 static decimacao_t decimacao;              /* sensor -> bruto a PPG_FS_HZ */
 static max30102_amostra_t anterior;        /* repetida no lugar das perdidas */
 static filtro_t filtro;                    /* bruto -> filtrado (0,5 a 4 Hz) */
+static respiracao_t respiracao;            /* bruto -> respirações por minuto */
 
 /* Ciclos de cada módulo, resumidos pela serial a cada 10 s. */
 static ciclos_t ciclos_decimacao;
 static ciclos_t ciclos_filtro;
+static ciclos_t ciclos_respiracao;
 
 /* USER CODE END PV */
 
@@ -132,10 +135,11 @@ int main(void)
     HAL_UART_Transmit(&huart1, (const uint8_t *)erro, sizeof erro - 1, 100);
     Error_Handler();
   }
-  char cabecalho[160];
+  char cabecalho[200];
   int n = snprintf(cabecalho, sizeof cabecalho,
                    "# MAX30102 %u Hz: n,ir,vermelho\n# decimacao %u Hz: b,n,ir,vermelho\n"
-                   "# filtro %u Hz, atraso %u: f,n,ir,vermelho\n",
+                   "# filtro %u Hz, atraso %u: f,n,ir,vermelho\n"
+                   "# respiracao 1 Hz: r,n,rpm,valido\n",
                    MAX30102_FS_HZ, PPG_FS_HZ, PPG_FS_HZ, (unsigned)PPG_ATRASO_AMOSTRAS);
   serial_escreve(cabecalho, (uint32_t)n);
   ciclos_liga();
@@ -148,6 +152,9 @@ int main(void)
 #ifdef BANCADA_FILTRO
   (void)bancada_filtro(); /* só informativo, como a da decimação */
 #endif
+#ifdef BANCADA_RESPIRACAO
+  (void)bancada_respiracao();
+#endif
   if (!decimacao_init(&decimacao, MAX30102_FS_HZ))
   {
     static const char erro[] = "# erro: decimacao sem filtro para essa taxa do MAX30102\n";
@@ -155,6 +162,7 @@ int main(void)
     Error_Handler();
   }
   filtro_init(&filtro);
+  respiracao_init(&respiracao);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -526,8 +534,20 @@ static void envia_ppg(char tipo, const ppg_amostra_t *s)
   serial_escreve(linha, (uint32_t)tam);
 }
 
+/* Uma linha "r,n,rpm,valido": n é o do bruto que fechou a estimativa. */
+static void envia_respiracao(uint32_t n, const ppg_respiracao_t *r)
+{
+  char rpm[24];
+  char linha[48];
+  centesimos(rpm, sizeof rpm, r->rpm);
+  int tam = snprintf(linha, sizeof linha, "r,%lu,%s,%u\n", (unsigned long)n, rpm,
+                     r->valido ? 1u : 0u);
+  serial_escreve(linha, (uint32_t)tam);
+}
+
 /* Uma amostra do sensor na cadeia. A cada 4, sai o bruto a PPG_FS_HZ (linha
-   "b,...") e ele passa no filtro (linha "f,..."); a cada 10 s, os ciclos. */
+   "b,...") e ele passa no filtro (linha "f,...") e na respiração (linha
+   "r,...", uma por segundo); a cada 10 s, os ciclos. */
 static void decima(const max30102_amostra_t *amostra)
 {
   decimacao_entrada_t e = {amostra->ir, amostra->vermelho};
@@ -544,12 +564,22 @@ static void decima(const max30102_amostra_t *amostra)
     ciclos_conta(&ciclos_filtro, ciclos_agora() - t0);
     envia_ppg('b', &bruto);
     envia_ppg('f', &filtrado);
+
+    ppg_respiracao_t resp;
+    t0 = ciclos_agora();
+    bool estimou = respiracao_processa(&respiracao, &bruto, &resp);
+    ciclos_conta(&ciclos_respiracao, ciclos_agora() - t0);
+    if (estimou)
+    {
+      envia_respiracao(bruto.n, &resp);
+    }
   }
 
   if (ciclos_decimacao.conta == MAX30102_FS_HZ * 10u)
   {
     ciclos_relata(&ciclos_decimacao, "decimacao", BANCADA_ORCAMENTO_DECIMACAO);
     ciclos_relata(&ciclos_filtro, "filtro", BANCADA_ORCAMENTO_FILTRO);
+    ciclos_relata(&ciclos_respiracao, "respiracao", BANCADA_ORCAMENTO_RESPIRACAO);
   }
 }
 
