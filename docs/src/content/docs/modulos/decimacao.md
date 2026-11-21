@@ -170,7 +170,17 @@ solta a saída. A média é o que pesa na CPU. O FPU do Cortex-M4 pode fundir
 multiplicação e soma (FMA), então o erro na placa pode passar um pouco do
 1 ulp do PC, ainda bem abaixo dos 50 milésimos.
 
-**Resultado na placa:** *(preencher com a saída da bancada)*
+**Resultado na placa** (STM32F411, Debug, 21/11/2026):
+
+```
+# bancada decimacao: 994 saidas (esperado 994), 0 fora da tolerancia, erro max 8 milesimos
+# bancada decimacao: ciclos por amostra med 1135 max 4048 (orcamento 2400): OK
+```
+
+Todas as 994 saídas batem com o Python (erro máximo de 0,008 contagens, o
+mesmo 1 ulp do PC). A média, 1135 ciclos, fica em 47% do orçamento, perto da
+estimativa. O máximo, ~4050 ciclos, é a amostra que solta a saída; como só
+uma a cada 4 faz o FIR, o que pesa na CPU é a média.
 
 ### 4. Sensor real
 
@@ -188,4 +198,16 @@ nos centésimos (a serial manda 2 casas), e o pulso tem que aparecer no bruto
 de 100 Hz com a mesma forma do cru. A cada 10 s, a serial também manda
 `# decimacao: ciclos med ... max ...` com o sensor de verdade.
 
-**Resultado com o sensor:** *(preencher com a saída do `--confere` e os ciclos)*
+**Resultado com o sensor** (dedo parado no MAX30102, 60 s, 21/11/2026):
+
+```
+saltos no n: 0 (0 amostras perdidas); linhas inválidas: 0
+5975 saídas comparadas; erro máximo IR 0.049, vermelho 0.069 contagens: OK
+# decimacao: ciclos med 1168 max 4046 (orcamento 2400)
+```
+
+A decimação da placa bate com a do Python no sinal real: o erro fica abaixo
+de 0,07 contagens, com o IR em ~121 000 contagens (o float de 32 bits e as 2
+casas da serial explicam o resto). Os ciclos com o sensor de verdade são os
+mesmos da bancada. O pulso aparece no bruto de 100 Hz, com pico do espectro
+em 1,25 Hz (75 bpm).
