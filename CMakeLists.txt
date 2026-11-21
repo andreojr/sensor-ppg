@@ -45,6 +45,15 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 # Módulos de PDS (C puro, sem HAL): Core/Src/pds/<módulo>/*.c
 file(GLOB_RECURSE PDS_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/Core/Src/pds/*.c)
 
+# CMSIS-DSP: só a FFT real de float32 (v1.16.2), copiada em Drivers/CMSIS/DSP.
+# Compilada aqui, sem o pacote do CubeMX (que mexeria no .ioc). A FPU (fpv4-sp-d16,
+# hard) já vem do cmake/gcc-arm-none-eabi.cmake, e -ffunction-sections/-fdata-sections
+# deixam o linker descartar as tabelas dos tamanhos que o fft.c não usa. É código da
+# ARM, então sem avisos (-w).
+set(CMSIS_DSP_DIR ${CMAKE_SOURCE_DIR}/Drivers/CMSIS/DSP)
+file(GLOB_RECURSE CMSIS_DSP_SOURCES CONFIGURE_DEPENDS ${CMSIS_DSP_DIR}/Source/*.c)
+set_source_files_properties(${CMSIS_DSP_SOURCES} PROPERTIES COMPILE_OPTIONS "-w")
+
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
@@ -53,6 +62,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/Core/Src/bancada.c
     ${CMAKE_SOURCE_DIR}/Core/Src/bancada_hrv.c
     ${PDS_SOURCES}
+    ${CMSIS_DSP_SOURCES}
 )
 
 # Bancadas: na partida, tocam a fonte falsa no módulo e conferem com o Python
@@ -82,11 +92,13 @@ endif()
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
     ${CMAKE_SOURCE_DIR}/Core/Inc/pds
+    ${CMSIS_DSP_DIR}/Include
 )
 
 # Add project symbols (macros)
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined symbols
+    ARM_MATH_CM4
 )
 
 # Remove wrong libob.a library dependency when using cpp files
