@@ -2,7 +2,7 @@
  * bancada.h: medição de ciclos (DWT) e conferência do PDS na placa.
  *
  * As bancadas só existem com a opção do CMake ligada (-DBANCADA_DECIMACAO=ON,
- * -DBANCADA_FILTRO=ON): tocam a fonte falsa (o vetor do teste no PC) no
+ * -DBANCADA_FILTRO=ON, -DBANCADA_PICOS=ON): tocam a fonte falsa (o vetor do teste no PC) no
  * módulo, conferem com a saída do Python e medem os ciclos. O resultado sai
  * pela serial como comentário ("# bancada ...").
  */
@@ -19,6 +19,9 @@
 
 /* Orçamento do filtro: 2% da CPU por amostra a 100 Hz (96 MHz / 100 Hz * 2 / 100). */
 #define BANCADA_ORCAMENTO_FILTRO 19200u
+
+/* Orçamento do picos: 1% da CPU por amostra a 100 Hz (96 MHz / 100 Hz / 100). */
+#define BANCADA_ORCAMENTO_PICOS 9600u
 
 /* Ciclos de um módulo: média e máximo desde o último relato. */
 typedef struct {
@@ -53,6 +56,11 @@ bool bancada_decimacao(void);
 #ifdef BANCADA_FILTRO
 /* Roda o bruto da fonte falsa no filtro e manda o resultado pela serial. true se passou. */
 bool bancada_filtro(void);
+#endif
+
+#ifdef BANCADA_PICOS
+/* Roda o filtrado da fonte falsa no picos e manda o resultado pela serial. true se passou. */
+bool bancada_picos(void);
 #endif
 
 #endif /* BANCADA_H */

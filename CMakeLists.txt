@@ -44,6 +44,10 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 
 # Módulos de PDS (C puro, sem HAL): Core/Src/pds/<módulo>/*.c
 file(GLOB_RECURSE PDS_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/Core/Src/pds/*.c)
+# Sem FMA: o C tem que bater com o Python (float32, sem fundir multiplicação e
+# soma). Em -Os o GCC funde por padrão (vfma), e aí n_pico/rr_valido podem
+# mudar na borda.
+set_source_files_properties(${PDS_SOURCES} PROPERTIES COMPILE_OPTIONS -ffp-contract=off)
 
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
@@ -59,13 +63,17 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
 # (os vetores de testes/<módulo>/). cmake --preset Debug -DBANCADA_FILTRO=ON
 option(BANCADA_DECIMACAO "Confere a decimação na placa com a fonte falsa" OFF)
 option(BANCADA_FILTRO "Confere o filtro na placa com a fonte falsa" OFF)
+option(BANCADA_PICOS "Confere o picos na placa com a fonte falsa" OFF)
 if(BANCADA_DECIMACAO)
     target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE BANCADA_DECIMACAO)
 endif()
 if(BANCADA_FILTRO)
     target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE BANCADA_FILTRO)
 endif()
-if(BANCADA_DECIMACAO OR BANCADA_FILTRO)
+if(BANCADA_PICOS)
+    target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE BANCADA_PICOS)
+endif()
+if(BANCADA_DECIMACAO OR BANCADA_FILTRO OR BANCADA_PICOS)
     target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/testes)
 endif()
 

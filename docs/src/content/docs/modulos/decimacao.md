@@ -166,9 +166,10 @@ e confere com o mesmo vetor do teste no PC. O resultado sai pela serial:
 **Orçamento:** 1% da CPU por amostra do sensor, ou seja, 96 MHz / 400 Hz /
 100 = 2400 ciclos em média. Pela contagem de instruções do laço em `-O0`
 (Debug), a estimativa é de ~1000 ciclos em média e ~3500 na amostra que
-solta a saída. A média é o que pesa na CPU. O FPU do Cortex-M4 pode fundir
-multiplicação e soma (FMA), então o erro na placa pode passar um pouco do
-1 ulp do PC, ainda bem abaixo dos 50 milésimos.
+solta a saída. A média é o que pesa na CPU. O firmware compila `pds/` com
+`-ffp-contract=off` (sem fundir multiplicação e soma, o FMA), como o Python. O
+build Debug (`-O0`) medido na placa já não fundia; no Release (`-Os`) a flag
+evita o FMA, mas ainda não foi medido na placa.
 
 **Resultado na placa** (STM32F411, Debug, 21/11/2026):
 
