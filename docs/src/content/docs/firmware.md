@@ -96,11 +96,13 @@ b,0,112036.41,98768.02
   `decimacao_processa()` com o contador de ciclos do núcleo (DWT). O
   orçamento é 1% da CPU: 96 MHz / 400 Hz / 100 = 2400 ciclos por amostra.
 - Linhas que começam com `#` são comentário. Se o sensor não responder no
-  boot, sai `# erro: MAX30102 nao respondeu na I2C1` e a placa para.
+  boot, sai `# erro: MAX30102 nao respondeu na I2C1` e a placa para. Se a
+  taxa do sensor não tiver filtro de decimação, sai
+  `# erro: decimacao sem filtro para essa taxa do MAX30102` e a placa para.
 
 São no máximo uns 25 bytes × 400 Hz + 30 bytes × 100 Hz ≈ 13 kB/s, cerca de
-14% dos ~92 kB/s da serial. O envio usa DMA com buffer duplo: o laço preenche um buffer de 1 KiB
-enquanto o DMA manda o outro.
+14% dos ~92 kB/s da serial. O envio usa DMA com buffer duplo: o laço preenche um buffer de 2 KiB
+(cabe a pior leitura: FIFO cheia, linhas `b,` e o resumo dos ciclos) enquanto o DMA manda o outro.
 
 ## Rodar na placa e ver a leitura
 
