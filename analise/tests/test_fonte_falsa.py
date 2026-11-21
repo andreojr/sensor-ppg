@@ -49,6 +49,16 @@ def test_bruto_mantem_dc_e_filtrado_nao(fonte: fonte_falsa.FonteFalsa):
     assert np.ptp(fonte.filtrado_ir) == pytest.approx(2 * 1500, rel=0.1)
 
 
+
+def test_filtrado_atrasado_como_na_placa(fonte: fonte_falsa.FonteFalsa):
+    """O filtrado é o pulso atrasado de PPG_ATRASO_AMOSTRAS (o mesmo FIR da placa)."""
+    from analise import filtro
+
+    t = np.arange(len(fonte.filtrado_ir)) / FS_HZ + 5.0  # o trecho começa em 5 s
+    atrasado = 1500 * np.sin(2 * np.pi * F_PULSO_HZ * (t - filtro.ATRASO / FS_HZ))
+    assert fonte.filtrado_ir == pytest.approx(atrasado, abs=0.05 * 1500)
+
+
 def test_batimentos(fonte: fonte_falsa.FonteFalsa):
     assert fonte.rr_ms[0] == 0.0
     assert fonte.rr_ms[1:] == pytest.approx(1000 / F_PULSO_HZ, abs=2.1)  # grade de 2 ms a 500 Hz

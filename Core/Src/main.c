@@ -26,6 +26,7 @@
 #include "bancada.h"
 #include "bancada_hrv.h"
 #include "decimacao/decimacao.h"
+#include "filtro/filtro.h"
 #include "max30102.h"
 #include "serial.h"
 
@@ -61,11 +62,11 @@ static uint32_t indice; /* nº da amostra a MAX30102_FS_HZ desde o início */
 static volatile max30102_amostra_t ultima; /* pra olhar no Live Watch do debugger */
 static decimacao_t decimacao;              /* sensor -> bruto a PPG_FS_HZ */
 static max30102_amostra_t anterior;        /* repetida no lugar das perdidas */
+static filtro_t filtro;                    /* bruto -> filtrado (0,5 a 4 Hz) */
 
-/* Ciclos do decimacao_processa(), resumidos pela serial a cada MAX30102_FS_HZ * 10 amostras. */
-static uint32_t ciclos_max;
-static uint64_t ciclos_soma;
-static uint32_t ciclos_conta;
+/* Ciclos de cada módulo, resumidos pela serial a cada 10 s. */
+static ciclos_t ciclos_decimacao;
+static ciclos_t ciclos_filtro;
 
 /* USER CODE END PV */
 
@@ -136,10 +137,11 @@ int main(void)
     HAL_UART_Transmit(&huart1, (const uint8_t *)erro, sizeof erro - 1, 100);
     Error_Handler();
   }
-  char cabecalho[96];
+  char cabecalho[160];
   int n = snprintf(cabecalho, sizeof cabecalho,
-                   "# MAX30102 %u Hz: n,ir,vermelho\n# decimacao %u Hz: b,n,ir,vermelho\n",
-                   MAX30102_FS_HZ, PPG_FS_HZ);
+                   "# MAX30102 %u Hz: n,ir,vermelho\n# decimacao %u Hz: b,n,ir,vermelho\n"
+                   "# filtro %u Hz, atraso %u: f,n,ir,vermelho\n",
+                   MAX30102_FS_HZ, PPG_FS_HZ, PPG_FS_HZ, (unsigned)PPG_ATRASO_AMOSTRAS);
   serial_escreve(cabecalho, (uint32_t)n);
   ciclos_liga();
 #ifdef BANCADA_DECIMACAO
@@ -148,12 +150,16 @@ int main(void)
      segue lendo o sensor mesmo se falhar. */
   (void)bancada_decimacao();
 #endif
+#ifdef BANCADA_FILTRO
+  (void)bancada_filtro(); /* só informativo, como a da decimação */
+#endif
   if (!decimacao_init(&decimacao, MAX30102_FS_HZ))
   {
     static const char erro[] = "# erro: decimacao sem filtro para essa taxa do MAX30102\n";
     HAL_UART_Transmit(&huart1, (const uint8_t *)erro, sizeof erro - 1, 100);
     Error_Handler();
   }
+  filtro_init(&filtro);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -512,36 +518,43 @@ static int centesimos(char *s, size_t tam, float v)
   return snprintf(s, tam, "%s%lu.%02lu", c < 0 ? "-" : "", a / 100u, a % 100u);
 }
 
-/* Uma amostra do sensor na decimação. A cada 4, uma linha "b,n,ir,vermelho"
-   com o bruto a PPG_FS_HZ; a cada 10 s, um resumo dos ciclos. */
+/* Uma linha "<tipo>,n,ir,vermelho" com 2 casas. */
+static void envia_ppg(char tipo, const ppg_amostra_t *s)
+{
+  char ir[24];
+  char vermelho[24];
+  char linha[64];
+  centesimos(ir, sizeof ir, s->ir);
+  centesimos(vermelho, sizeof vermelho, s->vermelho);
+  int tam = snprintf(linha, sizeof linha, "%c,%lu,%s,%s\n", tipo, (unsigned long)s->n, ir,
+                     vermelho);
+  serial_escreve(linha, (uint32_t)tam);
+}
+
+/* Uma amostra do sensor na cadeia. A cada 4, sai o bruto a PPG_FS_HZ (linha
+   "b,...") e ele passa no filtro (linha "f,..."); a cada 10 s, os ciclos. */
 static void decima(const max30102_amostra_t *amostra)
 {
   decimacao_entrada_t e = {amostra->ir, amostra->vermelho};
-  ppg_amostra_t s;
+  ppg_amostra_t bruto;
   uint32_t t0 = ciclos_agora();
-  bool saiu = decimacao_processa(&decimacao, &e, &s);
-  uint32_t dt = ciclos_agora() - t0;
-
-  ciclos_soma += dt;
-  ciclos_max = dt > ciclos_max ? dt : ciclos_max;
-  char linha[80]; /* linha de ciclos: até 67 B com contadores de 10 dígitos */
-  if (++ciclos_conta == MAX30102_FS_HZ * 10u)
-  {
-    int tam = snprintf(linha, sizeof linha, "# decimacao: ciclos med %lu max %lu (orcamento %lu)\n",
-                       (unsigned long)(ciclos_soma / ciclos_conta), (unsigned long)ciclos_max,
-                       (unsigned long)BANCADA_ORCAMENTO_DECIMACAO);
-    serial_escreve(linha, (uint32_t)tam);
-    ciclos_soma = ciclos_max = ciclos_conta = 0;
-  }
+  bool saiu = decimacao_processa(&decimacao, &e, &bruto);
+  ciclos_conta(&ciclos_decimacao, ciclos_agora() - t0);
 
   if (saiu)
   {
-    char ir[24];
-    char vermelho[24];
-    centesimos(ir, sizeof ir, s.ir);
-    centesimos(vermelho, sizeof vermelho, s.vermelho);
-    int tam = snprintf(linha, sizeof linha, "b,%lu,%s,%s\n", (unsigned long)s.n, ir, vermelho);
-    serial_escreve(linha, (uint32_t)tam);
+    ppg_amostra_t filtrado;
+    t0 = ciclos_agora();
+    filtro_processa(&filtro, &bruto, &filtrado);
+    ciclos_conta(&ciclos_filtro, ciclos_agora() - t0);
+    envia_ppg('b', &bruto);
+    envia_ppg('f', &filtrado);
+  }
+
+  if (ciclos_decimacao.conta == MAX30102_FS_HZ * 10u)
+  {
+    ciclos_relata(&ciclos_decimacao, "decimacao", BANCADA_ORCAMENTO_DECIMACAO);
+    ciclos_relata(&ciclos_filtro, "filtro", BANCADA_ORCAMENTO_FILTRO);
   }
 }
 

@@ -2,8 +2,9 @@
 
 O firmware manda, a SENSOR_FS_HZ, uma linha "n,ir,vermelho" por amostra
 (ver docs/src/content/docs/firmware.md). Linhas com "#" são comentário.
-Linhas "b,n,ir,vermelho" são o bruto que a placa decimou pra 100 Hz: vão pra
-um segundo CSV, <nome>_bruto.csv, ao lado do primeiro.
+Linhas "b,n,ir,vermelho" e "f,n,ir,vermelho" são o bruto (decimado) e o
+filtrado que a placa calculou a 100 Hz: vão pra <nome>_bruto.csv e
+<nome>_filtrado.csv, ao lado do primeiro.
 
 Uso:
     uv run python -m analise.captura COM3 --segundos 30
@@ -28,6 +29,7 @@ SENSOR_FS_HZ = 400  # igual a MAX30102_FS_HZ em Core/Inc/max30102.h
 BAUD = 921600
 DADOS = Path(__file__).resolve().parents[2] / "dados"
 COLUNAS = ("n", "ir", "vermelho")
+PONTOS = {"b": "bruto", "f": "filtrado"}  # prefixo da linha -> ponto da cadeia na placa
 
 
 class Fonte(Protocol):
@@ -38,10 +40,14 @@ class Fonte(Protocol):
 class Resumo:
     amostras: int = 0
     invalidas: int = 0
-    brutos: int = 0  # linhas "b,..." (bruto decimado na placa)
+    por_ponto: dict[str, int] = field(default_factory=dict)  # "bruto"/"filtrado" -> linhas
     saltos: list[tuple[int, int]] = field(default_factory=list)  # (n antes, n depois)
     comentarios: list[str] = field(default_factory=list)
     segundos: float = 0.0
+
+    @property
+    def brutos(self) -> int:
+        return self.por_ponto.get("bruto", 0)
 
     @property
     def perdidas(self) -> int:
@@ -60,19 +66,19 @@ def le_linha(linha: str) -> tuple[int, int, int] | None:
     return n, ir, vermelho
 
 
-def le_bruto(linha: str) -> tuple[int, float, float] | None:
-    """Converte "b,n,ir,vermelho" (bruto decimado na placa). None se não for."""
+def le_ponto(linha: str) -> tuple[str, tuple[int, float, float]] | None:
+    """Converte "b,n,ir,vermelho" ou "f,..." em (ponto, (n, ir, vermelho)). None se não for."""
     partes = linha.strip().split(",")
-    if len(partes) != 4 or partes[0] != "b":
+    if len(partes) != 4 or partes[0] not in PONTOS:
         return None
     try:
-        return int(partes[1]), float(partes[2]), float(partes[3])
+        return PONTOS[partes[0]], (int(partes[1]), float(partes[2]), float(partes[3]))
     except ValueError:
         return None
 
 
-def destino_bruto(destino: Path) -> Path:
-    return destino.with_name(destino.stem + "_bruto.csv")
+def destino_ponto(destino: Path, ponto: str) -> Path:
+    return destino.with_name(f"{destino.stem}_{ponto}.csv")
 
 
 def grava(fonte: Fonte, destino: Path, segundos: float | None = None) -> Resumo:
@@ -81,7 +87,7 @@ def grava(fonte: Fonte, destino: Path, segundos: float | None = None) -> Resumo:
     destino.parent.mkdir(parents=True, exist_ok=True)
     anterior: int | None = None
     inicio = time.monotonic()
-    arquivo_bruto = None
+    abertos: dict[str, tuple] = {}  # ponto -> (arquivo, escritor)
     with destino.open("w", newline="", encoding="utf-8") as arquivo:
         escritor = csv.writer(arquivo)
         escritor.writerow(COLUNAS)
@@ -93,18 +99,18 @@ def grava(fonte: Fonte, destino: Path, segundos: float | None = None) -> Resumo:
                 if linha.startswith("#"):
                     resumo.comentarios.append(linha)
                     continue
-                if linha.startswith("b,"):
-                    bruto = le_bruto(linha)
-                    if bruto is None:
+                if linha[:2] in {f"{p}," for p in PONTOS}:
+                    lido = le_ponto(linha)
+                    if lido is None:
                         resumo.invalidas += 1
                         continue
-                    if arquivo_bruto is None:
-                        arquivo_bruto = destino_bruto(destino).open(
-                            "w", newline="", encoding="utf-8")
-                        escritor_bruto = csv.writer(arquivo_bruto)
-                        escritor_bruto.writerow(COLUNAS)
-                    escritor_bruto.writerow(bruto)
-                    resumo.brutos += 1
+                    ponto, valores = lido
+                    if ponto not in abertos:
+                        arq = destino_ponto(destino, ponto).open("w", newline="", encoding="utf-8")
+                        abertos[ponto] = (arq, csv.writer(arq))
+                        abertos[ponto][1].writerow(COLUNAS)
+                    abertos[ponto][1].writerow(valores)
+                    resumo.por_ponto[ponto] = resumo.por_ponto.get(ponto, 0) + 1
                     continue
                 amostra = le_linha(linha)
                 if amostra is None:
@@ -118,8 +124,8 @@ def grava(fonte: Fonte, destino: Path, segundos: float | None = None) -> Resumo:
         except KeyboardInterrupt:
             pass
         finally:
-            if arquivo_bruto is not None:
-                arquivo_bruto.close()
+            for arq, _ in abertos.values():
+                arq.close()
     resumo.segundos = time.monotonic() - inicio
     return resumo
 
@@ -141,8 +147,8 @@ def main(argv: list[str] | None = None) -> None:
           f"({resumo.amostras / max(resumo.segundos, 1e-9):.1f}/s; esperado {SENSOR_FS_HZ}/s)")
     print(f"saltos no n: {len(resumo.saltos)} ({resumo.perdidas} amostras perdidas); "
           f"linhas inválidas: {resumo.invalidas}")
-    if resumo.brutos:
-        print(f"{resumo.brutos} amostras do bruto decimado em {destino_bruto(destino)}")
+    for ponto, linhas in resumo.por_ponto.items():
+        print(f"{linhas} amostras do {ponto} da placa em {destino_ponto(destino, ponto)}")
     for c in resumo.comentarios:
         print(f"  {c}")
 
