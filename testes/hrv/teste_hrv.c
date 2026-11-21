@@ -166,6 +166,61 @@ static int reinicio(void)
     return 0;
 }
 
+/* 23 RR de 2000 ms (46 s, cobre a janela) com `quebras` RR rejeitados no meio:
+   sobram 22 - quebras diferenças. */
+static ppg_hrv_t com_quebras(uint32_t quebras)
+{
+    hrv_t h;
+    hrv_init(&h);
+    uint32_t n = 0;
+    ppg_hrv_t s = {0};
+    for (uint32_t k = 0; k < 23u; k++) {
+        n += 200u;
+        ppg_batimento_t b = {true, n, 0.0f, true, 2000.0f};
+        hrv_processa(&h, &b, &s);
+        if (k >= 1u && k <= quebras) {
+            ppg_batimento_t q = {true, ++n, 0.0f, false, 0.0f};
+            hrv_processa(&h, &q, &s);
+        }
+    }
+    return s;
+}
+
+/* As bordas entram: RR de 300 e 2000 ms, cobertura de 45 s exatos e 20 diferenças. */
+static int bordas_exatas(void)
+{
+    const float limites[] = {HRV_RR_MIN_MS, HRV_RR_MAX_MS};
+    for (uint32_t r = 0; r < 2u; r++) {
+        hrv_t h;
+        hrv_init(&h);
+        uint32_t n = 0;
+        alimenta(&h, &n, 60, 800.0f, 850.0f);
+        uint32_t antes = h.conta;
+        ppg_batimento_t b = {true, n + 80u, 0.0f, true, limites[r]};
+        ppg_hrv_t s;
+        hrv_processa(&h, &b, &s);
+        if (h.conta != antes + 1u || !h.tem_rr)
+            return falha("RR na borda da faixa ficou de fora");
+    }
+
+    hrv_t h;
+    hrv_init(&h);
+    uint32_t n = 0;
+    ppg_hrv_t s = alimenta(&h, &n, 29, 1500.0f, 1500.0f); /* 43,5 s */
+    if (s.valido)
+        return falha("43,5 s de RR deu válido");
+    s = alimenta(&h, &n, 1, 1500.0f, 1500.0f); /* 45 s exatos, 29 diferenças */
+    if (!s.valido)
+        return falha("45 s exatos de RR não deu válido");
+
+    if (!com_quebras(2u).valido)
+        return falha("20 diferenças não deu válido");
+    if (com_quebras(3u).valido)
+        return falha("19 diferenças deu válido");
+    printf("bordas exatas: ok\n");
+    return 0;
+}
+
 int main(void)
 {
     int falhas = 0;
@@ -180,6 +235,7 @@ int main(void)
     falhas += intervalo_invalido();
     falhas += batimento_invalido();
     falhas += reinicio();
+    falhas += bordas_exatas();
     printf(falhas ? "FALHOU (%d)\n" : "OK\n", falhas);
     return falhas ? 1 : 0;
 }
