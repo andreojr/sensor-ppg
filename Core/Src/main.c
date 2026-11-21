@@ -142,7 +142,12 @@ int main(void)
      sair como "# perdidas". */
   bancada_decimacao();
 #endif
-  decimacao_init(&decimacao, MAX30102_FS_HZ);
+  if (!decimacao_init(&decimacao, MAX30102_FS_HZ))
+  {
+    static const char erro[] = "# erro: decimacao sem filtro para essa taxa do MAX30102\n";
+    HAL_UART_Transmit(&huart1, (const uint8_t *)erro, sizeof erro - 1, 100);
+    Error_Handler();
+  }
   /* USER CODE END 2 */
 
   /* Infinite loop */

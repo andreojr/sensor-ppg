@@ -21,7 +21,12 @@ void ciclos_liga(void)
 bool bancada_decimacao(void)
 {
     static decimacao_t d; /* ~1 KiB: fora da pilha */
-    decimacao_init(&d, 400u);
+    if (!decimacao_init(&d, 400u)) {
+        static const char erro[] = "# bancada decimacao: sem filtro para 400 Hz: FALHOU\n";
+        serial_escreve(erro, sizeof erro - 1u);
+        serial_envia();
+        return false;
+    }
 
     uint32_t saidas = 0, fora = 0, max_ciclos = 0;
     uint64_t soma_ciclos = 0;
