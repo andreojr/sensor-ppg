@@ -1,6 +1,10 @@
 /* bancada.c: ciclos e conferência do PDS na placa. Ver bancada.h. */
 #include "bancada.h"
 
+#include <stdio.h>
+
+#include "serial.h"
+
 void ciclos_liga(void)
 {
     CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
@@ -8,13 +12,23 @@ void ciclos_liga(void)
     DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
 }
 
+void ciclos_relata(ciclos_t *c, const char *nome, uint32_t orcamento)
+{
+    char linha[80];
+    int n = snprintf(linha, sizeof linha, "# %s: ciclos med %lu max %lu (orcamento %lu)\n", nome,
+                     (unsigned long)(c->conta ? c->soma / c->conta : 0u), (unsigned long)c->max,
+                     (unsigned long)orcamento);
+    serial_escreve(linha, (uint32_t)n);
+    c->soma = 0;
+    c->max = 0;
+    c->conta = 0;
+}
+
 #ifdef BANCADA_DECIMACAO
 
 #include <math.h>
-#include <stdio.h>
 
 #include "decimacao/decimacao.h"
-#include "serial.h"
 /* O mesmo vetor do teste no PC (testes/ entra no include path com a opção). */
 #include "decimacao/vetores/sensor_400hz.h"
 
@@ -74,3 +88,50 @@ bool bancada_decimacao(void)
 }
 
 #endif /* BANCADA_DECIMACAO */
+
+#ifdef BANCADA_FILTRO
+
+#include <math.h>
+
+#include "filtro/filtro.h"
+/* O mesmo vetor do teste no PC: o bruto da fonte falsa, 60 s a 100 Hz. */
+#include "filtro/vetores/bruto_100hz.h"
+
+bool bancada_filtro(void)
+{
+    static filtro_t f; /* ~3 KiB: fora da pilha */
+    filtro_init(&f);
+
+    ciclos_t c = {0};
+    uint32_t fora = 0;
+    float pior = 0.0f;
+    for (uint32_t i = 0; i < BRUTO_100HZ_IR_N; i++) {
+        ppg_amostra_t e = {i, bruto_100hz_ir[i], bruto_100hz_vermelho[i]}, s;
+        uint32_t t0 = ciclos_agora();
+        filtro_processa(&f, &e, &s);
+        ciclos_conta(&c, ciclos_agora() - t0);
+        float erro = fmaxf(fabsf(s.ir - bruto_100hz_esperado_ir[i]),
+                           fabsf(s.vermelho - bruto_100hz_esperado_vermelho[i]));
+        if (erro > pior)
+            pior = erro;
+        fora += !(erro <= BRUTO_100HZ_TOL) || s.n != i;
+    }
+
+    uint32_t media = (uint32_t)(c.soma / c.conta);
+    bool ok = fora == 0 && media <= BANCADA_ORCAMENTO_FILTRO;
+    char linha[160];
+    int n = snprintf(linha, sizeof linha,
+                     "# bancada filtro: %lu saidas, %lu fora da tolerancia, erro max %lu milesimos\n",
+                     (unsigned long)c.conta, (unsigned long)fora,
+                     (unsigned long)(pior * 1000.0f + 0.5f));
+    serial_escreve(linha, (uint32_t)n);
+    n = snprintf(linha, sizeof linha,
+                 "# bancada filtro: ciclos por amostra med %lu max %lu (orcamento %lu): %s\n",
+                 (unsigned long)media, (unsigned long)c.max,
+                 (unsigned long)BANCADA_ORCAMENTO_FILTRO, ok ? "OK" : "FALHOU");
+    serial_escreve(linha, (uint32_t)n);
+    serial_envia();
+    return ok;
+}
+
+#endif /* BANCADA_FILTRO */

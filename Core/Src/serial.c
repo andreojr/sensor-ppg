@@ -5,10 +5,10 @@
 
 #include <string.h>
 
-/* Pior leitura: FIFO cheia (32 linhas cruas × ~22 B), ~16 linhas b, (× ~30 B,
-   contando as repetidas no lugar das perdidas), # perdidas e o resumo dos
-   ciclos: ~1,3 KB. 2 KiB cabem com folga. */
-#define BUF_TAM 2048u
+/* Pior leitura: FIFO cheia (32 linhas cruas × ~22 B), ~16 linhas b, e ~16 f,
+   (× ~30 B, contando as repetidas no lugar das perdidas), # perdidas e os
+   resumos dos ciclos: ~1,8 KB. 3 KiB cabem com folga. */
+#define BUF_TAM 3072u
 
 static UART_HandleTypeDef *uart;
 static uint8_t buf[2][BUF_TAM];
