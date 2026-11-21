@@ -27,7 +27,7 @@ por enquanto `lf_hf_valido` sai sempre `false`.
 | 2. C sem HAL | feito: `hrv.h`, `hrv.c` |
 | 3. Teste no PC contra os vetores | feito: `testes/hrv/`, no CI |
 | 4. Placa com a fonte falsa | feito: bancada passou na STM32 (`-DBANCADA_HRV=ON`) |
-| 5. Sensor real | depende do `picos/` (que ainda não existe); procedimento abaixo |
+| 5. Sensor real | código pronto (linhas `h,` e `--confere`), falta capturar |
 
 ## Método
 
@@ -241,11 +241,31 @@ Release (`-O2`) deve cair bastante, mas não foi medido.
 
 ### 4. Sensor real
 
-Depende do `picos/`: sem ele, não há batimento do sensor. Quando existir, a
-cadeia na placa é sensor → `decimacao/` → `filtro/` → `picos/` → `hrv/`, e a
-placa manda uma linha por batimento com `n_pico`, RR, SDNN e RMSSD.
+A cadeia na placa é sensor → `decimacao/` → `filtro/` → `picos/` → `hrv/`.
+A cada batimento do `picos/`, a placa manda a linha `p,...` (o batimento) e
+logo depois `h,n_pico,valido,sdnn,rmssd` (a saída do HRV, em ms com 2 casas).
+A captura grava as duas em `_picos.csv` e `_hrv.csv`, e o Python passa os
+mesmos batimentos pelo HRV dele e compara:
 
-Sem ECG na placa, a referência disponível é fisiológica:
+```bash
+uv run python -m analise.captura COM3 --segundos 180   # e aperte o reset da placa
+uv run python -m analise.hrv --confere dados/sensor_<data>_<hora>.csv
+```
+
+Desde o boot, toda saída tem que bater: `valido` igual e SDNN e RMSSD dentro
+de 0,05 ms (a placa manda o RR e o HRV com 2 casas). A exceção é a soma dos RR
+a menos de 1 ms dos 45 s da cobertura, onde as 2 casas viram o `valido`.
+Capturando no meio, a comparação começa depois de uma janela inteira (60 s),
+quando a janela do Python tem os mesmos batimentos que a da placa. Numa placa
+simulada no PC (o `picos.c` e o `hrv.c` com as linhas do `main.c`), os 42
+registros do PhysioNet deram OK desde o boot e começando no meio.
+
+O HRV só fica válido depois de 45 s de RR aceitos, e o `picos/` ainda não sabe
+quando o sinal está ruim (é o `qualidade/`): com movimento, entram RR errados.
+Por isso a captura é em repouso, com o dedo parado.
+
+Isso confere a placa contra o Python. Se o valor faz sentido, sem ECG na placa,
+a referência é fisiológica:
 
 1. **Repouso, 3 min sentado, respiração livre:** RMSSD tipicamente de 20 a
    60 ms em adulto jovem, SDNN da mesma ordem.

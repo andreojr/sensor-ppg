@@ -88,6 +88,23 @@ def test_batimentos_vao_pro_csv_do_picos(tmp_path):
     assert picos["rr_ms"].tolist() == [0.0, 803.49]
 
 
+def test_saida_do_hrv_vai_pro_csv_do_hrv(tmp_path):
+    serial_falsa = io.BytesIO(
+        b"0,100,200\n"
+        b"p,1234,0.2500,1,812.50,1,73.85\n"
+        b"h,1234,0,0.00,0.00\n"
+        b"h,1314,1,48.27,33.10\n"
+        b"h,1,x,0,0\n"
+    )
+    destino = tmp_path / "x.csv"
+    resumo = captura.grava(serial_falsa, destino, segundos=0.1)
+    assert resumo.invalidas == 1 and resumo.por_ponto == {"picos": 1, "hrv": 2}
+    hrv = pd.read_csv(tmp_path / "x_hrv.csv")
+    assert list(hrv.columns) == list(captura.COLUNAS_HRV)
+    assert hrv["valido"].tolist() == [0, 1]
+    assert hrv["sdnn_ms"].tolist() == [0.0, 48.27]
+
+
 def test_plota_gera_png(tmp_path):
     csv = tmp_path / "x.csv"
     csv.write_text("n,ir,vermelho\n100,1,2\n101,3,4\n102,5,6\n", encoding="utf-8")

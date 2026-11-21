@@ -27,6 +27,10 @@ Regras (as mesmas do C):
 Validação no PhysioNet (uv run python -m analise.hrv): os picos R do ECG a
 500 Hz são o gabarito. Mede o erro de SDNN e RMSSD quando os batimentos chegam
 na grade de 100 Hz (sem interpolar o pico) e quando vêm do PPG.
+
+Placa x Python, no CSV da captura (com _picos e _hrv ao lado), o passo 5:
+
+    uv run python -m analise.hrv --confere dados/sensor_<data>_<hora>.csv
 """
 
 from __future__ import annotations
@@ -383,11 +387,96 @@ def compara_janelas(registros: list[physionet.Registro], curta_s: float = JANELA
     return "\n".join(linhas)
 
 
+TOL_HRV_MS = 0.05  # a placa manda rr_ms, SDNN e RMSSD com 2 casas
+BORDA_COBERTURA_MS = 1.0  # soma dos RR a menos disso da cobertura: as 2 casas viram o valido
+
+
+def confere_placa(picos_placa: np.ndarray, hrv_placa: np.ndarray) -> dict:
+    """Passa os batimentos que a placa mandou pelo HRV do Python e compara com a saída dela.
+
+    picos_placa: colunas n_pico, fracao, rr_valido, rr_ms, bpm_valido, bpm (o _picos.csv).
+    hrv_placa: colunas n_pico, valido, sdnn_ms, rmssd_ms (o _hrv.csv), uma linha por batimento.
+    Captura desde o boot (o primeiro batimento é o primeiro da placa, com
+    rr_ms = 0): tudo tem que bater. No meio: só depois de uma janela inteira
+    (JANELA_S), quando a janela do Python tem os mesmos batimentos que a da placa.
+    """
+    from analise.picos import depois_do_reset
+
+    picos_placa = depois_do_reset(picos_placa)
+    hrv_placa = depois_do_reset(hrv_placa)
+    if len(picos_placa) != len(hrv_placa) or np.any(picos_placa[:, 0] != hrv_placa[:, 0]):
+        raise ValueError("as linhas p, e h, não casam batimento a batimento")
+    desde_boot = bool(picos_placa[0, 3] == 0 and picos_placa[0, 2] == 0)
+    a_partir = -1 if desde_boot else picos_placa[0, 0] + JANELA_AMOSTRAS + 3 * FS_HZ
+
+    h = Hrv()
+    comparados = valido_dif = valido_borda = 0
+    erro_sdnn = erro_rmssd = 0.0
+    validos = []
+    for b, o in zip(picos_placa, hrv_placa, strict=True):
+        s = h.processa(Batimento(True, int(b[0]), float(b[1]), bool(b[2]), float(b[3])))
+        if b[0] < a_partir:
+            continue
+        comparados += 1
+        if s.valido != bool(o[1]):
+            soma = sum(i.rr for i in h.itens)
+            if abs(soma - COBERTURA_MIN * JANELA_S * 1000.0) <= BORDA_COBERTURA_MS:
+                valido_borda += 1
+            else:
+                valido_dif += 1
+            continue
+        if s.valido:
+            validos.append((float(o[2]), float(o[3])))
+            erro_sdnn = max(erro_sdnn, abs(s.sdnn_ms - o[2]))
+            erro_rmssd = max(erro_rmssd, abs(s.rmssd_ms - o[3]))
+    r = {
+        "desde_boot": desde_boot,
+        "batimentos": comparados,
+        "validos": len(validos),
+        "valido_diferente": valido_dif,
+        "valido_na_borda": valido_borda,
+        "erro_sdnn_ms": float(erro_sdnn),
+        "erro_rmssd_ms": float(erro_rmssd),
+        "sdnn_ms": float(np.median([v[0] for v in validos])) if validos else float("nan"),
+        "rmssd_ms": float(np.median([v[1] for v in validos])) if validos else float("nan"),
+    }
+    r["ok"] = bool(
+        comparados > 0
+        and valido_dif == 0
+        and erro_sdnn <= TOL_HRV_MS
+        and erro_rmssd <= TOL_HRV_MS
+    )
+    return r
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    p.add_argument("--confere", help="CSV da captura (com _picos e _hrv ao lado)")
     p.add_argument("--vetores", action="store_true", help="grava testes/hrv/vetores/")
     p.add_argument("--janelas", action="store_true", help="compara a janela de 60 s com 5 min")
     a = p.parse_args()
+    if a.confere:
+        from pathlib import Path
+
+        base = Path(a.confere)
+        arqs = [base.with_name(f"{base.stem}_{x}.csv") for x in ("picos", "hrv")]
+        for arq in arqs:
+            if not arq.exists():
+                raise SystemExit(f"sem {arq.name}: a placa não mandou linhas de batimento")
+        r = confere_placa(*(np.loadtxt(x, delimiter=",", skiprows=1, ndmin=2) for x in arqs))
+        modo = "desde o boot" if r["desde_boot"] else f"no meio (depois de {JANELA_S} s)"
+        print(f"captura {modo}: {r['batimentos']} batimentos comparados, {r['validos']} com HRV válido")
+        print(
+            f"erro máximo: SDNN {r['erro_sdnn_ms']:.3f} ms, RMSSD {r['erro_rmssd_ms']:.3f} ms; "
+            f"valido diferente em {r['valido_diferente']} (+{r['valido_na_borda']} na borda da cobertura)"
+        )
+        print(
+            f"SDNN mediano {r['sdnn_ms']:.1f} ms, RMSSD mediano {r['rmssd_ms']:.1f} ms: "
+            f"{'OK' if r['ok'] else 'DIVERGE'}"
+        )
+        if not r["ok"]:
+            raise SystemExit(1)
+        return
     if a.vetores:
         for caminho in gera_vetores():
             print(caminho)
