@@ -39,8 +39,11 @@
  * coeficientes, IIR). O filtro repete na saída o n da amostra de entrada; quem
  * detecta o instante do pico subtrai este valor. O dono do módulo filtro/
  * atualiza quando mudar o filtro.
+ *
+ * Filtro atual: FIR de fase linear com 201 coeficientes, atraso (201 - 1) / 2
+ * = 100 amostras (1 s), igual em todas as frequências.
  */
-#define PPG_ATRASO_AMOSTRAS 0.0f
+#define PPG_ATRASO_AMOSTRAS 100.0f
 
 /* ---- Amostra --------------------------------------------------------------- */
 

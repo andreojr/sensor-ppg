@@ -55,11 +55,14 @@ def test_bruto_decimado_vai_pro_segundo_csv(tmp_path):
         b"b,0,99.50,199.25\n"
         b"1,101,201\n"
         b"b,1,-0.07,12\n"
+        b"f,1,-3.25,0.50\n"
         b"b,2,x,1\n"
     )
     destino = tmp_path / "x.csv"
     resumo = captura.grava(serial_falsa, destino, segundos=0.1)
     assert resumo.amostras == 2 and resumo.brutos == 2 and resumo.invalidas == 1
+    assert resumo.por_ponto == {"bruto": 2, "filtrado": 1}
+    assert pd.read_csv(tmp_path / "x_filtrado.csv")["ir"].tolist() == [-3.25]
     bruto = pd.read_csv(tmp_path / "x_bruto.csv")
     assert list(bruto.columns) == list(captura.COLUNAS)
     assert bruto["ir"].tolist() == [99.5, -0.07]

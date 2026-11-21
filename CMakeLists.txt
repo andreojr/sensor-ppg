@@ -54,11 +54,17 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${PDS_SOURCES}
 )
 
-# Bancada: na partida, toca a fonte falsa na decimação e confere com o Python
-# (o vetor de testes/decimacao/). cmake --preset Debug -DBANCADA_DECIMACAO=ON
+# Bancadas: na partida, tocam a fonte falsa no módulo e conferem com o Python
+# (os vetores de testes/<módulo>/). cmake --preset Debug -DBANCADA_FILTRO=ON
 option(BANCADA_DECIMACAO "Confere a decimação na placa com a fonte falsa" OFF)
+option(BANCADA_FILTRO "Confere o filtro na placa com a fonte falsa" OFF)
 if(BANCADA_DECIMACAO)
     target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE BANCADA_DECIMACAO)
+endif()
+if(BANCADA_FILTRO)
+    target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE BANCADA_FILTRO)
+endif()
+if(BANCADA_DECIMACAO OR BANCADA_FILTRO)
     target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/testes)
 endif()
 
