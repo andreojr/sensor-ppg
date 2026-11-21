@@ -9,6 +9,7 @@ dependencies = [
     "pandas>=2.2",
     "matplotlib>=3.9",
     "pyserial>=3.5",
+    "wfdb>=4.3.1",
 ]
 
 [dependency-groups]
