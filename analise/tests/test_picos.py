@@ -115,5 +115,22 @@ def test_plato_com_denominador_zero_nao_quebra():
     # y0 meio ulp abaixo de y1 == y2 = 1: o denominador da parábola zera.
     p = Picos()
     y0 = float(np.nextafter(np.float32(1), np.float32(0)))
-    b = p._batimento(500, y0, 1.0, 1.0)
-    assert b is not None and b.n_pico == 500 - A and b.fracao == 0.0
+    p._candidato(500, y0, 1.0, 1.0)
+    assert p.pendente is not None
+    _, n_pico, fracao, _ = p.pendente
+    assert n_pico == 500 - A and fracao == 0.0
+
+
+def test_corcova_antes_do_pico_nao_toma_o_lugar():
+    """A corcova de 35% do FIR, 220 ms antes do pico, não vira batimento nem bloqueia o pico."""
+    t = np.arange(30 * FS_HZ, dtype=float)
+    picos = 150 + 80 * np.arange(35)  # 75 bpm
+    x = np.zeros_like(t)
+    for t0 in picos:
+        x += np.exp(-((t - t0) ** 2) / (2 * 4**2))  # pico
+        x += 0.35 * np.exp(-((t - (t0 - 22)) ** 2) / (2 * 4**2))  # corcova
+    b, _ = detecta(x.astype(np.float32))
+    achados = np.array([y.n_pico + A for y in b])
+    assert len(achados) >= 30
+    assert all(np.min(np.abs(picos - a)) <= 1 for a in achados)
+    assert all(y.rr_valido and abs(y.rr_ms - 800) < 10 for y in b[1:])

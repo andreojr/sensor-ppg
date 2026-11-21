@@ -42,7 +42,7 @@ F32 = np.float32
 ATRASO_AMOSTRAS = float(filtro.ATRASO)  # PPG_ATRASO_AMOSTRAS do ppg.h
 ESPERA_S = 2.0  # sem detectar enquanto o envelope não conhece o sinal
 TAU_ENV_S = 1.0  # decaimento do envelope
-LIMIAR = 0.4  # fração do envelope que um pico precisa ter
+LIMIAR = 0.3  # fração do envelope que um pico precisa ter
 REFRAT_S = 0.3  # intervalo mínimo entre batimentos (200 bpm)
 RR_MIN_MS = 300.0
 RR_MAX_MS = 2000.0
@@ -85,6 +85,9 @@ class Picos:
         self.env = F32(0)
         self.ultimo: Batimento | None = None
         self.ultimo_base = 0  # n (sem descontar o atraso) do último batimento
+        # Candidato esperando o refratário passar: (base, n_pico, fracao, altura).
+        # Um candidato maior dentro do refratário toma o lugar dele.
+        self.pendente: tuple[int, int, float, float] | None = None
         self.rr_tipico = F32(0)  # 0 = ainda não conhece
         self.rrs: list[float] = []  # últimos RR válidos
 
@@ -110,21 +113,27 @@ class Picos:
         self.env = max(decaido, x)
         if n is None:
             n = self.n
-        pico = None
         # Máximo local em x[n-1], visto com uma amostra de atraso. self.n só
         # conta o aquecimento desde o init.
         if (self.n >= ESPERA and n > 0 and self.x1 > self.x2 and self.x1 >= x
                 and self.x1 > F32(LIMIAR) * self.env):
-            pico = self._batimento(n - 1, self.x2, self.x1, x)
+            self._candidato(n - 1, self.x2, self.x1, x)
         self.x2, self.x1 = self.x1, x
         self.n += 1
-        return pico
+        # Passado o refratário sem aparecer candidato maior, o pendente vira batimento.
+        if self.pendente is not None and n - self.pendente[0] >= REFRAT:
+            return self._emite()
+        return None
 
-    def _batimento(self, base: int, y0: float, y1: float, y2: float) -> Batimento | None:
+    def _candidato(self, base: int, y0: float, y1: float, y2: float) -> None:
         """Candidato em `base` com vizinhos y0, y1 (o pico), y2."""
         # Refratário no n da entrada, sem descontar o atraso (o n_pico já vem descontado).
         if self.ultimo is not None and base - self.ultimo_base < REFRAT:
-            return None
+            return
+        # Dentro do refratário do pendente, só vale um pico maior (a corcova do FIR
+        # antes do batimento perde pro pico verdadeiro).
+        if self.pendente is not None and y1 <= self.pendente[3]:
+            return
 
         # Vértice da parábola por (base-1, y0), (base, y1), (base+1, y2).
         # O denominador é negativo num máximo; y1 > y0 e y1 >= y2 o garante. Só
@@ -137,8 +146,12 @@ class Picos:
         fracao = float(f - F32(k))
         if fracao >= 1.0:  # arredondamento do float32
             n_pico, fracao = n_pico + 1, 0.0
-        n_pico = max(n_pico, 0)
+        self.pendente = (base, max(n_pico, 0), fracao, float(y1))
 
+    def _emite(self) -> Batimento:
+        """O pendente passou do refratário: vira batimento, com RR e BPM."""
+        base, n_pico, fracao, _ = self.pendente
+        self.pendente = None
         rr_valido, rr_ms = False, 0.0
         if self.ultimo is not None:
             rr_ms = float(

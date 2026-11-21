@@ -27,6 +27,11 @@ typedef struct {
     uint32_t ultimo_n;     /* n_pico do último batimento */
     uint32_t ultimo_base;  /* n da entrada (sem descontar o atraso) do último batimento */
     float ultimo_fracao;   /* fracao do último batimento */
+    bool tem_pendente;     /* candidato esperando o refratário passar */
+    uint32_t pend_base;    /* n da entrada do candidato */
+    uint32_t pend_n_pico;  /* n_pico do candidato, já descontado o atraso */
+    float pend_fracao;
+    float pend_altura;     /* um candidato maior dentro do refratário toma o lugar */
     float rr_tipico;       /* 0 = ainda não conhece */
     float rrs[PICOS_BPM_JANELA]; /* últimos RR válidos, do mais antigo ao mais novo */
     uint8_t n_rrs;
@@ -37,8 +42,13 @@ void picos_init(picos_t *p);
 
 /*
  * Processa uma amostra filtrada. Devolve true e preenche *saida (valido = true)
- * quando esta amostra fechou um pico; senão devolve false e não toca em *saida.
- * O pico é visto com 1 amostra de atraso (precisa da amostra seguinte).
+ * quando esta amostra fechou um batimento; senão devolve false e não toca em
+ * *saida.
+ *
+ * O batimento sai com atraso: o pico só é visto com 1 amostra de atraso, e
+ * depois fica pendente pelo período refratário (0,3 s), porque um pico maior
+ * nesse intervalo toma o lugar dele (a corcova do FIR antes do batimento não
+ * pode bloquear o pico verdadeiro). n_pico continua sendo o do pico.
  */
 bool picos_processa(picos_t *p, const ppg_amostra_t *filtrado, ppg_batimento_t *saida);
 
