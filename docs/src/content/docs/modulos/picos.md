@@ -57,7 +57,8 @@ atraso, porque o detector precisa da amostra seguinte para saber que passou
 do máximo.
 
 **Parâmetros:** `TAU_ENV_S = 1 s`, `LIMIAR = 0,4`, `REFRAT_S = 0,3 s`. Uma
-varredura (feita com o filtrado antigo, de fase zero, antes do FIR do #108) (limiar 0,3 a 0,6; refratário 0,25 a 0,35 s; envelope de 1 a 3 s)
+varredura (limiar 0,3 a 0,6; refratário 0,25 a 0,35 s; envelope de 1 a 3 s;
+feita com o filtrado antigo, de fase zero, antes do FIR do #108)
 mostrou que a **mediana** do erro de BPM ficou em 0,07 bpm em todas as
 combinações que terminaram de rodar: o que muda é o erro nos registros com movimento. O envelope de 1 s
 foi o que mais reduziu esse erro (média de 6,0 para 2,5 bpm). Os valores
@@ -83,7 +84,7 @@ menos de 150 ms do R mais o atraso.
 | Atividade | Registros | Sensibilidade | Precisão | Erro do BPM (mediana) |
 |---|---|---|---|---|
 | sentado | 5 | 50 a 98,6% | 48,6 a 97,3% | 0,11 bpm |
-| correndo | 5 | 82 a 96% | 90 a 96% | 1,41 bpm |
+| correndo | 5 | 82,3 a 96,1% | 89,8 a 96,4% | 1,41 bpm |
 | andando | 5 | 73 a 96% | 83 a 94% | 2,03 bpm |
 
 Média dos 15: **sensibilidade 88,4%, precisão 89,5%, erro de BPM de 2,10 bpm**.
@@ -105,7 +106,10 @@ corcova de 32 a 41% do pico sistólico uns 200 a 250 ms antes do batimento
 seguinte (o filtro de fase zero antigo não deixava). Ela passa do limiar
 (`0,4 * env`, com o envelope já decaído), vira batimento, e o refratário de
 300 ms bloqueia o pico verdadeiro logo depois: sensibilidade de 50% nesse
-registro, que antes dava 100%. Resolver no detector (limiar, envelope ou
+registro, que antes dava 100%. Pior: esses batimentos deslocados saem com
+`rr_valido = true` (RR de 679 e 894 ms contra ~790 reais, dentro da faixa de
+0,7 a 1,4 do RR típico), e o HRV usaria esses intervalos. A validação não
+mostra isso porque só mede o RR em pares casados com o ECG. Resolver no detector (limiar, envelope ou
 trocar o candidato pelo maior dentro do refratário) ou no filtro; fica pros
 donos do `picos/` e do `filtro/`.
 

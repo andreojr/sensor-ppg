@@ -1,4 +1,5 @@
 /* picos: a saída do C bate com a do protótipo Python (vetores de analise.picos). */
+#include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -75,6 +76,29 @@ static int roda(const caso_t *c, uint32_t desloca, bool reinicia)
          + confere_float("bpm", bpm, c->bpm, n, c->tol);
 }
 
+/* NaN no meio do s1_sit: nenhum batimento sai com NaN e a detecção continua
+   (perde no máximo o pico vizinho do NaN). */
+static int nan_no_meio(void)
+{
+    picos_t p;
+    picos_init(&p);
+    uint32_t n = 0, ruins = 0;
+    for (uint32_t i = 0; i < S1_SIT_ENTRADA_N; i++) {
+        float v = (i == S1_SIT_ENTRADA_N / 2u) ? NAN : s1_sit_entrada[i];
+        ppg_amostra_t x = {.n = i, .ir = v, .vermelho = 0.0f};
+        ppg_batimento_t b;
+        if (!picos_processa(&p, &x, &b))
+            continue;
+        n++;
+        ruins += !b.valido || isnan(b.fracao) || isnan(b.rr_ms);
+    }
+    ppg_bpm_t v;
+    picos_bpm(&p, &v);
+    printf("== NaN no meio: %u batimentos (sem NaN: %u), %u com NaN\n", (unsigned)n,
+           (unsigned)S1_SIT_N_PICO_N, (unsigned)ruins);
+    return ruins || n + 1u < S1_SIT_N_PICO_N || !v.valido || isnan(v.bpm);
+}
+
 int main(void)
 {
     const caso_t casos[] = {
@@ -92,5 +116,6 @@ int main(void)
         /* n da cadeia não começa no init do picos, e reiniciar zera tudo. */
         falhas += roda(&casos[i], 123456u, true);
     }
+    falhas += nan_no_meio();
     return falhas ? 1 : 0;
 }

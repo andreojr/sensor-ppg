@@ -167,8 +167,9 @@ e confere com o mesmo vetor do teste no PC. O resultado sai pela serial:
 100 = 2400 ciclos em média. Pela contagem de instruções do laço em `-O0`
 (Debug), a estimativa é de ~1000 ciclos em média e ~3500 na amostra que
 solta a saída. A média é o que pesa na CPU. O firmware compila `pds/` com
-`-ffp-contract=off` (sem fundir multiplicação e soma, o FMA), como o Python,
-então o erro na placa fica no mesmo 1 ulp do PC.
+`-ffp-contract=off` (sem fundir multiplicação e soma, o FMA), como o Python. O
+build Debug (`-O0`) medido na placa já não fundia; no Release (`-Os`) a flag
+evita o FMA, mas ainda não foi medido na placa.
 
 **Resultado na placa** (STM32F411, Debug, 21/11/2026):
 
