@@ -9,7 +9,7 @@ Código que usa HAL, em `Core/Inc` e `Core/Src` (fora de `pds/`).
 |---|---|---|
 | Leitura do MAX30102 (I2C1, FIFO, INT no PB5) | João | feita: `max30102.c` |
 | Serial pro PC (USART1 a 921600 com DMA, adaptador USB-serial) | João | feita: `serial.c`, manda o sinal cru |
-| Bancada do HRV na placa (`-DBANCADA_HRV=ON`) | André | código pronto: `bancada_hrv.c`; ver [HRV](../modulos/hrv/) |
+| Bancada do HRV na placa (`-DBANCADA_HRV=ON`) | André | feita: `bancada_hrv.c`, passou na placa; ver [HRV](../modulos/hrv/) |
 | Fonte falsa (PhysioNet em flash) | André | a fazer |
 | Timer, filas e laço principal (TIM2 a 100 Hz já configurado) | André | a fazer |
 | Display OLED (I2C3) | Celso | a fazer |
