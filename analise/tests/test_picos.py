@@ -212,3 +212,17 @@ def test_confere_no_meio_com_coracao_lento_nao_da_falso_diverge():
         for n0 in (1234, 3001):
             r = confere_placa(_captura(x, n0), placa)
             assert r["ok"] and not r["desde_boot"], (rr, n0, r)
+
+
+def test_confere_usa_o_trecho_depois_do_reset():
+    """Captura aberta com a placa rodando e reset no meio: o n volta a 0."""
+    from analise.picos import confere_placa
+
+    x = _pulsos(60)
+    placa = _placa(x)
+    antes = _captura(_pulsos(20, 1.0), 900)  # o que a placa mandava antes do reset
+    filtrado = np.vstack([antes, _captura(x, 0)])
+    picos_antes = _placa(_pulsos(20, 1.0))
+    picos_antes = picos_antes[picos_antes[:, 0] > 900]
+    r = confere_placa(filtrado, np.vstack([picos_antes, placa]))
+    assert r["ok"] and r["desde_boot"], r

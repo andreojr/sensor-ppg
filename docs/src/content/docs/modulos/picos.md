@@ -22,8 +22,8 @@ sidebar:
 | 1. Python (`analise/src/analise/picos.py`) | feito, validado em 15 registros do PhysioNet |
 | 2. C (`Core/*/pds/picos/picos.c`) | feito, porte linha a linha do Python |
 | 3. Teste no PC (`testes/picos/`) | feito, 3 casos contra os vetores do Python |
-| 4. Placa com a fonte falsa | código pronto (`-DBANCADA_PICOS=ON`), falta rodar |
-| 5. Sensor real | código pronto (linhas `p,` e `--confere`), falta capturar |
+| 4. Placa com a fonte falsa | feito, a bancada passou na placa |
+| 5. Sensor real | feito, 60 s com o dedo, a placa bate com o Python |
 
 Esta página é atualizada em todo PR que mexe no módulo.
 
@@ -150,7 +150,17 @@ tolerância do vetor:
 100 = 9 600 ciclos. O detector faz poucas contas por amostra (envelope e um
 máximo local); a parábola e o RR só rodam nos candidatos.
 
-**Resultado na placa:** *(preencher com a saída da bancada)*
+**Resultado na placa** (STM32F411, Debug `-O0`, 21/11/2026):
+
+```text
+# bancada picos: 47 batimentos (esperado 47), 0 fora da tolerancia, erro max 0 milesimos
+# bancada picos: ciclos por amostra med 146 max 1465 (orcamento 9600): OK
+```
+
+Os 47 batimentos do `s3_sit` saem iguais aos do Python, inclusive os em que
+o candidato pendente troca a corcova pelo pico verdadeiro. O custo médio é de
+146 ciclos por amostra (1,5% do orçamento); o máximo, ~1 500, é a amostra em
+que um candidato faz a parábola ou um batimento sai.
 
 ### Sensor real
 
@@ -186,4 +196,15 @@ Sem ECG na placa, o BPM é conferido a olho contra o pulso (ou um oxímetro).
 A linha `p,` chega uns 1,3 s depois do pulso de verdade: 1 s do atraso do
 filtro, 0,3 s do candidato pendente.
 
-**Resultado com o sensor:** *(preencher com a saída do `--confere` e os ciclos)*
+**Resultado com o sensor** (dedo parado no MAX30102, 60 s desde o boot, 21/11/2026):
+
+```text
+captura desde o boot: 70 batimentos da placa, 70 casados, 0 só na placa, 0 só no Python
+erro máximo: instante 0.0378 amostra, rr 0.39 ms, bpm 0.01; rr_valido diferente em 0 (+0 na borda da faixa), bpm_valido em 0
+BPM mediano 78.3: OK
+# picos: ciclos med 162 max 1500 (orcamento 9600)
+```
+
+Nenhuma amostra perdida na captura. Todos os batimentos da placa casam com
+os do Python (erro de instante abaixo de 0,04 amostra, 0,4 ms), com o mesmo
+`rr_valido` e o mesmo BPM. Os ciclos com o sensor são os da bancada.

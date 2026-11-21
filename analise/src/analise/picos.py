@@ -239,6 +239,12 @@ TOL_BPM = 0.1
 MEMORIA_TIPICO = 24  # batimentos: 0,875^24 ≈ 4% de uma diferença no RR típico
 
 
+def depois_do_reset(dados: np.ndarray, coluna: int = 0) -> np.ndarray:
+    """As linhas depois do último reset da placa (onde o n volta pra trás)."""
+    voltas = np.flatnonzero(np.diff(dados[:, coluna]) < 0)
+    return dados[voltas[-1] + 1 :] if len(voltas) else dados
+
+
 def confere_placa(filtrado: np.ndarray, picos_placa: np.ndarray) -> dict:
     """Roda o picos do Python no filtrado que a placa mandou e compara com os batimentos dela.
 
@@ -253,6 +259,9 @@ def confere_placa(filtrado: np.ndarray, picos_placa: np.ndarray) -> dict:
     no começo). Aí só o instante e o RR entram no OK (depois de AQUECE_S, pro
     envelope); rr_valido e BPM saem como informação.
     """
+    # Captura aberta antes do reset: fica só o que veio depois do boot.
+    filtrado = depois_do_reset(filtrado)
+    picos_placa = depois_do_reset(picos_placa)
     n = filtrado[:, 0].astype(np.int64)
     if np.any(np.diff(n) != 1):
         raise ValueError("o filtrado tem saltos no n: a comparação não vale")
