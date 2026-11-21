@@ -127,7 +127,7 @@ int main(void)
   serial_init(&huart1);
 #ifdef BANCADA_HRV
   /* Fonte falsa no HRV, antes do sensor (roda mesmo sem o MAX30102). */
-  bancada_hrv();
+  (void)bancada_hrv();
 #endif
   destrava_i2c1();
   if (max30102_init(&hi2c1) != HAL_OK)

@@ -99,7 +99,10 @@ com inteiros.
   detecção, não coração. NaN e infinito também ficam de fora.
 - **Um RR rejeitado quebra a sequência.** A diferença do RMSSD só existe
   entre dois RR aceitos seguidos. Sem isso, um batimento perdido viraria uma
-  "diferença" enorme entre dois RR que nem são vizinhos.
+  "diferença" enorme entre dois RR que nem são vizinhos. A diferença fica
+  guardada junto do RR que a fecha: quando o RR anterior sai da janela, a
+  diferença do mais antigo continua contando (uma em ~70; Python e C fazem
+  igual).
 - **Sem filtro de artefato** (do tipo "rejeita RR que muda mais de 20%").
   Testei no PhysioNet: ajuda pouco nos registros ruins do PPG e, nos bons,
   joga fora variação de verdade (o maior SDNN de referência caiu de 104 pra
@@ -227,7 +230,7 @@ são 3,3 batimentos por segundo: menos de 0,1% da CPU. O pior caso é a fila
 cheia (2 × 256 iterações).
 
 Compila com o Arm GNU com e sem a opção, sem warnings (com a bancada, flash
-de 49 KB, por causa do vetor; RAM +3,3 KB do `hrv_t`).
+de ~51 KB, por causa do vetor; RAM +3,3 KB do `hrv_t`).
 
 **Resultado na placa** (Black Pill STM32F411, build Debug `-O0`, 21/11/2026):
 as duas linhas acima, exatamente. Os 613 batimentos batem com o Python
