@@ -25,6 +25,10 @@ Vetores de referência pro teste em C (testes/picos/vetores/), da pasta analise/
     uv run python -m analise.picos
 
 Validação contra o ECG: uv run python -m analise.picos_validacao
+
+Placa x Python, no CSV da captura (com _filtrado e _picos ao lado):
+
+    uv run python -m analise.picos --confere dados/sensor_<data>_<hora>.csv
 """
 
 from __future__ import annotations
@@ -228,6 +232,108 @@ def gera_vetores(testes: Path | None = None) -> list[Path]:
     return saidas
 
 
-if __name__ == "__main__":
+AQUECE_S = 10.0  # o detector do Python começa do zero no meio da captura
+TOL_INSTANTE = 0.05  # amostras: o Python roda sobre o filtrado com 2 casas
+TOL_RR_MS = 1.0
+TOL_BPM = 0.1
+
+
+def confere_placa(filtrado: np.ndarray, picos_placa: np.ndarray) -> dict:
+    """Roda o picos do Python no filtrado que a placa mandou e compara com os batimentos dela.
+
+    filtrado: colunas n, ir, vermelho (o _filtrado.csv da captura).
+    picos_placa: colunas n_pico, fracao, rr_valido, rr_ms, bpm_valido, bpm (o _picos.csv).
+    A placa detecta desde o boot e o Python começa no primeiro n capturado: só
+    valem os batimentos depois de AQUECE_S (envelope e RR típico já iguais) e
+    antes do fim (o pendente do Python precisa do refratário inteiro).
+    """
+    n = filtrado[:, 0].astype(np.int64)
+    if np.any(np.diff(n) != 1):
+        raise ValueError("o filtrado tem saltos no n: a comparação não vale")
+    p = Picos()
+    py = []
+    for k, x in zip(n, filtrado[:, 1], strict=True):
+        b = p.processa(float(x), int(k))
+        if b is not None:
+            py.append((b.instante, b.rr_valido, b.rr_ms, *p.bpm))
+
+    inicio = n[0] + AQUECE_S * FS_HZ - ATRASO_AMOSTRAS
+    fim = n[-1] - REFRAT - 2 - ATRASO_AMOSTRAS
+    placa = [
+        (b[0] + b[1], bool(b[2]), b[3], bool(b[4]), b[5])
+        for b in picos_placa
+        if inicio <= b[0] + b[1] <= fim
+    ]
+    py = [b for b in py if inicio - 1 <= b[0] <= fim + 1]
+    t_py = np.array([b[0] for b in py])
+    casados, sobra_py = [], set(range(len(py)))
+    for b in placa:
+        j = int(np.argmin(np.abs(t_py - b[0]))) if len(py) else -1
+        if j >= 0 and abs(t_py[j] - b[0]) <= TOL_INSTANTE and j in sobra_py:
+            casados.append((b, py[j]))
+            sobra_py.discard(j)
+    so_placa = len(placa) - len(casados)
+    so_py = sum(1 for j in sobra_py if inicio <= py[j][0] <= fim)
+
+    def maximo(valores: list[float]) -> float:
+        return float(max(valores)) if valores else 0.0
+
+    r = {
+        "batimentos": len(placa),
+        "casados": len(casados),
+        "so_placa": so_placa,
+        "so_python": so_py,
+        "erro_instante": maximo([abs(a[0] - b[0]) for a, b in casados]),
+        "erro_rr_ms": maximo([abs(a[2] - b[2]) for a, b in casados if a[1] and b[1]]),
+        "rr_valido_diferente": sum(a[1] != b[1] for a, b in casados),
+        "erro_bpm": maximo([abs(a[4] - b[4]) for a, b in casados if a[3] and b[3]]),
+        "bpm_valido_diferente": sum(a[3] != b[3] for a, b in casados),
+    }
+    bpms = [a[4] for a, _ in casados if a[3]]
+    r["bpm"] = float(np.median(bpms)) if bpms else float("nan")
+    r["ok"] = (
+        len(placa) > 0
+        and so_placa == 0
+        and so_py == 0
+        and r["rr_valido_diferente"] == 0
+        and r["bpm_valido_diferente"] == 0
+        and r["erro_instante"] <= TOL_INSTANTE
+        and r["erro_rr_ms"] <= TOL_RR_MS
+        and r["erro_bpm"] <= TOL_BPM
+    )
+    return r
+
+
+def main(argv: list[str] | None = None) -> None:
+    import argparse
+
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    ap.add_argument("--confere", type=Path, help="CSV da captura (com _filtrado e _picos ao lado)")
+    args = ap.parse_args(argv)
+    if args.confere:
+        lado = args.confere.with_name
+        r = confere_placa(
+            np.loadtxt(lado(args.confere.stem + "_filtrado.csv"), delimiter=",", skiprows=1),
+            np.loadtxt(lado(args.confere.stem + "_picos.csv"), delimiter=",", skiprows=1, ndmin=2),
+        )
+        print(
+            f"{r['batimentos']} batimentos da placa depois de {AQUECE_S:g} s; "
+            f"{r['casados']} casados, {r['so_placa']} só na placa, {r['so_python']} só no Python"
+        )
+        print(
+            f"erro máximo: instante {r['erro_instante']:.4f} amostra, rr {r['erro_rr_ms']:.2f} ms, "
+            f"bpm {r['erro_bpm']:.2f}; rr_valido diferente em {r['rr_valido_diferente']}, "
+            f"bpm_valido em {r['bpm_valido_diferente']}"
+        )
+        print(f"BPM mediano {r['bpm']:.1f}: {'OK' if r['ok'] else 'DIVERGE'}")
+        if not r["ok"]:
+            raise SystemExit(1)
+        return
     for caminho in gera_vetores():
         print(caminho)
+
+
+if __name__ == "__main__":
+    main()

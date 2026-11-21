@@ -11,6 +11,7 @@ Código que usa HAL, em `Core/Inc` e `Core/Src` (fora de `pds/`).
 | Serial pro PC (USART1 a 921600 com DMA, adaptador USB-serial) | João | feita: `serial.c`, manda o sinal cru, o bruto decimado e o filtrado |
 | Decimação na placa (400 → 100 Hz) e ciclos (DWT) | João | feita: `main.c` e `bancada.c`; ver [Decimação](../modulos/decimacao/) |
 | Filtro na placa (bruto → filtrado) | João | feito: `main.c` e `bancada.c`; ver [Filtro](../modulos/filtro/) |
+| Picos na placa (filtrado → batimentos e BPM) | Celso / André | feito: `main.c` e `bancada.c`; ver [Picos](../modulos/picos/) |
 | Bancada do HRV na placa (`-DBANCADA_HRV=ON`) | André | feita: `bancada_hrv.c`, passou na placa; ver [HRV](../modulos/hrv/) |
 | Fonte falsa (PhysioNet em flash) | André | a fazer |
 | Timer, filas e laço principal (TIM2 a 100 Hz já configurado) | André | a fazer |
@@ -78,14 +79,18 @@ INT ficar baixo, não vem outra borda de descida, e sem isso a leitura travaria.
 # MAX30102 400 Hz: n,ir,vermelho
 # decimacao 100 Hz: b,n,ir,vermelho
 # filtro 100 Hz, atraso 100: f,n,ir,vermelho
+# picos: p,n_pico,fracao,rr_valido,rr_ms,bpm_valido,bpm
 0,112034,98765
 1,112040,98771
 ...
 b,0,112036.41,98768.02
 f,0,0.00,0.00
 ...
+p,1234,0.2500,1,812.50,1,73.85
+...
 # decimacao: ciclos med ... max ... (orcamento 2400)
 # filtro: ciclos med ... max ... (orcamento 19200)
+# picos: ciclos med ... max ... (orcamento 9600)
 ```
 
 - `n` é o índice da amostra a 400 Hz desde o boot. Se o sensor descartar
@@ -101,11 +106,17 @@ f,0,0.00,0.00
   a 4 Hz, média zero), uma por linha `b,`, com o mesmo `n`. O sinal está
   atrasado de `PPG_ATRASO_AMOSTRAS` (100 amostras = 1 s) e vale depois dos
   primeiros 2 s.
+- Linhas que começam com `p,` são os **batimentos** (`picos_processa()` sobre
+  o filtrado), uma por batimento: `n_pico` (já sem o atraso do filtro),
+  `fracao` (4 casas), `rr_valido` (0/1), `rr_ms`, `bpm_valido` (0/1) e `bpm`
+  (`picos_bpm()`, 2 casas). Cada uma sai 300 ms depois do pico (o candidato
+  pendente do picos).
 - A cada 10 s, `# decimacao: ...` e `# filtro: ciclos med X max Y` medem o
   `decimacao_processa()` e o `filtro_processa()` com o contador de ciclos do
   núcleo (DWT). Os orçamentos são 1% da CPU pra decimação (96 MHz / 400 Hz /
-  100 = 2400 ciclos por amostra do sensor) e 2% pro filtro (19 200 ciclos
-  por amostra a 100 Hz).
+  100 = 2400 ciclos por amostra do sensor), 2% pro filtro (19 200 ciclos
+  por amostra a 100 Hz) e 1% pro picos (9 600); `# picos: ...` mede o
+  `picos_processa()`.
 - Linhas que começam com `#` são comentário. Se o sensor não responder no
   boot, sai `# erro: MAX30102 nao respondeu na I2C1` e a placa para. Se a
   taxa do sensor não tiver filtro de decimação, sai
@@ -191,6 +202,17 @@ são conferidos com o Python. As duas bancadas podem ser ligadas juntas
 ```text
 # bancada filtro: 6000 saidas, 0 fora da tolerancia, erro max 0 milesimos
 # bancada filtro: ciclos por amostra med ... max ... (orcamento 19200): OK
+```
+
+### Bancada do picos (fonte falsa)
+
+Com `-DBANCADA_PICOS=ON`: os 40 s do filtrado do `s3_sit` (o vetor de
+`testes/picos/vetores/s3_sit.h`) passam pelo picos e são conferidos com o
+Python. Pode ser ligada junto com as outras.
+
+```text
+# bancada picos: 47 batimentos (esperado 47), 0 fora da tolerancia, erro max ... milesimos
+# bancada picos: ciclos por amostra med ... max ... (orcamento 9600): OK
 ```
 
 | Sintoma | Causa provável |

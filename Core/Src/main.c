@@ -28,6 +28,7 @@
 #include "decimacao/decimacao.h"
 #include "filtro/filtro.h"
 #include "max30102.h"
+#include "picos/picos.h"
 #include "serial.h"
 
 /* USER CODE END Includes */
@@ -63,10 +64,12 @@ static volatile max30102_amostra_t ultima; /* pra olhar no Live Watch do debugge
 static decimacao_t decimacao;              /* sensor -> bruto a PPG_FS_HZ */
 static max30102_amostra_t anterior;        /* repetida no lugar das perdidas */
 static filtro_t filtro;                    /* bruto -> filtrado (0,5 a 4 Hz) */
+static picos_t picos;                      /* filtrado -> batimentos e BPM */
 
 /* Ciclos de cada módulo, resumidos pela serial a cada 10 s. */
 static ciclos_t ciclos_decimacao;
 static ciclos_t ciclos_filtro;
+static ciclos_t ciclos_picos;
 
 /* USER CODE END PV */
 
@@ -137,10 +140,11 @@ int main(void)
     HAL_UART_Transmit(&huart1, (const uint8_t *)erro, sizeof erro - 1, 100);
     Error_Handler();
   }
-  char cabecalho[160];
+  char cabecalho[224];
   int n = snprintf(cabecalho, sizeof cabecalho,
                    "# MAX30102 %u Hz: n,ir,vermelho\n# decimacao %u Hz: b,n,ir,vermelho\n"
-                   "# filtro %u Hz, atraso %u: f,n,ir,vermelho\n",
+                   "# filtro %u Hz, atraso %u: f,n,ir,vermelho\n"
+                   "# picos: p,n_pico,fracao,rr_valido,rr_ms,bpm_valido,bpm\n",
                    MAX30102_FS_HZ, PPG_FS_HZ, PPG_FS_HZ, (unsigned)PPG_ATRASO_AMOSTRAS);
   serial_escreve(cabecalho, (uint32_t)n);
   ciclos_liga();
@@ -153,6 +157,9 @@ int main(void)
 #ifdef BANCADA_FILTRO
   (void)bancada_filtro(); /* só informativo, como a da decimação */
 #endif
+#ifdef BANCADA_PICOS
+  (void)bancada_picos(); /* só informativo, como as outras */
+#endif
   if (!decimacao_init(&decimacao, MAX30102_FS_HZ))
   {
     static const char erro[] = "# erro: decimacao sem filtro para essa taxa do MAX30102\n";
@@ -160,6 +167,7 @@ int main(void)
     Error_Handler();
   }
   filtro_init(&filtro);
+  picos_init(&picos);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -531,8 +539,25 @@ static void envia_ppg(char tipo, const ppg_amostra_t *s)
   serial_escreve(linha, (uint32_t)tam);
 }
 
+/* Um batimento: "p,n_pico,fracao,rr_valido,rr_ms,bpm_valido,bpm", com a
+   fracao em 4 casas e rr_ms e bpm em 2. */
+static void envia_batimento(const ppg_batimento_t *b, const ppg_bpm_t *v)
+{
+  char rr[24];
+  char bpm[24];
+  char linha[96];
+  unsigned long f = (unsigned long)(b->fracao * 10000.0f + 0.5f); /* fracao em [0, 1) */
+  centesimos(rr, sizeof rr, b->rr_ms);
+  centesimos(bpm, sizeof bpm, v->valido ? v->bpm : 0.0f);
+  int tam = snprintf(linha, sizeof linha, "p,%lu,%lu.%04lu,%d,%s,%d,%s\n",
+                     (unsigned long)b->n_pico, f / 10000u, f % 10000u, b->rr_valido ? 1 : 0, rr,
+                     v->valido ? 1 : 0, bpm);
+  serial_escreve(linha, (uint32_t)tam);
+}
+
 /* Uma amostra do sensor na cadeia. A cada 4, sai o bruto a PPG_FS_HZ (linha
-   "b,...") e ele passa no filtro (linha "f,..."); a cada 10 s, os ciclos. */
+   "b,..."), ele passa no filtro (linha "f,...") e o filtrado no picos (linha
+   "p,..." a cada batimento); a cada 10 s, os ciclos. */
 static void decima(const max30102_amostra_t *amostra)
 {
   decimacao_entrada_t e = {amostra->ir, amostra->vermelho};
@@ -549,12 +574,24 @@ static void decima(const max30102_amostra_t *amostra)
     ciclos_conta(&ciclos_filtro, ciclos_agora() - t0);
     envia_ppg('b', &bruto);
     envia_ppg('f', &filtrado);
+
+    ppg_batimento_t batimento;
+    t0 = ciclos_agora();
+    bool bateu = picos_processa(&picos, &filtrado, &batimento);
+    ciclos_conta(&ciclos_picos, ciclos_agora() - t0);
+    if (bateu)
+    {
+      ppg_bpm_t bpm;
+      picos_bpm(&picos, &bpm);
+      envia_batimento(&batimento, &bpm);
+    }
   }
 
   if (ciclos_decimacao.conta == MAX30102_FS_HZ * 10u)
   {
     ciclos_relata(&ciclos_decimacao, "decimacao", BANCADA_ORCAMENTO_DECIMACAO);
     ciclos_relata(&ciclos_filtro, "filtro", BANCADA_ORCAMENTO_FILTRO);
+    ciclos_relata(&ciclos_picos, "picos", BANCADA_ORCAMENTO_PICOS);
   }
 }
 

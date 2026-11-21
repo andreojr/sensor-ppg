@@ -21,9 +21,9 @@ sidebar:
 |---|---|
 | 1. Python (`analise/src/analise/picos.py`) | feito, validado em 15 registros do PhysioNet |
 | 2. C (`Core/*/pds/picos/picos.c`) | feito, porte linha a linha do Python |
-| 3. Teste no PC (`testes/picos/`) | feito, 2 casos contra os vetores do Python |
-| 4. Placa com a fonte falsa | a fazer |
-| 5. Sensor real | a fazer |
+| 3. Teste no PC (`testes/picos/`) | feito, 3 casos contra os vetores do Python |
+| 4. Placa com a fonte falsa | código pronto (`-DBANCADA_PICOS=ON`), falta rodar |
+| 5. Sensor real | código pronto (linhas `p,` e `--confere`), falta capturar |
 
 Esta página é atualizada em todo PR que mexe no módulo.
 
@@ -128,3 +128,47 @@ ECG**, e o erro do RMSSD fica entre −0,2 e 4,2 ms. O teste
 `valido` com o último valor mesmo que não chegue batimento novo (dedo
 retirado, sinal parado). Quem tira o "--" do display nesse caso é a
 `qualidade` (`dedo_presente`).
+
+### Placa com a fonte falsa
+
+```bash
+cmake --preset Debug -DBANCADA_PICOS=ON
+cmake --build --preset Debug
+```
+
+Na partida, a placa passa os 40 s do `s3_sit` (o filtrado da fonte falsa, o
+mesmo vetor do teste no PC, com a corcova do FIR) pelo `picos.c` e confere
+`n_pico`, `rr_valido` e `bpm_valido` exatos e `fracao`, `rr_ms` e BPM com a
+tolerância do vetor:
+
+```text
+# bancada picos: 47 batimentos (esperado 47), 0 fora da tolerancia, erro max ... milesimos
+# bancada picos: ciclos por amostra med ... max ... (orcamento 9600): OK
+```
+
+**Orçamento:** 1% da CPU por amostra a 100 Hz, ou seja, 96 MHz / 100 Hz /
+100 = 9 600 ciclos. O detector faz poucas contas por amostra (envelope e um
+máximo local); a parábola e o RR só rodam nos candidatos.
+
+**Resultado na placa:** *(preencher com a saída da bancada)*
+
+### Sensor real
+
+O firmware passa cada filtrado pelo picos e, a cada batimento, manda uma linha
+`p,n_pico,fracao,rr_valido,rr_ms,bpm_valido,bpm`. A captura grava essas linhas
+em `_picos.csv`, e o Python roda o mesmo detector sobre o `_filtrado.csv` da
+placa e compara:
+
+```bash
+uv run python -m analise.captura COM3 --segundos 60
+uv run python -m analise.picos --confere dados/sensor_<data>_<hora>.csv
+```
+
+A placa detecta desde o boot e o Python começa no primeiro `n` capturado, então
+os primeiros 10 s ficam de fora (o envelope e o RR típico precisam convergir).
+Depois disso, os instantes têm que casar (o Python roda sobre o filtrado com 2
+casas, daí a tolerância de 0,05 amostra), com `rr_valido` igual e RR e BPM
+dentro de 1 ms e 0,1 bpm. Sem ECG na placa, o BPM é conferido a olho contra
+o pulso (ou um oxímetro).
+
+**Resultado com o sensor:** *(preencher com a saída do `--confere` e os ciclos)*

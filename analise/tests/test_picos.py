@@ -142,3 +142,44 @@ def test_vizinho_infinito_nao_quebra():
     p = Picos()
     for v in x:
         p.processa(float(v))
+
+
+def _pulsos(segundos: float) -> np.ndarray:
+    t = np.arange(round(segundos * FS_HZ)) / FS_HZ
+    x = np.zeros_like(t)
+    rr = 0.8 + 0.05 * np.sin(2 * np.pi * 0.1 * np.arange(200))  # RR variando
+    c = 0.5
+    for d in rr:
+        x += 800 * np.exp(-(((t - c) / 0.05) ** 2)) + 300 * np.exp(-(((t - c - 0.25) / 0.06) ** 2))
+        c += d
+        if c > t[-1]:
+            break
+    return x.astype(np.float32)
+
+
+def _placa(x: np.ndarray) -> np.ndarray:
+    """O que a placa manda: detector desde o n = 0, uma linha por batimento."""
+    p, linhas = Picos(), []
+    for k, v in enumerate(x):
+        b = p.processa(float(v), k)
+        if b is not None:
+            ok, bpm = p.bpm
+            linhas.append((b.n_pico, b.fracao, int(b.rr_valido), b.rr_ms, int(ok), bpm if ok else 0.0))
+    return np.array(linhas)
+
+
+def test_confere_placa_bate_com_captura_no_meio():
+    from analise.picos import confere_placa
+
+    x = _pulsos(60)
+    placa = _placa(x)
+    # A captura começa no meio e o filtrado vem com 2 casas, como na serial.
+    n0 = 1500
+    filtrado = np.column_stack([np.arange(n0, len(x)), np.round(x[n0:], 2), np.zeros(len(x) - n0)])
+    r = confere_placa(filtrado, placa)
+    assert r["ok"], r
+    assert r["casados"] > 40
+
+    errado = placa.copy()
+    errado[len(errado) // 2, 0] += 1  # um n_pico deslocado
+    assert not confere_placa(filtrado, errado)["ok"]

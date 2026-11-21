@@ -63,13 +63,17 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
 # (os vetores de testes/<módulo>/). cmake --preset Debug -DBANCADA_FILTRO=ON
 option(BANCADA_DECIMACAO "Confere a decimação na placa com a fonte falsa" OFF)
 option(BANCADA_FILTRO "Confere o filtro na placa com a fonte falsa" OFF)
+option(BANCADA_PICOS "Confere o picos na placa com a fonte falsa" OFF)
 if(BANCADA_DECIMACAO)
     target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE BANCADA_DECIMACAO)
 endif()
 if(BANCADA_FILTRO)
     target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE BANCADA_FILTRO)
 endif()
-if(BANCADA_DECIMACAO OR BANCADA_FILTRO)
+if(BANCADA_PICOS)
+    target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE BANCADA_PICOS)
+endif()
+if(BANCADA_DECIMACAO OR BANCADA_FILTRO OR BANCADA_PICOS)
     target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/testes)
 endif()
 
