@@ -69,6 +69,23 @@ def test_bruto_decimado_vai_pro_segundo_csv(tmp_path):
     assert pd.read_csv(destino)["n"].tolist() == [0, 1]
 
 
+def test_qualidade_vai_pro_terceiro_csv(tmp_path):
+    serial_falsa = io.BytesIO(
+        b"0,100,200\n"
+        b"q,199,1,0,333,0,130069,410,452,104\n"
+        b"q,299,1,1,1000,8,130000,9596,200,24435\n"
+        b"q,399,1\n"
+    )
+    destino = tmp_path / "x.csv"
+    resumo = captura.grava(serial_falsa, destino, segundos=0.1)
+    assert resumo.amostras == 1 and resumo.por_ponto == {"qualidade": 2} and resumo.invalidas == 1
+    q = pd.read_csv(tmp_path / "x_qualidade.csv")
+    assert list(q.columns) == list(captura.COLUNAS_QUALIDADE)
+    assert q["indice"].tolist() == [0.333, 1.0]
+    assert q["pi"].tolist() == [0.0041, 0.09596]
+    assert q["razao"].tolist() == [1.04, 244.35]
+
+
 def test_plota_gera_png(tmp_path):
     csv = tmp_path / "x.csv"
     csv.write_text("n,ir,vermelho\n100,1,2\n101,3,4\n102,5,6\n", encoding="utf-8")

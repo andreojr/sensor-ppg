@@ -12,6 +12,7 @@ Código que usa HAL, em `Core/Inc` e `Core/Src` (fora de `pds/`).
 | Decimação na placa (400 → 100 Hz) e ciclos (DWT) | João | feita: `main.c` e `bancada.c`; ver [Decimação](../modulos/decimacao/) |
 | Filtro na placa (bruto → filtrado) | João | feito: `main.c` e `bancada.c`; ver [Filtro](../modulos/filtro/) |
 | Bancada do HRV na placa (`-DBANCADA_HRV=ON`) | André | feita: `bancada_hrv.c`, passou na placa; ver [HRV](../modulos/hrv/) |
+| Bancada da qualidade na placa (`-DBANCADA_QUALIDADE=ON`) | André | pronta, não rodou: `bancada_qualidade.c`; ver [Qualidade](../modulos/qualidade/) |
 | Fonte falsa (PhysioNet em flash) | André | a fazer |
 | Timer, filas e laço principal (TIM2 a 100 Hz já configurado) | André | a fazer |
 | Display OLED (I2C3) | Celso | a fazer |
@@ -192,6 +193,18 @@ são conferidos com o Python. As duas bancadas podem ser ligadas juntas
 # bancada filtro: 6000 saidas, 0 fora da tolerancia, erro max 0 milesimos
 # bancada filtro: ciclos por amostra med ... max ... (orcamento 19200): OK
 ```
+
+### Bancada da qualidade (`bancada_qualidade.c`)
+
+Com `-DBANCADA_QUALIDADE=ON`, a placa, logo depois de `serial_init()` e antes
+do sensor, toca o vetor `bordas` (o mesmo de `testes/qualidade/vetores/`,
+~70 KB na flash) no `qualidade_processa()`, confere com a saída do Python e
+mede os ciclos por amostra: duas linhas `# bancada qualidade: ...`. Depois,
+no laço, cada amostra do bruto decimado passa pela qualidade e, uma vez por
+segundo, sai uma linha `q,n,dedo,usavel,indice,motivo,dc,pi,aspereza,razao`
+(inteiros escalados, ver `bancada_qualidade.h`), que o `analise.captura`
+grava em `<nome>_qualidade.csv`. Sem a opção, nada disso entra no firmware.
+Procedimento e orçamento em [Qualidade](../modulos/qualidade/).
 
 | Sintoma | Causa provável |
 |---|---|
