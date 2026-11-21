@@ -71,6 +71,10 @@ void app_init(I2C_HandleTypeDef *sensor, I2C_HandleTypeDef *display, UART_Handle
     /* Fonte falsa no HRV, antes do sensor (roda mesmo sem o MAX30102). */
     (void)bancada_hrv();
 #endif
+#ifdef BANCADA_HRV_FREQ
+    /* Idem para o LF/HF: 613 batimentos, alguns segundos. */
+    (void)bancada_hrv_freq();
+#endif
 #ifdef BANCADA_QUALIDADE
     /* Vetor da qualidade, antes do sensor (roda mesmo sem o MAX30102). */
     (void)bancada_qualidade();

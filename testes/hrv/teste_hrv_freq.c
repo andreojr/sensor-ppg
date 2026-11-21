@@ -15,7 +15,7 @@
 #define BATIMENTOS_MAX 3000u
 #define PI_D 3.14159265358979
 
-static hrv_freq_t h; /* ~13 KiB: fora da pilha */
+static hrv_freq_t h; /* ~16,4 KiB: fora da pilha */
 static int32_t obt_escreveu[BATIMENTOS_MAX];
 static int32_t obt_valido[BATIMENTOS_MAX];
 static float obt_lf_hf[BATIMENTOS_MAX];

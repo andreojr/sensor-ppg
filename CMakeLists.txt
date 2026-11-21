@@ -119,10 +119,16 @@ endif()
 
 # Bancada do HRV: na partida, toca as marcas de batimento da fonte falsa no
 # hrv/ e confere com o Python (o vetor de testes/hrv/).
-# cmake --preset Debug -DBANCADA_HRV=ON
+# cmake --preset Debug -DBANCADA_HRV=ON (LF/HF: -DBANCADA_HRV_FREQ=ON)
 option(BANCADA_HRV "Confere o HRV na placa com a fonte falsa" OFF)
+option(BANCADA_HRV_FREQ "Confere o LF/HF na placa com a fonte falsa" OFF)
 if(BANCADA_HRV)
     target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE BANCADA_HRV)
+endif()
+if(BANCADA_HRV_FREQ)
+    target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE BANCADA_HRV_FREQ)
+endif()
+if(BANCADA_HRV OR BANCADA_HRV_FREQ)
     target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/testes)
 endif()
 
