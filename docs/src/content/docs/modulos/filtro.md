@@ -167,7 +167,18 @@ confere com o mesmo vetor do teste no PC:
 ~27 instruções por par de coeficientes. A estimativa é de ~7 500 ciclos por
 amostra (101 iterações × 2 canais).
 
-**Resultado na placa:** *(preencher com a saída da bancada)*
+**Resultado na placa** (STM32F411, Debug `-O0`, 21/11/2026):
+
+```text
+# bancada filtro: 6000 saidas, 0 fora da tolerancia, erro max 0 milesimos
+# bancada filtro: ciclos por amostra med 9844 max 9944 (orcamento 19200): OK
+```
+
+As 6000 saídas batem com o Python (erro abaixo de 0,0005 contagens). O custo
+real ficou em 9 844 ciclos por amostra, 31% acima da estimativa de 7 500 e
+51% do orçamento. A bancada segura o laço por ~0,6 s, e logo depois sai um
+`# perdidas: 31` (o contador do MAX30102 satura em 31; perdeu-se mais que
+isso, mas só nesse intervalo da partida).
 
 ### 4. Sensor real
 
@@ -187,4 +198,15 @@ como no PhysioNet) e o BPM. Com a placa simulada no PC (mesmo `filtro.c`,
 fonte falsa a 400 Hz), deu 794 saídas, erro de 0,008 contagens e picos a
 −1,4 ms da fase zero.
 
-**Resultado com o sensor:** *(preencher com a saída do `--confere` e os ciclos)*
+**Resultado com o sensor** (dedo parado no MAX30102, 60 s, 21/11/2026):
+
+```text
+5788 saídas comparadas; erro máximo IR 0.043, vermelho 0.041 contagens: OK
+51 picos; deslocamento médio contra fase zero -1.5 ms; 58 bpm
+# filtro: ciclos med 9874 max 9935 (orcamento 19200)
+```
+
+Sem amostras perdidas na captura. O filtrado da placa bate com o do Python
+(erro abaixo de 0,05 contagens, com o IR em ~136 000), e os picos ficam a
+−1,5 ms da fase zero, como na placa simulada (−1,4 ms) e no PhysioNet
+(−2,9 ms de mediana). Os ciclos com o sensor são os mesmos da bancada.
