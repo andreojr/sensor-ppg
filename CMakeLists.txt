@@ -44,6 +44,10 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 
 # Módulos de PDS (C puro, sem HAL): Core/Src/pds/<módulo>/*.c
 file(GLOB_RECURSE PDS_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/Core/Src/pds/*.c)
+# Sem FMA: o C tem que bater com o Python (float32, sem fundir multiplicação e
+# soma). Em -Os o GCC funde por padrão (vfma), e aí n_pico/rr_valido podem
+# mudar na borda.
+set_source_files_properties(${PDS_SOURCES} PROPERTIES COMPILE_OPTIONS -ffp-contract=off)
 
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
