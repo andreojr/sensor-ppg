@@ -469,11 +469,13 @@ static void envia_amostras(void)
   {
     int tam = snprintf(linha, sizeof linha, "# perdidas: %lu\n", (unsigned long)perdidas);
     serial_escreve(linha, (uint32_t)tam);
-    /* A decimação recebe a última amostra no lugar das perdidas: o n do bruto
-       continua alinhado com o tempo do sensor. */
-    for (uint32_t i = 0; indice > 0 && i < perdidas; i++)
+    /* A decimação recebe a última amostra no lugar das perdidas (ou a primeira
+       desta leitura, se ainda não houve nenhuma): o n do bruto continua
+       alinhado com o tempo do sensor. */
+    const max30102_amostra_t *repete = indice > 0 ? &anterior : (n > 0 ? &amostras[0] : NULL);
+    for (uint32_t i = 0; repete != NULL && i < perdidas; i++)
     {
-      decima(&anterior);
+      decima(repete);
     }
     indice += perdidas;
   }
