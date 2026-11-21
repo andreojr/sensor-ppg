@@ -21,5 +21,5 @@ Closes #<!-- nº da issue (em inglês: é o que liga o PR à issue e move o card
 
 - [ ] Nada em `pds/` inclui HAL ou `main.h`
 - [ ] Documentação do módulo atualizada em `docs/`
-- [ ] Até ~400 linhas alteradas (sem contar gerado)
+- [ ] Até ~2000 linhas alteradas (sem contar gerado)
 - [ ] Se mexi no `ppg.h`: os outros dois concordaram antes

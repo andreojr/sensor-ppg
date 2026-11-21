@@ -77,7 +77,7 @@ Cada passo é um PR próprio:
 - **No PR, escreva `Closes #42`** na descrição (tem que ser em inglês:
   `Closes`, `Fixes` ou `Resolves`). É isso que liga o PR à issue e fecha a
   issue no merge.
-- **PR pequeno:** até ~400 linhas alteradas, sem contar arquivo gerado
+- **Tamanho do PR:** até ~2000 linhas alteradas, sem contar arquivo gerado
   (`Drivers/`, `cmake/stm32cubemx/`, código gerado do CubeMX, vetores de
   referência).
 - **Aprovação:** 1 aprovação, que precisa ser de code owner. PR no seu
