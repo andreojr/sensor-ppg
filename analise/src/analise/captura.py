@@ -4,7 +4,9 @@ O firmware manda, a SENSOR_FS_HZ, uma linha "n,ir,vermelho" por amostra
 (ver docs/src/content/docs/firmware.md). Linhas com "#" são comentário.
 Linhas "b,n,ir,vermelho" e "f,n,ir,vermelho" são o bruto (decimado) e o
 filtrado que a placa calculou a 100 Hz: vão pra <nome>_bruto.csv e
-<nome>_filtrado.csv, ao lado do primeiro.
+<nome>_filtrado.csv, ao lado do primeiro. Linhas
+"p,n_pico,fracao,rr_valido,rr_ms,bpm_valido,bpm" são os batimentos do picos
+na placa: vão pra <nome>_picos.csv.
 
 Uso:
     uv run python -m analise.captura COM3 --segundos 30
@@ -30,6 +32,7 @@ BAUD = 921600
 DADOS = Path(__file__).resolve().parents[2] / "dados"
 COLUNAS = ("n", "ir", "vermelho")
 PONTOS = {"b": "bruto", "f": "filtrado"}  # prefixo da linha -> ponto da cadeia na placa
+COLUNAS_PICOS = ("n_pico", "fracao", "rr_valido", "rr_ms", "bpm_valido", "bpm")
 
 
 class Fonte(Protocol):
@@ -77,6 +80,24 @@ def le_ponto(linha: str) -> tuple[str, tuple[int, float, float]] | None:
         return None
 
 
+def le_batimento(linha: str) -> tuple[int, float, int, float, int, float] | None:
+    """Converte "p,n_pico,fracao,rr_valido,rr_ms,bpm_valido,bpm". None se não for."""
+    partes = linha.strip().split(",")
+    if len(partes) != 7 or partes[0] != "p":
+        return None
+    try:
+        return (
+            int(partes[1]),
+            float(partes[2]),
+            int(partes[3]),
+            float(partes[4]),
+            int(partes[5]),
+            float(partes[6]),
+        )
+    except ValueError:
+        return None
+
+
 def destino_ponto(destino: Path, ponto: str) -> Path:
     return destino.with_name(f"{destino.stem}_{ponto}.csv")
 
@@ -98,6 +119,18 @@ def grava(fonte: Fonte, destino: Path, segundos: float | None = None) -> Resumo:
                     continue
                 if linha.startswith("#"):
                     resumo.comentarios.append(linha)
+                    continue
+                if linha.startswith("p,"):
+                    batimento = le_batimento(linha)
+                    if batimento is None:
+                        resumo.invalidas += 1
+                        continue
+                    if "picos" not in abertos:
+                        arq = destino_ponto(destino, "picos").open("w", newline="", encoding="utf-8")
+                        abertos["picos"] = (arq, csv.writer(arq))
+                        abertos["picos"][1].writerow(COLUNAS_PICOS)
+                    abertos["picos"][1].writerow(batimento)
+                    resumo.por_ponto["picos"] = resumo.por_ponto.get("picos", 0) + 1
                     continue
                 if linha[:2] in {f"{p}," for p in PONTOS}:
                     lido = le_ponto(linha)
@@ -148,7 +181,7 @@ def main(argv: list[str] | None = None) -> None:
     print(f"saltos no n: {len(resumo.saltos)} ({resumo.perdidas} amostras perdidas); "
           f"linhas inválidas: {resumo.invalidas}")
     for ponto, linhas in resumo.por_ponto.items():
-        print(f"{linhas} amostras do {ponto} da placa em {destino_ponto(destino, ponto)}")
+        print(f"{linhas} linhas do {ponto} da placa em {destino_ponto(destino, ponto)}")
     for c in resumo.comentarios:
         print(f"  {c}")
 
