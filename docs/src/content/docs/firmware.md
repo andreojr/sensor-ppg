@@ -109,8 +109,9 @@ p,1234,0.2500,1,812.50,1,73.85
 - Linhas que começam com `p,` são os **batimentos** (`picos_processa()` sobre
   o filtrado), uma por batimento: `n_pico` (já sem o atraso do filtro),
   `fracao` (4 casas), `rr_valido` (0/1), `rr_ms`, `bpm_valido` (0/1) e `bpm`
-  (`picos_bpm()`, 2 casas). Cada uma sai 300 ms depois do pico (o candidato
-  pendente do picos).
+  (`picos_bpm()`, 2 casas). Cada uma sai 300 ms depois do pico no `n` do
+  filtrado (o candidato pendente), ou seja, ~1,3 s depois do pulso de verdade
+  (mais 1 s do atraso do filtro).
 - A cada 10 s, `# decimacao: ...` e `# filtro: ciclos med X max Y` medem o
   `decimacao_processa()` e o `filtro_processa()` com o contador de ciclos do
   núcleo (DWT). Os orçamentos são 1% da CPU pra decimação (96 MHz / 400 Hz /

@@ -144,10 +144,10 @@ def test_vizinho_infinito_nao_quebra():
         p.processa(float(v))
 
 
-def _pulsos(segundos: float) -> np.ndarray:
+def _pulsos(segundos: float, rr_medio: float = 0.8) -> np.ndarray:
     t = np.arange(round(segundos * FS_HZ)) / FS_HZ
     x = np.zeros_like(t)
-    rr = 0.8 + 0.05 * np.sin(2 * np.pi * 0.1 * np.arange(200))  # RR variando
+    rr = rr_medio + 0.05 * np.sin(2 * np.pi * 0.1 * np.arange(200))  # RR variando
     c = 0.5
     for d in rr:
         x += 800 * np.exp(-(((t - c) / 0.05) ** 2)) + 300 * np.exp(-(((t - c - 0.25) / 0.06) ** 2))
@@ -183,3 +183,32 @@ def test_confere_placa_bate_com_captura_no_meio():
     errado = placa.copy()
     errado[len(errado) // 2, 0] += 1  # um n_pico deslocado
     assert not confere_placa(filtrado, errado)["ok"]
+
+
+def _captura(x: np.ndarray, n0: int) -> np.ndarray:
+    """O _filtrado.csv a partir de n0, com 2 casas como na serial."""
+    return np.column_stack([np.arange(n0, len(x)), np.round(x[n0:], 2), np.zeros(len(x) - n0)])
+
+
+def test_confere_desde_o_boot_cobra_tudo():
+    from analise.picos import confere_placa
+
+    x = _pulsos(60)
+    placa = _placa(x)
+    r = confere_placa(_captura(x, 0), placa)
+    assert r["ok"] and r["desde_boot"], r
+    errado = placa.copy()
+    errado[len(errado) // 2, 2] = 1 - errado[len(errado) // 2, 2]  # um rr_valido trocado
+    assert not confere_placa(_captura(x, 0), errado)["ok"]
+
+
+def test_confere_no_meio_com_coracao_lento_nao_da_falso_diverge():
+    """No meio, o Python ainda não tem os 8 RR da placa: o BPM difere, mas não reprova."""
+    from analise.picos import confere_placa
+
+    for rr in (1.15, 1.3):
+        x = _pulsos(90, rr)
+        placa = _placa(x)
+        for n0 in (1234, 3001):
+            r = confere_placa(_captura(x, n0), placa)
+            assert r["ok"] and not r["desde_boot"], (rr, n0, r)

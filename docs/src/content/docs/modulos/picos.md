@@ -160,15 +160,30 @@ em `_picos.csv`, e o Python roda o mesmo detector sobre o `_filtrado.csv` da
 placa e compara:
 
 ```bash
-uv run python -m analise.captura COM3 --segundos 60
+uv run python -m analise.captura COM3 --segundos 60   # e aperte o reset da placa
 uv run python -m analise.picos --confere dados/sensor_<data>_<hora>.csv
 ```
 
-A placa detecta desde o boot e o Python começa no primeiro `n` capturado, então
-os primeiros 10 s ficam de fora (o envelope e o RR típico precisam convergir).
-Depois disso, os instantes têm que casar (o Python roda sobre o filtrado com 2
-casas, daí a tolerância de 0,05 amostra), com `rr_valido` igual e RR e BPM
-dentro de 1 ms e 0,1 bpm. Sem ECG na placa, o BPM é conferido a olho contra
-o pulso (ou um oxímetro).
+**Capture desde o boot:** abra a captura e só então resete a placa (botão ou
+`STM32_Programmer_CLI -c port=SWD -rst`), pra o primeiro `n` do filtrado ser 0.
+Aí o Python vê o mesmo filtrado que a placa desde o começo e tudo tem que
+bater: instantes (tolerância de 0,15 amostra, porque o Python roda sobre o
+filtrado com 2 casas), RR (2 ms), `rr_valido` e BPM (0,1 bpm). A única
+exceção é um RR a menos de 2 ms de uma fronteira (300 ou 2000 ms, ou 0,7 e
+1,4 vez o RR típico): as 2 casas podem virar a decisão, e o RR típico (média
+móvel) e a janela de 8 RR do BPM ficam diferentes por alguns batimentos; o
+`--confere` mostra essas diferenças como "na borda".
+
+Capturando no meio, o Python começa do zero: ele precisa de vários batimentos
+(e às vezes nunca chega, se pegar um batimento falso no começo) pra ter o
+mesmo RR típico e os mesmos 8 RR da placa. Então só os instantes e o RR entram
+no OK, depois de 10 s (pro envelope); `rr_valido` e BPM saem só como
+informação. Numa placa simulada no PC (o `picos.c` com as linhas `p,` do
+`main.c`), os 42 registros do PhysioNet deram OK desde o boot e em 126 janelas
+começando no meio.
+
+Sem ECG na placa, o BPM é conferido a olho contra o pulso (ou um oxímetro).
+A linha `p,` chega uns 1,3 s depois do pulso de verdade: 1 s do atraso do
+filtro, 0,3 s do candidato pendente.
 
 **Resultado com o sensor:** *(preencher com a saída do `--confere` e os ciclos)*

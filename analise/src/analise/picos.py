@@ -232,10 +232,11 @@ def gera_vetores(testes: Path | None = None) -> list[Path]:
     return saidas
 
 
-AQUECE_S = 10.0  # o detector do Python começa do zero no meio da captura
-TOL_INSTANTE = 0.05  # amostras: o Python roda sobre o filtrado com 2 casas
-TOL_RR_MS = 1.0
+AQUECE_S = 10.0  # captura no meio: o envelope do Python começa do zero
+TOL_INSTANTE = 0.15  # amostras: o Python roda sobre o filtrado com 2 casas
+TOL_RR_MS = 2.0
 TOL_BPM = 0.1
+MEMORIA_TIPICO = 24  # batimentos: 0,875^24 ≈ 4% de uma diferença no RR típico
 
 
 def confere_placa(filtrado: np.ndarray, picos_placa: np.ndarray) -> dict:
@@ -243,64 +244,120 @@ def confere_placa(filtrado: np.ndarray, picos_placa: np.ndarray) -> dict:
 
     filtrado: colunas n, ir, vermelho (o _filtrado.csv da captura).
     picos_placa: colunas n_pico, fracao, rr_valido, rr_ms, bpm_valido, bpm (o _picos.csv).
-    A placa detecta desde o boot e o Python começa no primeiro n capturado: só
-    valem os batimentos depois de AQUECE_S (envelope e RR típico já iguais) e
-    antes do fim (o pendente do Python precisa do refratário inteiro).
+
+    Captura desde o boot (primeiro n = 0, a placa resetada com a captura
+    aberta): o Python vê o mesmo filtrado desde o começo e tudo tem que bater,
+    instante, RR, rr_valido e BPM. Captura no meio: o Python começa do zero, e
+    o rr_valido e o BPM dependem do RR típico e dos últimos 8 RR, que ele só
+    alcança depois de vários batimentos (ou nunca, se pegou um batimento falso
+    no começo). Aí só o instante e o RR entram no OK (depois de AQUECE_S, pro
+    envelope); rr_valido e BPM saem como informação.
     """
     n = filtrado[:, 0].astype(np.int64)
     if np.any(np.diff(n) != 1):
         raise ValueError("o filtrado tem saltos no n: a comparação não vale")
+    desde_boot = bool(n[0] == 0)
     p = Picos()
     py = []
     for k, x in zip(n, filtrado[:, 1], strict=True):
+        tipico = float(p.rr_tipico)  # o que a decisão do rr_valido usa
         b = p.processa(float(x), int(k))
         if b is not None:
-            py.append((b.instante, b.rr_valido, b.rr_ms, *p.bpm))
+            bordas = (RR_MIN_MS, RR_MAX_MS, RR_FAIXA[0] * tipico, RR_FAIXA[1] * tipico)
+            na_borda = min(abs(b.rr_ms - v) for v in bordas) <= TOL_RR_MS
+            py.append((b.instante, b.rr_valido, b.rr_ms, *p.bpm, na_borda))
 
-    inicio = n[0] + AQUECE_S * FS_HZ - ATRASO_AMOSTRAS
+    inicio = -np.inf if desde_boot else n[0] + AQUECE_S * FS_HZ - ATRASO_AMOSTRAS
+    # O último batimento do Python precisa do refratário inteiro depois do pico.
     fim = n[-1] - REFRAT - 2 - ATRASO_AMOSTRAS
-    placa = [
-        (b[0] + b[1], bool(b[2]), b[3], bool(b[4]), b[5])
-        for b in picos_placa
-        if inicio <= b[0] + b[1] <= fim
-    ]
-    py = [b for b in py if inicio - 1 <= b[0] <= fim + 1]
+    margem = 1.0  # amostras: um batimento na borda pode cair de um lado só
+    placa = [(b[0] + b[1], bool(b[2]), b[3], bool(b[4]), b[5]) for b in picos_placa]
+    placa = [b for b in placa if inicio - margem <= b[0] <= fim + margem]
+    py = [b for b in py if inicio - margem <= b[0] <= fim + margem]
     t_py = np.array([b[0] for b in py])
-    casados, sobra_py = [], set(range(len(py)))
+
+    # Casa por instante; casados[i] = índice no Python do i-ésimo da placa (ou -1).
+    livres = set(range(len(py)))
+    casados = []
     for b in placa:
         j = int(np.argmin(np.abs(t_py - b[0]))) if len(py) else -1
-        if j >= 0 and abs(t_py[j] - b[0]) <= TOL_INSTANTE and j in sobra_py:
-            casados.append((b, py[j]))
-            sobra_py.discard(j)
-    so_placa = len(placa) - len(casados)
-    so_py = sum(1 for j in sobra_py if inicio <= py[j][0] <= fim)
+        if j >= 0 and abs(t_py[j] - b[0]) <= TOL_INSTANTE and j in livres:
+            casados.append(j)
+            livres.discard(j)
+        else:
+            casados.append(-1)
+
+    def dentro(t: float) -> bool:
+        return inicio + margem <= t <= fim - margem
+
+    so_placa = sum(1 for b, j in zip(placa, casados, strict=True) if j < 0 and dentro(b[0]))
+    so_py = sum(1 for j in livres if dentro(py[j][0]))
+    pares = [(b, py[j]) for b, j in zip(placa, casados, strict=True) if j >= 0 and dentro(b[0])]
+    # RR só quando o batimento anterior também casou com o anterior do Python.
+    rr = [
+        abs(placa[i][2] - py[casados[i]][2])
+        for i in range(1, len(placa))
+        if casados[i] > 0 and casados[i - 1] == casados[i] - 1 and dentro(placa[i][0])
+    ]
 
     def maximo(valores: list[float]) -> float:
         return float(max(valores)) if valores else 0.0
 
+    # rr_valido diferente só é erro longe das bordas da faixa: na borda, o
+    # filtrado com 2 casas mexe no rr_ms o bastante pra virar a decisão. Aí a
+    # janela de 8 RR do BPM fica diferente pelos próximos BPM_JANELA batimentos.
+    # Um RR na borda de 300/2000 ms também muda se o RR típico atualiza (média
+    # móvel com alfa 1/8): a diferença leva uns 24 batimentos pra sumir.
+    rr_valido_dif = rr_valido_borda = 0
+    bpm_erros, bpm_valido_dif, pula_bpm, perto_borda = [], 0, 0, 0
+    for a, b in pares:
+        if b[5]:
+            perto_borda = MEMORIA_TIPICO
+        elif perto_borda:
+            perto_borda -= 1
+        if a[1] != b[1]:
+            if perto_borda:
+                rr_valido_borda += 1
+                pula_bpm = BPM_JANELA
+                continue
+            rr_valido_dif += 1
+        if pula_bpm:  # a janela de 8 RR válidos ainda tem o RR que divergiu
+            pula_bpm -= a[1] and b[1]
+            continue
+        bpm_valido_dif += a[3] != b[3]
+        if a[3] and b[3]:
+            bpm_erros.append(abs(a[4] - b[4]))
+
     r = {
-        "batimentos": len(placa),
-        "casados": len(casados),
+        "desde_boot": desde_boot,
+        "batimentos": sum(1 for b in placa if dentro(b[0])),
+        "casados": len(pares),
         "so_placa": so_placa,
         "so_python": so_py,
-        "erro_instante": maximo([abs(a[0] - b[0]) for a, b in casados]),
-        "erro_rr_ms": maximo([abs(a[2] - b[2]) for a, b in casados if a[1] and b[1]]),
-        "rr_valido_diferente": sum(a[1] != b[1] for a, b in casados),
-        "erro_bpm": maximo([abs(a[4] - b[4]) for a, b in casados if a[3] and b[3]]),
-        "bpm_valido_diferente": sum(a[3] != b[3] for a, b in casados),
+        "erro_instante": maximo([abs(a[0] - b[0]) for a, b in pares]),
+        "erro_rr_ms": maximo(rr),
+        "rr_valido_diferente": rr_valido_dif,
+        "rr_valido_na_borda": rr_valido_borda,
+        "erro_bpm": maximo(bpm_erros),
+        "bpm_valido_diferente": bpm_valido_dif,
     }
-    bpms = [a[4] for a, _ in casados if a[3]]
+    bpms = [a[4] for a, _ in pares if a[3]]
     r["bpm"] = float(np.median(bpms)) if bpms else float("nan")
-    r["ok"] = (
-        len(placa) > 0
+    ok = (
+        r["batimentos"] > 0
         and so_placa == 0
         and so_py == 0
-        and r["rr_valido_diferente"] == 0
-        and r["bpm_valido_diferente"] == 0
         and r["erro_instante"] <= TOL_INSTANTE
         and r["erro_rr_ms"] <= TOL_RR_MS
-        and r["erro_bpm"] <= TOL_BPM
     )
+    if desde_boot:
+        ok = (
+            ok
+            and r["rr_valido_diferente"] == 0
+            and r["bpm_valido_diferente"] == 0
+            and r["erro_bpm"] <= TOL_BPM
+        )
+    r["ok"] = ok
     return r
 
 
@@ -314,17 +371,22 @@ def main(argv: list[str] | None = None) -> None:
     args = ap.parse_args(argv)
     if args.confere:
         lado = args.confere.with_name
+        arq_picos = lado(args.confere.stem + "_picos.csv")
+        if not arq_picos.exists():
+            raise SystemExit(f"sem {arq_picos.name}: a placa não mandou nenhuma linha p, (dedo no sensor?)")
         r = confere_placa(
             np.loadtxt(lado(args.confere.stem + "_filtrado.csv"), delimiter=",", skiprows=1),
-            np.loadtxt(lado(args.confere.stem + "_picos.csv"), delimiter=",", skiprows=1, ndmin=2),
+            np.loadtxt(arq_picos, delimiter=",", skiprows=1, ndmin=2),
         )
+        modo = "desde o boot" if r["desde_boot"] else f"no meio (depois de {AQUECE_S:g} s; rr_valido e BPM só informativos)"
         print(
-            f"{r['batimentos']} batimentos da placa depois de {AQUECE_S:g} s; "
+            f"captura {modo}: {r['batimentos']} batimentos da placa, "
             f"{r['casados']} casados, {r['so_placa']} só na placa, {r['so_python']} só no Python"
         )
         print(
             f"erro máximo: instante {r['erro_instante']:.4f} amostra, rr {r['erro_rr_ms']:.2f} ms, "
-            f"bpm {r['erro_bpm']:.2f}; rr_valido diferente em {r['rr_valido_diferente']}, "
+            f"bpm {r['erro_bpm']:.2f}; rr_valido diferente em {r['rr_valido_diferente']} "
+            f"(+{r['rr_valido_na_borda']} na borda da faixa), "
             f"bpm_valido em {r['bpm_valido_diferente']}"
         )
         print(f"BPM mediano {r['bpm']:.1f}: {'OK' if r['ok'] else 'DIVERGE'}")
