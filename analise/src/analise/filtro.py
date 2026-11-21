@@ -73,7 +73,7 @@ def iir(x: np.ndarray, ordem: int = 4) -> np.ndarray:
 
 
 def fase_zero(x: np.ndarray) -> np.ndarray:
-    """A referência da fonte falsa: Butterworth de fase zero (filtfilt), atraso 0."""
+    """Referência de comparação: Butterworth de fase zero (filtfilt), atraso 0."""
     sos = signal.butter(fonte_falsa.ORDEM_FILTRO, BANDA_HZ, btype="band", fs=FS_HZ, output="sos")
     return signal.sosfiltfilt(sos, x - np.mean(x))
 

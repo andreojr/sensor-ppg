@@ -8,7 +8,7 @@ Código que usa HAL, em `Core/Inc` e `Core/Src` (fora de `pds/`).
 | Parte | Responsável | Estado |
 |---|---|---|
 | Leitura do MAX30102 (I2C1, FIFO, INT no PB5) | João | feita: `max30102.c` |
-| Serial pro PC (USART1 a 921600 com DMA, adaptador USB-serial) | João | feita: `serial.c`, manda o sinal cru e o bruto decimado |
+| Serial pro PC (USART1 a 921600 com DMA, adaptador USB-serial) | João | feita: `serial.c`, manda o sinal cru, o bruto decimado e o filtrado |
 | Decimação na placa (400 → 100 Hz) e ciclos (DWT) | João | feita: `main.c` e `bancada.c`; ver [Decimação](../modulos/decimacao/) |
 | Filtro na placa (bruto → filtrado) | João | feito: `main.c` e `bancada.c`; ver [Filtro](../modulos/filtro/) |
 | Fonte falsa (PhysioNet em flash) | André | a fazer |
