@@ -1,0 +1,81 @@
+import numpy as np
+
+from analise import FS_HZ
+from analise.picos import ESPERA, Picos, detecta
+
+
+def senoide(f_hz: float, segundos: float, amp: float = 1.0) -> np.ndarray:
+    n = np.arange(round(segundos * FS_HZ))
+    return (amp * np.sin(2 * np.pi * f_hz * n / FS_HZ)).astype(np.float32)
+
+
+def test_senoide_72_bpm():
+    b, bpm = detecta(senoide(1.2, 30))
+    # 30 s a 1,2 Hz: 36 picos; os 2 s de aquecimento tiram 2 ou 3.
+    assert 32 <= len(b) <= 36
+    assert all(abs(x.rr_ms - 833.3) < 5 for x in b[1:])
+    assert not b[0].rr_valido and all(x.rr_valido for x in b[1:])
+    assert abs(bpm[-1] - 72.0) < 0.5
+
+
+def test_instante_com_fracao():
+    """O pico da senoide cai em (k + 1/4) / f; a parábola acerta bem melhor que 1 amostra."""
+    b, _ = detecta(senoide(1.2, 20))
+    esperado = (np.arange(30) + 0.25) / 1.2 * FS_HZ
+    for x in b:
+        assert 0.0 <= x.fracao < 1.0
+        assert np.min(np.abs(esperado - x.instante)) < 0.1
+
+
+def test_sem_sinal_sem_batimento():
+    assert detecta(np.zeros(1000, dtype=np.float32))[0] == []
+
+
+def test_nada_antes_do_aquecimento():
+    b, _ = detecta(senoide(1.2, 30))
+    assert all(x.n_pico >= ESPERA - 1 for x in b)
+
+
+def test_periodo_refratario():
+    """Segundo máximo 150 ms depois do primeiro (onda dicrótica forte) é rejeitado."""
+    x = senoide(1.2, 30) + 0.9 * np.roll(senoide(1.2, 30), 15)
+    b, _ = detecta(x.astype(np.float32))
+    assert all(y.rr_ms > 300 for y in b[1:])
+
+
+def test_pico_pequeno_e_rejeitado():
+    """Um pulso a 5% do nível dos vizinhos não passa do limiar adaptativo."""
+    x = senoide(1.0, 20)
+    x[1250:1350] *= 0.05  # um ciclo pequeno no meio
+    b, _ = detecta(x)
+    n = np.array([y.n_pico for y in b])
+    assert not np.any((n > 1250) & (n < 1350))
+
+
+def test_batimento_perdido_invalida_rr():
+    """Sem um ciclo no meio, o RR dobra: rr_valido false, e o seguinte volta a ser válido."""
+    x = senoide(1.0, 30)
+    x[1300:1400] = 0.0
+    b, _ = detecta(x)
+    longo = [i for i, y in enumerate(b) if y.rr_ms > 1500]
+    assert len(longo) == 1 and not b[longo[0]].rr_valido
+    assert b[longo[0] + 1].rr_valido
+
+
+def test_bpm_so_depois_de_rr_suficientes():
+    p = Picos()
+    validos = []
+    for x in senoide(1.0, 30):
+        if p.processa(x) is not None:
+            validos.append(p.bpm[0])
+    assert not validos[0] and not validos[2] and validos[-1]
+
+
+def test_reinicia_zera_o_estado():
+    p = Picos()
+    for x in senoide(1.2, 10):
+        p.processa(x)
+    p.reinicia()
+    q = Picos()
+    entrada = senoide(1.2, 10)
+    assert [p.processa(x) for x in entrada] == [q.processa(x) for x in entrada]
