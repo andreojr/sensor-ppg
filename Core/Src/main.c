@@ -139,8 +139,9 @@ int main(void)
   ciclos_liga();
 #ifdef BANCADA_DECIMACAO
   /* Fonte falsa na decimação; as amostras do sensor desse intervalo podem
-     sair como "# perdidas". */
-  bancada_decimacao();
+     sair como "# perdidas". O resultado (OK/FALHOU) sai na serial; a placa
+     segue lendo o sensor mesmo se falhar. */
+  (void)bancada_decimacao();
 #endif
   if (!decimacao_init(&decimacao, MAX30102_FS_HZ))
   {
