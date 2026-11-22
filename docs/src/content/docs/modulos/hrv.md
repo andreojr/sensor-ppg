@@ -243,7 +243,12 @@ Release (`-O2`) deve cair bastante, mas não foi medido.
 
 A cadeia na placa é sensor → `decimacao/` → `filtro/` → `picos/` → `hrv/`.
 A cada batimento do `picos/`, a placa manda a linha `p,...` (o batimento) e
-logo depois `h,n_pico,valido,sdnn,rmssd` (a saída do HRV, em ms com 2 casas).
+logo depois `h,n_pico,valido,sdnn,rmssd,rr_usado` (a saída do HRV, em ms com 2 casas). O
+`rr_usado` é 0 quando a qualidade disse que o trecho não dá pra usar: o laço deixa o RR
+desse batimento de fora do HRV (ver
+[Qualidade](../qualidade/#o-hrv-só-com-batimentos-usáveis)), e o `--confere` faz o mesmo.
+**Ainda não conferido na placa com o `rr_usado`** (#128): a captura de baixo é de antes,
+quando todo RR entrava.
 A captura grava as duas em `_picos.csv` e `_hrv.csv`, e o Python passa os
 mesmos batimentos pelo HRV dele e compara:
 

@@ -354,6 +354,33 @@ static int decisao(void)
     return falhas;
 }
 
+/* O RR entra no HRV? Mesmos casos de test_batimento_usavel no Python. */
+static int batimento_hrv(void)
+{
+    struct {
+        bool usavel, tem;
+        uint32_t n_julg, n;
+        bool entra;
+    } casos[] = {
+        {true, true, 900u, 1000u, true},    {false, true, 900u, 1000u, false},
+        {true, false, 0u, 100u, false},     {true, true, 800u, 1000u, true},
+        {true, true, 799u, 1000u, false},   {true, true, 1080u, 1000u, false},
+        {true, true, 0xFFFFFFCEu, 50u, true},
+    };
+    int falhas = (QUALIDADE_JULGAMENTO_VALE != 2u * PPG_FS_HZ);
+    for (uint32_t i = 0; i < sizeof casos / sizeof casos[0]; i++) {
+        ppg_qualidade_t q = {.valido = true, .dedo_presente = true, .indice = 1.0f,
+                             .usavel = casos[i].usavel};
+        bool e = qualidade_batimento_usavel(&q, casos[i].tem, casos[i].n_julg, casos[i].n);
+        if (e != casos[i].entra) {
+            printf("batimento pro HRV: caso %u deu %d\n", (unsigned)i, e);
+            falhas++;
+        }
+    }
+    printf("batimento pro HRV: %d falhas\n", falhas);
+    return falhas;
+}
+
 int main(void)
 {
     const caso_t physionet = {
@@ -369,7 +396,7 @@ int main(void)
         bordas_saida_aspereza, bordas_saida_razao, bordas_saida_ritmo, BORDAS_TOL};
 
     int falhas = roda_caso(&physionet) + roda_caso(&bordas) + inicio() + estados() + reinicio() +
-                 decisao();
+                 decisao() + batimento_hrv();
     printf(falhas ? "FALHOU (%d)\n" : "OK\n", falhas);
     return falhas ? 1 : 0;
 }

@@ -53,7 +53,6 @@ RR_MAX_MS = 2000.0
 RR_FAIXA = (0.7, 1.4)  # RR válido em relação ao RR típico
 RR_ALFA = 0.125  # peso de cada RR novo no RR típico
 BPM_JANELA = 8  # BPM = média dos últimos 8 RR válidos
-BPM_MINIMO = 4  # RR válidos pra o BPM valer
 REG_JANELA = 8  # batimentos que o teste de regularidade olha
 REG_MINIMO = 6  # desses, quantos têm que ser "bons": RR válido e perto da mediana dos RR válidos
 REG_TOL = 0.15  # "perto da mediana": a menos de 15% dela
@@ -120,8 +119,9 @@ class Picos:
 
     @property
     def bpm(self) -> tuple[bool, float]:
-        """ppg_bpm_t: (valido, bpm). valido = RR válidos suficientes E ritmo regular (regular())."""
-        if len(self.rrs) < BPM_MINIMO or not self.regular():
+        """ppg_bpm_t: (valido, bpm). valido = ritmo regular (regular()), que já exige
+        REG_MINIMO RR válidos, todos em self.rrs."""
+        if not self.regular():
             return False, 0.0
         soma = F32(0)
         for rr in self.rrs:

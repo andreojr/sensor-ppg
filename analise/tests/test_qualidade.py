@@ -229,3 +229,17 @@ def test_filtro_do_ritmo_e_o_butterworth():
 def test_bpm_confiavel(usavel, valido, tem, n, n_pico, mostra):
     assert qualidade.BATIMENTO_VALE == 3 * FS_HZ
     assert qualidade.bpm_confiavel(usavel, valido, tem, n, n_pico) is mostra
+
+
+@pytest.mark.parametrize("usavel, tem, n_julg, n, entra", [
+    (True, True, 900, 1000, True),       # julgou usável há 1 s
+    (False, True, 900, 1000, False),     # julgou não usável
+    (True, False, 0, 100, False),        # ainda não julgou (idade de 100 aceitaria)
+    (True, True, 800, 1000, True),       # idade = JULGAMENTO_VALE: ainda vale
+    (True, True, 799, 1000, False),      # idade = JULGAMENTO_VALE + 1: velho
+    (True, True, 1080, 1000, False),     # julgamento "no futuro": anomalia, bloqueia
+    (True, True, 2**32 - 50, 50, True),  # o n deu a volta no uint32: idade 100
+])
+def test_batimento_usavel(usavel, tem, n_julg, n, entra):
+    assert qualidade.JULGAMENTO_VALE == 2 * FS_HZ
+    assert qualidade.batimento_usavel(usavel, tem, n_julg, n) is entra

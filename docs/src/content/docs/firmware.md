@@ -102,7 +102,7 @@ INT ficar baixo, não vem outra borda de descida, e sem isso a leitura travaria.
 # filtro 100 Hz, atraso 100: f,n,ir,vermelho
 # picos: p,n_pico,fracao,rr_valido,rr_ms,bpm_valido,bpm
 # espectral: e,n,bpm_valido,bpm
-# hrv: h,n_pico,valido,sdnn,rmssd
+# hrv: h,n_pico,valido,sdnn,rmssd,rr_usado
 # respiracao 1 Hz: r,n,rpm,valido
 # tela 1 Hz: t,n,mostra,bpm x100
 0,112034,98765
@@ -112,7 +112,7 @@ b,0,112036.41,98768.02
 f,0,0.00,0.00
 ...
 p,1234,0.2500,1,812.50,1,73.85
-h,1234,1,48.27,33.10
+h,1234,1,48.27,33.10,1
 r,99,0.00,0
 ...
 e,799,1,73.85
@@ -149,7 +149,9 @@ t,1199,1,6420
   (mais 1 s do atraso do filtro).
 - Logo depois de cada `p,`, uma linha `h,` com a saída do HRV
   (`hrv_processa()` sobre o mesmo batimento): `n_pico`, `valido` (0/1, só
-  com 45 s de RR aceitos na janela e 20 diferenças), SDNN e RMSSD em ms com 2 casas.
+  com 45 s de RR aceitos na janela e 20 diferenças), SDNN e RMSSD em ms com 2 casas,
+  e `rr_usado` (0/1): 0 quando a qualidade disse que o trecho não dá pra usar e o RR
+  desse batimento ficou de fora do HRV (ver [HRV](../modulos/hrv/)).
 - Linhas que começam com `e,` são o **BPM do espectral** (`espectral_processa()` sobre o
   filtrado), uma por segundo, a partir de 8 s de sinal (a janela da FFT): `n` (o do
   filtrado em que a janela terminou), `bpm_valido` (0/1) e `bpm` (2 casas, 0 quando

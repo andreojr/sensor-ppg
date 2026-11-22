@@ -395,7 +395,9 @@ def confere_placa(picos_placa: np.ndarray, hrv_placa: np.ndarray) -> dict:
     """Passa os batimentos que a placa mandou pelo HRV do Python e compara com a saída dela.
 
     picos_placa: colunas n_pico, fracao, rr_valido, rr_ms, bpm_valido, bpm (o _picos.csv).
-    hrv_placa: colunas n_pico, valido, sdnn_ms, rmssd_ms (o _hrv.csv), uma linha por batimento.
+    hrv_placa: colunas n_pico, valido, sdnn_ms, rmssd_ms[, rr_usado] (o _hrv.csv), uma linha
+    por batimento. Com rr_usado = 0 a placa deixou o RR de fora (trecho que a qualidade
+    disse não usável), e o Python faz o mesmo; sem a coluna (firmware antigo), entra tudo.
     Captura desde o boot (o primeiro batimento é o primeiro da placa, com
     rr_ms = 0): tudo tem que bater. No meio: só depois de uma janela inteira
     (JANELA_S), quando a janela do Python tem os mesmos batimentos que a da placa.
@@ -418,7 +420,8 @@ def confere_placa(picos_placa: np.ndarray, hrv_placa: np.ndarray) -> dict:
     erro_sdnn = erro_rmssd = 0.0
     validos = []
     for b, o in zip(picos_placa, hrv_placa, strict=True):
-        s = h.processa(Batimento(True, int(b[0]), float(b[1]), bool(b[2]), float(b[3])))
+        usado = len(o) < 5 or bool(o[4])
+        s = h.processa(Batimento(True, int(b[0]), float(b[1]), bool(b[2]) and usado, float(b[3])))
         if b[0] < a_partir:
             continue
         comparados += 1

@@ -189,7 +189,8 @@ segundo:
 
 A resposta vale para **os últimos 2 s** (o `ritmo` olha os 4 s que terminaram 1 s antes): o
 laço principal tem que descartar os batimentos desse trecho, não só os que vierem depois.
-Hoje o laço ainda não descarta: o HRV recebe todos os batimentos (pendência).
+Pro HRV, isso é feito com `qualidade_batimento_usavel()` (ver "O HRV só com batimentos
+usáveis", abaixo).
 
 ### Casos de borda
 
@@ -529,6 +530,35 @@ que não forma o ritmo regular que o picos exige.
 
 **Limitação:** com arritmia de verdade (fibrilação, extrassístoles
 frequentes), o picos desliga o `valido` e a tela fica em `--`.
+
+### O HRV só com batimentos usáveis
+
+O `ppg.h` pede que, com `usavel` falso, o laço descarte os batimentos do trecho. Pro
+HRV, `qualidade_batimento_usavel()` (C) e `batimento_usavel()` (Python) decidem, a cada
+batimento, se o RR entra:
+
+| último julgamento da qualidade | idade do julgamento | o RR entra no HRV |
+|---|---|---|
+| usável | ≤ 2 s | sim |
+| não usável, ou nenhum ainda, ou mais velho que 2 s | | não |
+
+Quando não entra, o laço manda o batimento ao `hrv_processa()` com `rr_valido` falso: o
+RR fica fora da janela e quebra a sequência das diferenças sucessivas (o RMSSD não usa
+um par que atravessa o trecho ruim). O `hrv.c` não muda. A linha `p,` continua com o
+batimento como o picos viu, e a `h,` ganha `rr_usado` (0/1), pra o
+`analise.hrv --confere` repetir a mesma decisão no Python.
+
+**Por que o último julgamento basta.** O picos solta o batimento ~1,3 s depois do pulso,
+e a qualidade julga a cada 1 s os 2 s anteriores: o último julgamento cobre o pulso. Ele
+só diz "usável" depois de 3 janelas boas seguidas (mais os 4 s do ritmo), então cobre
+também o começo do RR (até 1,5 s antes, a 40 bpm). Mais velho que 2 s quer dizer que a
+qualidade recomeçou (`n` pulou, NaN) e ainda não julgou: o RR fica de fora.
+
+**O que muda no HRV.** Com este módulo de sensor, o trecho usável é curto (o número da
+tela aparece em ~50% do tempo bom), e o HRV precisa de 45 s de RR aceitos na janela de
+60 s: na prática, ele vai sair `valido` bem menos vezes. É o comportamento certo, porque
+os RR de trecho ruim (movimento, dedo mal apoiado) eram justamente os que estragavam o
+SDNN e o RMSSD.
 
 **Na placa, com o relógio** (22/11/2026, firmware sem bancada, 100 s:
 sem dedo, dedo firme coberto, dedo leve, sem dedo):

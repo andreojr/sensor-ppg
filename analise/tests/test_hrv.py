@@ -163,8 +163,11 @@ def test_hrv_janela_ignora_rr_fora_da_faixa():
     assert np.allclose(r, 0.0)
 
 
-def _placa_hrv(segundos: float = 240, rr_medio: float = 0.85):
-    """Batimentos e saída do HRV como a placa manda (rr_ms e HRV com 2 casas)."""
+def _placa_hrv(segundos: float = 240, rr_medio: float = 0.85, ruim: tuple = ()):
+    """Batimentos e saída do HRV como a placa manda (rr_ms e HRV com 2 casas).
+
+    ruim: trechos (início_s, fim_s) em que a qualidade disse não usável: a placa deixa
+    o RR de fora do HRV e manda rr_usado = 0 na linha h,."""
     from analise.hrv import Batimento, Hrv
 
     rng = np.random.default_rng(1)
@@ -176,9 +179,10 @@ def _placa_hrv(segundos: float = 240, rr_medio: float = 0.85):
         rr = 0.0 if ant is None else round((n_pico + fracao - ant) * 10.0, 2)
         valido_rr = ant is not None
         ant = n_pico + fracao
+        usado = not any(a <= t < b for a, b in ruim)
         p.append((n_pico, fracao, int(valido_rr), rr, 0, 0.0))
-        s = estado.processa(Batimento(True, n_pico, fracao, valido_rr, rr))
-        h.append((n_pico, int(s.valido), round(s.sdnn_ms, 2), round(s.rmssd_ms, 2)))
+        s = estado.processa(Batimento(True, n_pico, fracao, valido_rr and usado, rr))
+        h.append((n_pico, int(s.valido), round(s.sdnn_ms, 2), round(s.rmssd_ms, 2), int(usado)))
     return np.array(p), np.array(h)
 
 
@@ -207,3 +211,15 @@ def test_confere_par_cortado_nas_pontas_e_sem_validos():
     assert confere_placa(p, h[:-1])["ok"]  # parou entre o último p, e o h,
     assert confere_placa(p[11:], h[10:])["ok"]  # começou entre um p, e o h,
     assert not confere_placa(p[:30], h[:30])["ok"]  # 30 batimentos: nenhum HRV válido
+
+
+def test_confere_placa_com_rr_fora_por_qualidade():
+    """A placa deixa de fora o RR dos trechos não usáveis; o Python segue o rr_usado."""
+    from analise.hrv import confere_placa
+
+    p, h = _placa_hrv(ruim=((100, 110), (150, 152)))
+    assert (h[:, 4] == 0).sum() > 5
+    r = confere_placa(p, h)
+    assert r["ok"] and r["validos"] > 50, r
+    assert not confere_placa(p, h[:, :4])["ok"]  # ignorando o rr_usado, não bate
+    assert confere_placa(*_placa_hrv()[:1], _placa_hrv()[1][:, :4])["ok"]  # firmware antigo

@@ -46,7 +46,7 @@ PONTOS = {
 }
 COLUNAS_PICOS = ("n_pico", "fracao", "rr_valido", "rr_ms", "bpm_valido", "bpm")
 COLUNAS_ESPECTRAL = ("n", "bpm_valido", "bpm")
-COLUNAS_HRV = ("n_pico", "valido", "sdnn_ms", "rmssd_ms")
+COLUNAS_HRV = ("n_pico", "valido", "sdnn_ms", "rmssd_ms", "rr_usado")
 COLUNAS_TELA = ("n", "mostra", "bpm")
 COLUNAS_QUALIDADE = (
     "n", "dedo", "usavel", "indice", "motivo", "dc", "pi", "aspereza", "razao", "ritmo",
@@ -127,13 +127,16 @@ def le_batimento(linha: str) -> tuple[int, float, int, float, int, float] | None
         return None
 
 
-def le_hrv(linha: str) -> tuple[int, int, float, float] | None:
-    """Converte "h,n_pico,valido,sdnn,rmssd". None se não for."""
+def le_hrv(linha: str) -> tuple[int, int, float, float, int] | None:
+    """Converte "h,n_pico,valido,sdnn,rmssd,rr_usado". None se não for.
+
+    Firmware antigo (sem o rr_usado): todo RR entrava no HRV, então rr_usado = 1."""
     partes = linha.strip().split(",")
-    if len(partes) != 5 or partes[0] != "h":
+    if len(partes) not in (5, 6) or partes[0] != "h":
         return None
     try:
-        return int(partes[1]), int(partes[2]), float(partes[3]), float(partes[4])
+        usado = int(partes[5]) if len(partes) == 6 else 1
+        return int(partes[1]), int(partes[2]), float(partes[3]), float(partes[4]), usado
     except ValueError:
         return None
 

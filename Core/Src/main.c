@@ -85,6 +85,9 @@ static ciclos_t ciclos_qualidade;
 static ppg_bpm_t bpm_picos;                /* o último BPM do picos */
 static bool tem_batimento;                 /* já houve um batimento desde o boot */
 static uint32_t n_ultimo_pico;             /* n_pico do último batimento */
+static ppg_qualidade_t julgamento;         /* a última saída da qualidade */
+static bool tem_julgamento;                /* a qualidade já julgou desde o boot */
+static uint32_t n_julgamento;              /* n do bruto em que ela julgou */
 
 /* USER CODE END PV */
 
@@ -166,7 +169,7 @@ int main(void)
                    "# filtro %u Hz, atraso %u: f,n,ir,vermelho\n"
                    "# picos: p,n_pico,fracao,rr_valido,rr_ms,bpm_valido,bpm\n"
                    "# espectral: e,n,bpm_valido,bpm\n"
-                   "# hrv: h,n_pico,valido,sdnn,rmssd\n"
+                   "# hrv: h,n_pico,valido,sdnn,rmssd,rr_usado\n"
                    "# respiracao 1 Hz: r,n,rpm,valido\n"
                    "# tela 1 Hz: t,n,mostra,bpm x100\n",
                    MAX30102_FS_HZ, PPG_FS_HZ, PPG_FS_HZ, (unsigned)PPG_ATRASO_AMOSTRAS);
@@ -612,16 +615,17 @@ static void envia_espectral(const ppg_amostra_t *filtrado, const ppg_bpm_t *v)
   serial_escreve(linha, (uint32_t)tam);
 }
 
-/* A saída do HRV depois de um batimento: "h,n_pico,valido,sdnn,rmssd" (ms, 2 casas). */
-static void envia_hrv(uint32_t n_pico, const ppg_hrv_t *s)
+/* A saída do HRV depois de um batimento: "h,n_pico,valido,sdnn,rmssd,rr_usado" (ms, 2 casas;
+   rr_usado = 0 quando a qualidade disse que o trecho não dá pra usar e o RR ficou de fora). */
+static void envia_hrv(uint32_t n_pico, const ppg_hrv_t *s, bool rr_usado)
 {
   char sdnn[24];
   char rmssd[24];
   char linha[80];
   centesimos(sdnn, sizeof sdnn, s->sdnn_ms);
   centesimos(rmssd, sizeof rmssd, s->rmssd_ms);
-  int tam = snprintf(linha, sizeof linha, "h,%lu,%d,%s,%s\n", (unsigned long)n_pico,
-                     s->valido ? 1 : 0, sdnn, rmssd);
+  int tam = snprintf(linha, sizeof linha, "h,%lu,%d,%s,%s,%d\n", (unsigned long)n_pico,
+                     s->valido ? 1 : 0, sdnn, rmssd, rr_usado ? 1 : 0);
   serial_escreve(linha, (uint32_t)tam);
 }
 
@@ -671,13 +675,23 @@ static void decima(const max30102_amostra_t *amostra)
       tem_batimento = true;
       n_ultimo_pico = batimento.n_pico;
 
+      /* O ppg.h pede: com a qualidade dizendo que o trecho não dá pra usar, o laço
+         descarta o batimento. Pro HRV, isso é o RR marcado como inválido: ele não
+         entra na conta e quebra a sequência das diferenças (RMSSD). A linha "p,"
+         acima continua com o batimento como o picos viu. */
+      ppg_batimento_t pro_hrv = batimento;
+      bool usavel = qualidade_batimento_usavel(&julgamento, tem_julgamento, n_julgamento, bruto.n);
+      if (!usavel)
+      {
+        pro_hrv.rr_valido = false;
+      }
       ppg_hrv_t h;
       t0 = ciclos_agora();
-      bool saiu_hrv = hrv_processa(&hrv, &batimento, &h);
+      bool saiu_hrv = hrv_processa(&hrv, &pro_hrv, &h);
       ciclos_conta(&ciclos_hrv, ciclos_agora() - t0);
       if (saiu_hrv)
       {
-        envia_hrv(batimento.n_pico, &h);
+        envia_hrv(batimento.n_pico, &h, usavel);
       }
     }
 
@@ -704,6 +718,9 @@ static void decima(const max30102_amostra_t *amostra)
     ciclos_conta(&ciclos_qualidade, ciclos_agora() - t0);
     if (julgou)
     {
+      julgamento = q;
+      tem_julgamento = true;
+      n_julgamento = bruto.n;
       /* O que a tela mostraria: o BPM do picos só se a qualidade e o picos concordam. */
       bool mostra = qualidade_bpm_confiavel(&q, &bpm_picos, tem_batimento, bruto.n, n_ultimo_pico);
       char linha[96]; /* "t,..." ~25 B; "q,..." (bancada) até ~76 B */

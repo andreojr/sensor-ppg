@@ -287,6 +287,23 @@ def bpm_confiavel(usavel: bool, bpm_valido: bool, tem_batimento: bool, n: int,
     return usavel and bpm_valido and tem_batimento and idade <= BATIMENTO_VALE
 
 
+# O último julgamento da qualidade vale por 2 s: sai um por segundo, então mais
+# velho que isso quer dizer que ela recomeçou (n pulou, NaN) e ainda não julgou.
+JULGAMENTO_VALE = 2 * FS_HZ
+
+
+def batimento_usavel(usavel: bool, tem_julgamento: bool, n_julgamento: int, n: int) -> bool:
+    """O RR de um batimento que sai agora (amostra n) entra no HRV só se o último
+    julgamento da qualidade (na amostra n_julgamento) disse usável e é recente.
+
+    O picos solta o batimento ~1,3 s depois do pulso, e a qualidade julga a cada 1 s
+    os 2 s anteriores: o último julgamento cobre o pulso. Usável já exige 3 janelas
+    boas seguidas, então cobre também o começo do RR (até 1,5 s antes). Idade em
+    uint32, como no C."""
+    idade = (n - n_julgamento) % 2**32
+    return usavel and tem_julgamento and idade <= JULGAMENTO_VALE
+
+
 def roda(ir: np.ndarray, vm: np.ndarray, n: np.ndarray | None = None,
          lim: Limiares = LIMIARES) -> list[Saida]:
     """Passa o sinal todo pelo detector e devolve as saídas."""

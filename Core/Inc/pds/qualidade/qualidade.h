@@ -156,4 +156,17 @@ bool qualidade_processa(qualidade_t *q, const ppg_amostra_t *bruto, ppg_qualidad
 bool qualidade_bpm_confiavel(const ppg_qualidade_t *q, const ppg_bpm_t *b, bool tem_batimento,
                              uint32_t n, uint32_t n_ultimo_pico);
 
+/*
+ * O RR de um batimento que sai agora (amostra n) entra no HRV só se o último
+ * julgamento da qualidade (q, feito na amostra n_julgamento) disse usável e tem
+ * no máximo QUALIDADE_JULGAMENTO_VALE amostras. O picos solta o batimento
+ * ~1,3 s depois do pulso e a qualidade julga a cada 1 s os 2 s anteriores: o
+ * último julgamento cobre o pulso, e usável já exige 3 janelas boas seguidas
+ * (cobre o começo do RR). Mais velho que 2 s = a qualidade recomeçou e ainda
+ * não julgou. Idade em uint32, como em qualidade_bpm_confiavel.
+ */
+#define QUALIDADE_JULGAMENTO_VALE (2u * PPG_FS_HZ)
+bool qualidade_batimento_usavel(const ppg_qualidade_t *q, bool tem_julgamento,
+                                uint32_t n_julgamento, uint32_t n);
+
 #endif /* PDS_QUALIDADE_QUALIDADE_H */
