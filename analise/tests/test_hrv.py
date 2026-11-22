@@ -267,10 +267,10 @@ def test_confere_rr_usado_refaz_a_decisao_da_placa():
 
     bruto, filtrado, h = _captura_com_qualidade()
     r = confere_rr_usado(bruto, filtrado, h)
-    assert r["ok"] and r["fora"] > 3 and r["perto_de_buraco"] == 0, r
+    assert r["ok"] and r["barrados"] > 3 and r["perto_de_buraco"] == 0, r
 
     errado = h.copy()
-    k = int(np.flatnonzero(errado[:, 4] == 1)[-1])
+    k = int(np.flatnonzero((errado[:, 4] == 1) & (errado[:, 0] < 100 * FS_HZ))[-1])
     errado[k, 4] = 0  # a placa teria deixado um RR bom de fora
     assert not confere_rr_usado(bruto, filtrado, errado)["ok"]
 
@@ -288,4 +288,24 @@ def test_confere_rr_usado_ignora_o_trecho_de_uma_linha_perdida():
     sem = np.ones(len(bruto), bool)
     sem[buraco:buraco + 2] = False
     r = confere_rr_usado(bruto[sem], filtrado[sem], h)
-    assert r["ok"] and r["perto_de_buraco"] > 5, r
+    assert r["ok"] and r["perto_de_buraco"] > 2, r
+
+
+def test_confere_nao_compara_captura_que_nao_comeca_no_boot():
+    from analise.hrv import confere_rr_usado
+
+    bruto, filtrado, h = _captura_com_qualidade()
+    r = confere_rr_usado(bruto[50:], filtrado[50:], h)
+    assert not r["ok"] and r["inicio"] == 50 and "comparados" not in r
+
+
+def test_confere_placa_para_na_linha_perdida_em_vez_de_abortar():
+    """Uma p, ou h, perdida no meio: o HRV é comparado só até ali."""
+    from analise.hrv import confere_placa
+
+    p, h = _placa_hrv()
+    r = confere_placa(np.delete(p, 150, axis=0), h)  # perdeu uma p,
+    assert r["parou_em"] == int(p[151, 0]) and r["batimentos"] == 150 and r["ok"], r
+    r = confere_placa(p, np.delete(h, 150, axis=0))  # perdeu uma h,
+    assert r["parou_em"] == int(p[150, 0]) and r["batimentos"] == 150 and r["ok"], r
+    assert confere_placa(p, h)["parou_em"] is None

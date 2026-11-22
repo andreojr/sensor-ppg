@@ -411,8 +411,14 @@ def confere_placa(picos_placa: np.ndarray, hrv_placa: np.ndarray) -> dict:
     # algumas h, sem a p,, e no fim algumas p, sem a h,.
     if len(picos_placa):
         hrv_placa = hrv_placa[hrv_placa[:, 0] >= picos_placa[0, 0]]
-    picos_placa = picos_placa[: len(hrv_placa)]
-    if len(picos_placa) != len(hrv_placa) or np.any(picos_placa[:, 0] != hrv_placa[:, 0]):
+    # Uma p, ou h, perdida na serial no meio: os pares deixam de casar dali em diante, e
+    # o HRV do Python já não veria os mesmos batimentos. Compara só até ali.
+    m = min(len(picos_placa), len(hrv_placa))
+    casam = picos_placa[:m, 0] == hrv_placa[:m, 0]
+    k = m if casam.all() else int(np.argmin(casam))
+    parou_em = None if k == m else int(picos_placa[k, 0])
+    picos_placa, hrv_placa = picos_placa[:k], hrv_placa[:k]
+    if k == 0:
         raise ValueError("as linhas p, e h, não casam batimento a batimento")
     desde_boot = bool(picos_placa[0, 3] == 0 and picos_placa[0, 2] == 0)
     a_partir = -1 if desde_boot else picos_placa[0, 0] + JANELA_AMOSTRAS + 3 * FS_HZ
@@ -439,6 +445,7 @@ def confere_placa(picos_placa: np.ndarray, hrv_placa: np.ndarray) -> dict:
             erro_sdnn = max(erro_sdnn, abs(s.sdnn_ms - o[2]))
             erro_rmssd = max(erro_rmssd, abs(s.rmssd_ms - o[3]))
     r = {
+        "parou_em": parou_em,
         "desde_boot": desde_boot,
         "batimentos": comparados,
         "validos": len(validos),
@@ -464,7 +471,7 @@ def confere_placa(picos_placa: np.ndarray, hrv_placa: np.ndarray) -> dict:
 # buracos de até BURACO_MAX amostras são preenchidos por interpolação, e os batimentos
 # perto deles (a interpolação não é o sinal de verdade) ficam fora da comparação.
 # Buraco maior: compara só até ele.
-BURACO_ANTES, BURACO_DEPOIS = 3 * FS_HZ, 10 * FS_HZ
+BURACO_ANTES, BURACO_DEPOIS = 1 * FS_HZ, 3 * FS_HZ
 BURACO_MAX = 10
 
 
@@ -482,6 +489,12 @@ def _preenche(x: np.ndarray) -> tuple[np.ndarray, list[int]]:
     return cheio, [int(n[k]) for k in saltos]
 
 
+def hrv_tem_rr_usado(arq) -> bool:
+    """O _hrv.csv veio de firmware que manda o rr_usado (a captura grava -1 senão)."""
+    h = np.loadtxt(arq, delimiter=",", skiprows=1, ndmin=2)
+    return h.shape[1] >= 5 and bool(np.any(h[:, 4] >= 0))
+
+
 def confere_rr_usado(bruto: np.ndarray, filtrado: np.ndarray, hrv_placa: np.ndarray) -> dict | None:
     """Refaz no Python a decisão do laço (qual RR entra no HRV) e compara com o rr_usado.
 
@@ -493,23 +506,33 @@ def confere_rr_usado(bruto: np.ndarray, filtrado: np.ndarray, hrv_placa: np.ndar
 
     if hrv_placa.shape[1] < 5 or np.all(hrv_placa[:, 4] < 0):
         return None
-    (bruto, b1), (filtrado, b2) = (_preenche(depois_do_reset(x)) for x in (bruto, filtrado))
+    bruto, filtrado = depois_do_reset(bruto), depois_do_reset(filtrado)
+    if bruto[0, 0] != 0 or filtrado[0, 0] != 0:
+        # Começando depois do boot, a qualidade do Python julgaria fora de fase com a placa.
+        return {"ok": False, "inicio": int(max(bruto[0, 0], filtrado[0, 0]))}
+    (bruto, b1), (filtrado, b2) = _preenche(bruto), _preenche(filtrado)
     placa = depois_do_reset(hrv_placa)
-    python = rr_entrou_no_hrv(bruto, filtrado)
+    python = rr_entrou_no_hrv(bruto, filtrado, com_rr_valido=True)
     buracos = b1 + b2
+    fim = min(bruto[-1, 0], filtrado[-1, 0]) - 3 * FS_HZ  # o Python ainda não soltou os do fim
 
     def perto(n: int) -> bool:
         return any(b - BURACO_ANTES <= n <= b + BURACO_DEPOIS for b in buracos)
 
-    comuns = [(int(k), bool(u)) for k, u in placa[:, [0, 4]] if int(k) in python]
-    longe = [(k, u) for k, u in comuns if not perto(k)]
-    difs = sum(python[k] != u for k, u in longe)
+    todos = [(int(k), bool(u)) for k, u in placa[:, [0, 4]] if int(k) <= fim]
+    longe = [(k, u) for k, u in todos if not perto(k)]
+    sem_par = sum(k not in python for k, _ in longe)  # a placa achou, o Python não
+    comuns = [(k, u) for k, u in longe if k in python]
+    difs = sum(python[k][0] != u for k, u in comuns)
     return {
-        "comparados": len(longe),
-        "perto_de_buraco": len(comuns) - len(longe),
-        "fora": sum(not u for _, u in longe),
+        "inicio": 0,
+        "comparados": len(comuns),
+        "perto_de_buraco": len(todos) - len(longe),
+        "sem_par": sem_par,
+        # RR que o picos aceitou e a qualidade barrou: o que esta regra decide.
+        "barrados": sum(python[k][1] and not python[k][0] for k, _ in comuns),
         "diferentes": difs,
-        "ok": bool(longe) and difs == 0,
+        "ok": bool(comuns) and difs == 0 and sem_par == 0,
     }
 
 
@@ -530,6 +553,9 @@ def main() -> None:
         r = confere_placa(*(np.loadtxt(x, delimiter=",", skiprows=1, ndmin=2) for x in arqs))
         modo = "desde o boot" if r["desde_boot"] else f"no meio (depois de {JANELA_S} s)"
         print(f"captura {modo}: {r['batimentos']} batimentos comparados, {r['validos']} com HRV válido")
+        if r["parou_em"] is not None:
+            print(f"  (linha p, ou h, perdida perto do batimento {r['parou_em']}: o HRV foi "
+                  "comparado só até ali)")
         if r["validos"]:
             print(
                 f"erro máximo: SDNN {r['erro_sdnn_ms']:.3f} ms, RMSSD {r['erro_rmssd_ms']:.3f} ms; "
@@ -548,17 +574,24 @@ def main() -> None:
             rr = confere_rr_usado(
                 *(np.loadtxt(x, delimiter=",", skiprows=1, ndmin=2) for x in (bruto, filtrado, arqs[1]))
             )
+        tem_coluna = hrv_tem_rr_usado(arqs[1])
         if rr is None:
             print("rr_usado: não conferido (precisa de captura desde o boot, com _bruto e "
                   "_filtrado, de firmware que manda a coluna rr_usado)")
+        elif "comparados" not in rr:
+            print(f"rr_usado: não conferido: o bruto começa em n={rr['inicio']}, e não no boot "
+                  "(abra a captura antes de apertar o reset)")
         else:
             print(f"rr_usado: {rr['comparados']} batimentos refeitos no Python (qualidade + picos + "
-                  f"fila), {rr['fora']} com o RR de fora, {rr['perto_de_buraco']} ignorados perto de "
-                  f"linhas perdidas; diferente em {rr['diferentes']}: "
-                  f"{'OK' if rr['ok'] else 'DIVERGE'}")
-            if rr["ok"] and rr["fora"] == 0:
-                print("  (nenhum RR de fora: a captura não exercitou a regra; mexa o dedo um pouco)")
-        if not (r["ok"] and (rr is None or rr["ok"])):
+                  f"fila), {rr['barrados']} barrados pela qualidade, {rr['perto_de_buraco']} "
+                  f"ignorados perto de linhas perdidas, {rr['sem_par']} que o Python não achou; "
+                  f"diferente em {rr['diferentes']}: {'OK' if rr['ok'] else 'DIVERGE'}")
+            if rr["ok"] and rr["barrados"] == 0:
+                print("  (nenhum RR barrado pela qualidade: a captura não exercitou a regra; "
+                      "mexa o dedo e repita)")
+        # Com a coluna rr_usado (firmware novo), a conferência dela é obrigatória.
+        rr_ok = (rr is not None and rr.get("ok", False)) if tem_coluna else True
+        if not (r["ok"] and rr_ok):
             raise SystemExit(1)
         return
     if a.vetores:

@@ -242,8 +242,8 @@ Release (`-O2`) deve cair bastante, mas não foi medido.
 ### 4. Sensor real
 
 A cadeia na placa é sensor → `decimacao/` → `filtro/` → `picos/` → `hrv/`.
-A cada batimento do `picos/`, a placa manda a linha `p,...` (o batimento) e
-logo depois `h,n_pico,valido,sdnn,rmssd,rr_usado` (a saída do HRV, em ms com 2 casas). O
+A cada batimento do `picos/`, a placa manda a linha `p,...` (o batimento) e,
+até ~1 s depois, `h,n_pico,valido,sdnn,rmssd,rr_usado` (a saída do HRV, em ms com 2 casas). O
 `rr_usado` é 1 se o RR entrou no HRV e 0 se ficou de fora (trecho não usável, ver
 [Qualidade](../qualidade/#o-hrv-só-com-batimentos-usáveis), ou RR já recusado pelo picos).
 A `h,` sai até ~1 s depois da `p,` (espera o julgamento da qualidade). O `--confere` usa o

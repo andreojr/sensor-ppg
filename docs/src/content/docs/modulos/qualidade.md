@@ -593,7 +593,8 @@ um bloco (1 s): mais velho quer dizer que a qualidade recomeçou (`n` pulou, NaN
 não julgou.
 
 **Como.** O batimento espera numa fila (`qualidade_fila_t`, 8 lugares: 2 s a 300 ms de
-RR) até o julgamento seguinte, no máximo 1 s. Aí vai ao `hrv_processa()`, com
+RR) até o julgamento seguinte: até 1 s (até ~3 s se a qualidade recomeçou; aí a fila pode
+encher, e os excedentes saem com o RR de fora, que já seria o resultado). Aí vai ao `hrv_processa()`, com
 `rr_valido` falso se não entra: o RR fica fora da janela e quebra a sequência das
 diferenças (o RMSSD não usa um par que atravessa o trecho ruim). O `hrv.c` não muda.
 `qualidade_batimento_usavel()`, `qualidade_fila_poe()` e `qualidade_fila_tira()` (C) e
@@ -606,7 +607,8 @@ libera (até ~1 s depois) e ganha `rr_usado`: 1 se o RR entrou no HRV, 0 se fico
 `_filtrado.csv` (qualidade, picos e fila, na ordem do laço) e compara com o `rr_usado`
 da placa. Linha perdida na serial: o Python preenche o buraco por interpolação (senão a
 qualidade dele recomeçaria e julgaria fora de fase com a placa até o fim) e deixa de fora
-da comparação os batimentos de 3 s antes a 10 s depois dele. Isso roda mesmo quando não
+da comparação os batimentos de 1 s antes a 3 s depois dele. Uma `p,` ou `h,` perdida faz o
+HRV ser comparado só até ali (o `rr_usado` continua, por `n_pico`). Isso roda mesmo quando não
 sai nenhum HRV válido.
 
 **Ciclos.** Depois de um reinício da qualidade, a fila pode soltar até ~7 batimentos

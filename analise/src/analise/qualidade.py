@@ -322,10 +322,11 @@ class Fila:
         return saida
 
 
-def rr_entrou_no_hrv(bruto: np.ndarray, filtrado: np.ndarray) -> dict[int, bool]:
+def rr_entrou_no_hrv(bruto: np.ndarray, filtrado: np.ndarray, com_rr_valido: bool = False) -> dict:
     """Refaz a decisão do laço da placa a partir de uma captura desde o boot: o picos
     do Python no filtrado, a qualidade no bruto e a fila, na mesma ordem do main.c
-    (em cada amostra, o picos antes da qualidade). Devolve n_pico -> o RR entrou.
+    (em cada amostra, o picos antes da qualidade). Devolve n_pico -> o RR entrou (com
+    com_rr_valido, n_pico -> (o RR entrou, o picos tinha aceitado o RR)).
 
     bruto e filtrado: colunas n, ir, vermelho (o _bruto.csv e o _filtrado.csv)."""
     from analise.picos import Picos
@@ -333,7 +334,7 @@ def rr_entrou_no_hrv(bruto: np.ndarray, filtrado: np.ndarray) -> dict[int, bool]
     filt = dict(zip(filtrado[:, 0].astype(int).tolist(), filtrado[:, 1].tolist(), strict=True))
     q, p, fila = Qualidade(), Picos(), Fila()
     julg: tuple[int, bool] | None = None
-    entrou: dict[int, bool] = {}
+    entrou: dict = {}
     for n, ir, vm in zip(bruto[:, 0].astype(int).tolist(), bruto[:, 1].tolist(),
                          bruto[:, 2].tolist(), strict=True):
         if n in filt:
@@ -342,12 +343,12 @@ def rr_entrou_no_hrv(bruto: np.ndarray, filtrado: np.ndarray) -> dict[int, bool]
                 antes = julg is not None and batimento_usavel(julg[1], True, julg[0], n)
                 velho = fila.poe(b, antes)
                 if velho is not None:
-                    entrou[velho.n_pico] = False
+                    entrou[velho.n_pico] = (False, velho.rr_valido) if com_rr_valido else False
         s = q.processa(n, float(ir), float(vm))
         if s is not None:
             julg = (n, s.usavel)
             for b, entra in fila.tira(s.usavel):
-                entrou[b.n_pico] = entra
+                entrou[b.n_pico] = (entra, b.rr_valido) if com_rr_valido else entra
     return entrou
 
 

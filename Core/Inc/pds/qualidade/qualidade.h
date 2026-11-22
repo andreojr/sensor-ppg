@@ -175,8 +175,10 @@ bool qualidade_batimento_usavel(const ppg_qualidade_t *q, bool tem_julgamento,
                                 uint32_t n_julgamento, uint32_t n);
 
 /*
- * A fila dos batimentos que esperam o julgamento de depois: no máximo 1 s (2 s se
- * a qualidade recomeçou), e no pior caso (RR de 300 ms) cabem 8 em 2 s.
+ * A fila dos batimentos que esperam o julgamento de depois: até 1 s normalmente (até
+ * ~3 s se a qualidade recomeçou no meio de um bloco). Os 8 lugares cobrem 2 s a 300 ms
+ * de RR; se encher, os excedentes saem com o RR de fora, que já seria o resultado (logo
+ * depois de um recomeço, o julgamento de depois nunca é usável).
  * qualidade_fila_poe: guarda o batimento com o julgamento de antes. Fila cheia: o
  * mais antigo sai em *velho com rr_valido falso (devolve true; mande-o pro HRV).
  * qualidade_fila_tira: a qualidade julgou (q); tira o mais antigo com rr_valido =
