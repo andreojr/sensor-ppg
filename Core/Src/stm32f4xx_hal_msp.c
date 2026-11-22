@@ -107,6 +107,12 @@ void HAL_I2C_MspInit(I2C_HandleTypeDef* hi2c)
     /* Peripheral clock enable */
     __HAL_RCC_I2C1_CLK_ENABLE();
     /* USER CODE BEGIN I2C1_MspInit 1 */
+    /* SCL em push-pull (o CubeMX só deixa dreno aberto): só o STM32 dirige o
+       clock, o MAX30102 não estica o SCL. Assim o SCL não precisa de
+       resistor, e o resistor vai pro INT. Ver docs/.../firmware.md. */
+    GPIO_InitStruct.Pin = SENSOR_SCL_Pin;
+    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+    HAL_GPIO_Init(SENSOR_SCL_GPIO_Port, &GPIO_InitStruct);
 
     /* USER CODE END I2C1_MspInit 1 */
   }
