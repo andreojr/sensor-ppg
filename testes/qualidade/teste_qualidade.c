@@ -157,6 +157,22 @@ static int estados(void)
         falhas++;
     }
 
+    /* O dedo precisa dos dois canais: um só com nível de dedo não basta. */
+    qualidade_init(&q);
+    s = constante(&q, 100000.0f, 1500.0f, 500.0f, 5);
+    if (s.dedo_presente || s.usavel || !(q.motivo & QUALIDADE_SEM_DEDO)) {
+        printf("só o IR: dedo %d usavel %d motivo %u\n", s.dedo_presente, s.usavel,
+               (unsigned)q.motivo);
+        falhas++;
+    }
+    qualidade_init(&q);
+    s = constante(&q, 1500.0f, 100000.0f, 5.0f, 5);
+    if (s.dedo_presente || s.usavel || !(q.motivo & QUALIDADE_SEM_DEDO)) {
+        printf("só o vermelho: dedo %d usavel %d motivo %u\n", s.dedo_presente, s.usavel,
+               (unsigned)q.motivo);
+        falhas++;
+    }
+
     qualidade_init(&q); /* saturado: topo do ADC */
     s = constante(&q, 255000.0f, 200000.0f, 500.0f, 5);
     if (s.usavel || !(q.motivo & QUALIDADE_SATURADO)) {
@@ -207,6 +223,27 @@ static int estados(void)
     if (s.usavel || !(q.motivo & QUALIDADE_SEM_RITMO) || q.ritmo != 0.0f) {
         printf("constante: usavel %d motivo %u ritmo %f\n", s.usavel, (unsigned)q.motivo,
                (double)q.ritmo);
+        falhas++;
+    }
+
+    /* A referência só é esquecida na RUINS_ESQUECE-ésima janela ruim seguida, não antes. */
+    qualidade_init(&q);
+    (void)constante(&q, 100000.0f, 100000.0f, 500.0f, 6);
+    bool tinha_ref = q.tem_ref;
+    uint32_t n0 = q.prox_n;
+    for (uint32_t i = n0; i < n0 + (QUALIDADE_RUINS_ESQUECE + 4u) * PPG_FS_HZ; i++) {
+        ppg_amostra_t e = limpo(i, 100000.0f, 5.0f); /* sem pulso: janela ruim */
+        e.vermelho = e.ir;
+        if (!qualidade_processa(&q, &e, &s))
+            continue;
+        bool esperado = q.ruins < QUALIDADE_RUINS_ESQUECE;
+        if (q.ruins > 0u && q.tem_ref != esperado) {
+            printf("esquece: %u ruins, tem_ref %d\n", (unsigned)q.ruins, q.tem_ref);
+            falhas++;
+        }
+    }
+    if (!tinha_ref || q.tem_ref) {
+        printf("esquece: tinha %d, tem no fim %d\n", tinha_ref, q.tem_ref);
         falhas++;
     }
     printf("estados: %d falhas\n", falhas);
@@ -266,6 +303,22 @@ static int reinicio(void)
     }
     if (sem != 3u) {
         printf("reinício com ritmo cheio: %u de 3 sem ritmo\n", (unsigned)sem);
+        falhas++;
+    }
+
+
+    /* NaN só no vermelho também recomeça. */
+    qualidade_init(&q);
+    primeira = 0;
+    for (uint32_t i = 0; i < 6u * PPG_FS_HZ; i++) {
+        ppg_amostra_t e = limpo(i, 100000.0f, 500.0f);
+        if (i == 120u)
+            e.vermelho = NAN;
+        if (qualidade_processa(&q, &e, &s) && !primeira)
+            primeira = i;
+    }
+    if (primeira != 121u + QUALIDADE_JANELA - 1u) {
+        printf("NaN no vermelho: primeira saída na amostra %u\n", (unsigned)primeira);
         falhas++;
     }
     printf("reinício: %d falhas\n", falhas);

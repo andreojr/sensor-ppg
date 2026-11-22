@@ -16,7 +16,7 @@ Código que usa HAL, em `Core/Inc` e `Core/Src` (fora de `pds/`).
 | Espectral na placa (filtrado → BPM pela FFT) | Celso | feito: `main.c`, linhas `e,`, bate com o Python na placa; ver [Espectral](../modulos/espectral/) e [FFT](../modulos/fft/) |
 | Respiração na placa (bruto → rpm, 1 por segundo) | João | feita: `main.c` e `bancada.c`; ver [Respiração](../modulos/respiracao/) |
 | Bancada do HRV na placa (`-DBANCADA_HRV=ON`) | André | feita: `bancada_hrv.c`, passou na placa; ver [HRV](../modulos/hrv/) |
-| Bancada da qualidade na placa (`-DBANCADA_QUALIDADE=ON`) | André | pronta, não rodou: `bancada_qualidade.c`; ver [Qualidade](../modulos/qualidade/) |
+| Bancada da qualidade na placa (`-DBANCADA_QUALIDADE=ON`) | André | feita: `bancada_qualidade.c`, passou na placa (55/55, pior caso 1 393 ciclos); ver [Qualidade](../modulos/qualidade/) |
 | Fonte falsa (PhysioNet em flash) | André | a fazer |
 | Timer, filas e laço principal (TIM2 a 100 Hz já configurado) | André | a fazer |
 | Display OLED (I2C3) | Celso | a fazer |
@@ -224,6 +224,13 @@ uv run python -m analise.filtro --confere dados/sensor_<data>_<hora>.csv
 uv run python -m analise.respiracao --confere dados/sensor_<data>_<hora>.csv
 ```
 
+| Sintoma | Causa provável |
+|---|---|
+| `# erro: MAX30102 nao respondeu na I2C1` | VIN, GND, SCL ou SDA soltos (o SCL solto é o mais comum) |
+| Só o cabeçalho, nenhuma amostra | INT não ligado no B5 |
+| Caracteres sem sentido | baud errado (tem que ser 921600) |
+| Nada chega | RX do adaptador fora do A9, ou sem GND comum |
+
 ### Bancada da decimação (fonte falsa)
 
 Com `-DBANCADA_DECIMACAO=ON`, na partida a placa toca a fonte falsa a 400 Hz
@@ -287,7 +294,8 @@ A emulação (`uv run testes/fft/ciclos/ciclos.py espectral`) estimava ~1 060 e 
 Com `-DBANCADA_RESPIRACAO=ON`: 5 min do bruto do `s1_sit` (o vetor de
 `testes/respiracao/vetores/s1_sit.h`, ~120 KB na flash), porque os 60 s da
 fonte falsa só enchem uma janela. Decimação, filtro e respiração juntas
-ocupam ~300 KB de flash; as cinco bancadas, ~341 KB.
+ocupam ~300 KB de flash. Com todas as bancadas ligadas juntas, a flash passa de 400 KB
+(dos 512 KB do chip): ligue só as que for usar.
 
 ```text
 # bancada respiracao: 299 estimativas (esperado 299), 0 diferentes, erro max 0 milesimos de rpm
@@ -315,13 +323,6 @@ segundo, sai uma linha `q,n,dedo,usavel,indice,motivo,dc,pi,aspereza,razao,ritmo
 (inteiros escalados, ver `bancada_qualidade.h`), que o `analise.captura`
 grava em `<nome>_qualidade.csv`. Sem a opção, nada disso entra no firmware.
 Procedimento e orçamento em [Qualidade](../modulos/qualidade/).
-
-| Sintoma | Causa provável |
-|---|---|
-| `# erro: MAX30102 nao respondeu na I2C1` | VIN, GND, SCL ou SDA soltos (o SCL solto é o mais comum) |
-| Só o cabeçalho, nenhuma amostra | INT não ligado no B5 |
-| Caracteres sem sentido | baud errado (tem que ser 921600) |
-| Nada chega | RX do adaptador fora do A9, ou sem GND comum |
 
 ## Configuração do CubeMX
 

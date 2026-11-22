@@ -578,14 +578,36 @@ def gera_vetores(testes: Path | None = None) -> list[Path]:
     ]
 
 
+def distribuicao(nomes: list[str]) -> None:
+    """De onde vêm os limiares: pi, aspereza e razão em todas as janelas do limpo."""
+    pi, asp, raz = [], [], []
+    for nome in nomes:
+        for s in roda(*registro_100hz(nome)):
+            pi.append(s.pi)
+            asp.append(s.aspereza)
+            if s.razao > 0:
+                raz.append(s.razao)
+    pi, asp, raz = np.array(pi), np.array(asp), np.array(raz)
+    print(f"{len(pi)} janelas do limpo em {len(nomes)} registros")
+    print(f"pi: min {100 * pi.min():.2f}%, p99 {100 * np.percentile(pi, 99):.2f}%, "
+          f"max {100 * pi.max():.2f}%")
+    print(f"aspereza: min {asp.min():.2f}, max {asp.max():.2f}")
+    print(f"razão: p99,9 {np.percentile(raz, 99.9):.2f}")
+
+
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     p.add_argument("--vetores", action="store_true", help="gera os vetores do teste em C")
     p.add_argument("--figura", type=Path, help="grava a figura do vetor bordas")
+    p.add_argument("--distribuicao", action="store_true",
+                   help="pi, aspereza e razão no limpo (de onde vêm os limiares)")
     p.add_argument("registros", nargs="*", help="padrão: os 22 registros sit")
     args = p.parse_args(argv)
+    if args.distribuicao:
+        distribuicao(args.registros or [f"s{i}_sit" for i in range(1, 23)])
+        return
     if args.figura:
         from analise import plota_qualidade
 

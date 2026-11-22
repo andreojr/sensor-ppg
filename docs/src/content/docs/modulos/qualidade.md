@@ -48,7 +48,7 @@ pra perceber o defeito e mistura trecho bom com ruim.
 Tudo é acumulado amostra a amostra (soma, máximo, mínimo, soma de
 diferenças), sem guardar as 200 amostras: essa parte do estado tem 108
 bytes e custa umas poucas somas e comparações por amostra. Só a amostra que
-fecha o bloco faz 5 divisões. O ritmo (abaixo) precisa guardar 4 s a 25 Hz,
+fecha o bloco faz 6 divisões. O ritmo (abaixo) precisa guardar 4 s a 25 Hz,
 num buffer de 125 pontos guardado em dobro (abaixo): com ele, o estado
 inteiro tem 1 184 bytes, mais que a pilha da placa (1 KB). No firmware, o
 `qualidade_t` tem que ser `static` ou global, nunca variável local.
@@ -150,16 +150,19 @@ Uma janela é **boa** quando passa em tudo. Cada falha liga um bit em
 | dc dos dois canais ≥ | 10 000 contagens | `SEM_DEDO` | Sem dedo o sensor lê ~1500; com dedo, 64 mil a 87 mil no PhysioNet e ~130 mil no nosso. 10 mil é a média geométrica de 1500 e 65 mil (folga de ~6× pros dois lados). |
 | maior < | 250 000 | `SATURADO` | ~95% do topo do ADC de 18 bits (262 143). Perto do topo o pulso é cortado. |
 | pi ≥ | 0,05% | `PULSO_FRACO` | Menor pi limpo do PhysioNet: 0,09%. Metade disso. |
-| razao ≥ | 0,4 | `PULSO_FRACO` | Pulso que cai a menos de 40% de repente: dedo apertado demais ou saindo. No limpo, só 1% das janelas fica abaixo de 0,53. |
+| razao ≥ | 0,4 | `PULSO_FRACO` | Pulso que cai a menos de 40% de repente: dedo apertado demais ou saindo. No limpo, só 1% das janelas fica abaixo de 0,59. |
 | pi ≤ | 5% | `MOVIMENTO` | Maior pi limpo do PhysioNet: 5,0%; 99% ficam abaixo de 2,9%. |
-| razao ≤ | 2,0 | `MOVIMENTO` | O pulso não dobra de um segundo pro outro; o movimento, sim. No limpo, 99,9% ficam abaixo de 2,3 contra a mediana das janelas anteriores. |
+| razao ≤ | 2,0 | `MOVIMENTO` | O pulso não dobra de um segundo pro outro; o movimento, sim. No limpo, 99,9% ficam abaixo de 2,3 contra a referência (média exponencial das alturas das janelas boas). |
 | aspereza ≥ | 1,5 | `MOVIMENTO` | Abaixo disso o sinal só subiu ou só desceu na janela: deriva ou transitório (o dedo acabou de entrar), não pulso. Menor aspereza limpa: 1,97. |
-| aspereza ≤ | 12 | `RUIDO` | Maior aspereza limpa: 10,5. Ruído de metade do tamanho do pulso já dá aspereza mediana de 22. |
+| aspereza ≤ | 12 | `RUIDO` | Maior aspereza limpa: 10,6. Ruído de metade do tamanho do pulso já dá aspereza mediana de 22. |
 | ritmo ≥ | 0,45 | `SEM_RITMO` | No PhysioNet limpo, ~3% das janelas de 4 s ficam abaixo (quase todas nos registros de perfusão baixa); no sinal do nosso sensor sem pulso de verdade, 0,04 a 0,26. Começou em 0,5 (só a qualidade decidia); baixou pra 0,45 quando o picos virou o segundo teste do BPM (etapa 3 do BPM confiável). A troca está na validação. |
 
 Os limiares saíram da distribuição dos indicadores nos 22 registros `sit` do
 PhysioNet (10 783 janelas limpas) contra os defeitos fabricados (abaixo):
-cada um fica fora da faixa do sinal limpo, com folga.
+os de dedo, saturação, pi mínimo e aspereza ficam com folga do sinal limpo; o pi
+máximo e a razão ficam na cauda do limpo (pi máximo limpo de 5,02%, razão p99,9 de
+2,23) e respondem pelos 0,3% de falso alarme. Os números do sinal limpo
+saem de `uv run python -m analise.qualidade --distribuicao`.
 
 ### Histerese: rejeita rápido, aceita devagar
 
@@ -380,8 +383,8 @@ conta em 25 passos por amostra, o pior caso no build Debug (sem otimização,
 onde cada multiplicação da autocorrelação custa ~30 ciclos) ficou em ~2 200,
 e o orçamento subiu pra 3 000 (decisão do André, 21/11/2026; o filtro gasta
 ~9 900). Compila com o
-Arm GNU com e sem a opção (e com as quatro bancadas juntas), sem warnings
-(com a bancada, a flash vai de 34 a 111 KB, por causa do vetor). No laço,
+Arm GNU com e sem a opção (e com todas as bancadas juntas), sem warnings
+(a bancada acrescenta ~74 KB de flash, quase tudo o vetor `bordas`). No laço,
 os ciclos da qualidade no sensor real saem a cada 10 s, junto dos da
 decimação e do filtro (`# qualidade: ciclos med ... max ...`).
 
