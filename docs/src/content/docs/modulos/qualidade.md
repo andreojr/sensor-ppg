@@ -48,7 +48,7 @@ pra perceber o defeito e mistura trecho bom com ruim.
 Tudo é acumulado amostra a amostra (soma, máximo, mínimo, soma de
 diferenças), sem guardar as 200 amostras: o estado inteiro tem 108 bytes e o
 custo por amostra é de umas poucas somas e comparações. Só a amostra que
-fecha o bloco faz 5 divisões.
+fecha o bloco faz 6 divisões.
 
 ### O passa-altas
 
@@ -97,13 +97,14 @@ Uma janela é **boa** quando passa em tudo. Cada falha liga um bit em
 | pi ≥ | 0,05% | `PULSO_FRACO` | Menor pi limpo do PhysioNet: 0,09%. Metade disso. |
 | razao ≥ | 0,4 | `PULSO_FRACO` | Pulso que cai a menos de 40% de repente: dedo apertado demais ou saindo. No limpo, só 1% das janelas fica abaixo de 0,53. |
 | pi ≤ | 5% | `MOVIMENTO` | Maior pi limpo do PhysioNet: 5,0%; 99% ficam abaixo de 2,9%. |
-| razao ≤ | 2,0 | `MOVIMENTO` | O pulso não dobra de um segundo pro outro; o movimento, sim. No limpo, 99,9% ficam abaixo de 2,3 contra a mediana das janelas anteriores. |
+| razao ≤ | 2,0 | `MOVIMENTO` | O pulso não dobra de um segundo pro outro; o movimento, sim. No limpo, 99,9% ficam abaixo de 2,3 contra a referência (média exponencial das alturas das janelas boas). |
 | aspereza ≥ | 1,5 | `MOVIMENTO` | Abaixo disso o sinal só subiu ou só desceu na janela: deriva ou transitório (o dedo acabou de entrar), não pulso. Menor aspereza limpa: 1,97. |
-| aspereza ≤ | 12 | `RUIDO` | Maior aspereza limpa: 10,5. Ruído de metade do tamanho do pulso já dá aspereza mediana de 22. |
+| aspereza ≤ | 12 | `RUIDO` | Maior aspereza limpa: 10,6. Ruído de metade do tamanho do pulso já dá aspereza mediana de 22. |
 
 Os limiares saíram da distribuição dos indicadores nos 22 registros `sit` do
 PhysioNet (10 783 janelas limpas) contra os defeitos fabricados (abaixo):
-cada um fica fora da faixa do sinal limpo, com folga.
+cada um fica fora da faixa do sinal limpo, com folga. Os números do sinal limpo
+saem de `uv run python -m analise.qualidade --distribuicao`.
 
 ### Histerese: rejeita rápido, aceita devagar
 
@@ -218,7 +219,7 @@ Mesmos registros, trechos de 40 s, defeitos de 5 s no meio
 | dedo entra → usável | 6 | 20 |
 | começa movimento ×4 → não usável | 1 | 7 |
 | começa ruído ×1 → não usável | 1 | 1 |
-| começa sem pulso → não usável | 2 | 6 |
+| começa sem pulso → não usável | 2 | 6 (1 dos 241 casos não detectou) |
 | acaba movimento ×4 → usável de novo | 4 | 6 |
 
 ![Vetor bordas: IR bruto com as janelas usáveis, pi e aspereza de cada janela](../../../assets/qualidade.png)
@@ -276,7 +277,8 @@ ciclos de cada chamada. Esperado:
 **Orçamento:** 2 000 ciclos por amostra no pior caso (~21 µs a 96 MHz, 0,2%
 da CPU a 100 Hz). O pior caso é a amostra que fecha o bloco. Compila com o
 Arm GNU com e sem a opção (e com as quatro bancadas juntas), sem warnings
-(com a bancada, a flash vai de 34 a 109 KB, por causa do vetor). No laço,
+(a bancada acrescenta ~74 KB de flash, quase tudo o vetor `bordas`; sem a opção, a
+qualidade não entra no firmware). No laço,
 os ciclos da qualidade no sensor real saem a cada 10 s, junto dos da
 decimação e do filtro (`# qualidade: ciclos med ... max ...`).
 
