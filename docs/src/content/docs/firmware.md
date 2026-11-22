@@ -13,7 +13,7 @@ Código que usa HAL, em `Core/Inc` e `Core/Src` (fora de `pds/`).
 | Filtro na placa (bruto → filtrado) | João | feito: `main.c` e `bancada.c`; ver [Filtro](../modulos/filtro/) |
 | Picos na placa (filtrado → batimentos e BPM) | Celso / André | feito: `main.c` e `bancada.c`; ver [Picos](../modulos/picos/) |
 | HRV na placa (batimentos → SDNN e RMSSD) | André | feito: `main.c`, linhas `h,`, bate com o Python na placa; ver [HRV](../modulos/hrv/) |
-| Espectral na placa (filtrado → BPM pela FFT) | Celso | **código pronto e compilando, ainda não rodou na placa**: `main.c` e `bancada.c`; ver [Espectral](../modulos/espectral/) e [FFT](../modulos/fft/) |
+| Espectral na placa (filtrado → BPM pela FFT) | Celso | feito: `main.c`, linhas `e,`, bate com o Python na placa; ver [Espectral](../modulos/espectral/) e [FFT](../modulos/fft/) |
 | Respiração na placa (bruto → rpm, 1 por segundo) | João | feita: `main.c` e `bancada.c`; ver [Respiração](../modulos/respiracao/) |
 | Bancada do HRV na placa (`-DBANCADA_HRV=ON`) | André | feita: `bancada_hrv.c`, passou na placa; ver [HRV](../modulos/hrv/) |
 | Fonte falsa (PhysioNet em flash) | André | a fazer |
@@ -276,11 +276,9 @@ junto com as outras.
 # bancada espectral: ciclos por amostra med ... (orcamento 9600), max ... (orcamento 960000): OK
 ```
 
-**Estado: não rodou na placa.** O código compila (Debug e Release, sem avisos) e o
-mesmo código ARM foi emulado (`uv run testes/fft/ciclos/ciclos.py espectral`): 53 saídas
-iguais às do Python, média de ~1 060 ciclos por amostra e pior caso de ~107 400 (modelo
-do Cortex-M4F, sem a espera da flash). Falta rodar na placa pra trocar a estimativa
-pela medida do contador de ciclos (DWT) e ver as linhas `# bancada espectral` acima.
+**Na placa** (22/11/2026, Release): 53 saídas, 0 fora da tolerância, e o DWT mediu
+**951 ciclos por amostra em média e 101 323 no pior caso** (a amostra da FFT, 1,06 ms).
+A emulação (`uv run testes/fft/ciclos/ciclos.py espectral`) estimava ~1 060 e ~107 400.
 
 ### Bancada da respiração
 

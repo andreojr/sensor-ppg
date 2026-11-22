@@ -30,8 +30,8 @@ atrás de uma função nossa de três linhas de uso.
 | Teste no PC contra o NumPy | feito |
 | Firmware compila com ela, sem avisos novos | feito (Debug e Release) |
 | Flash e RAM medidos | feito |
-| Ciclos | **estimados** por emulação; falta medir na placa |
-| Rodar na STM32 dentro do orçamento (#25) | **a fazer** (precisa da placa) |
+| Ciclos | estimados por emulação e **medidos na placa** (DWT) |
+| Rodar na STM32 dentro do orçamento (#25) | feito: o espectral inteiro, pior caso de ~101 300 ciclos (10,6% de um período de amostra) |
 
 ## Uso
 
@@ -120,8 +120,8 @@ o caso passou a usar a entrada normalizada pra amplitude 1, como os outros.
 ## Flash e RAM
 
 **Hoje**, com o espectral no `main.c` (Release, `arm-none-eabi-gcc` 16.2.0, sem aviso):
-o firmware fica em **47.740 B de flash e 31.484 B de RAM**, contra 21.604 B e 16.788 B
-da `main` (v0.2.0): **+26.136 B de flash e +14.696 B de RAM** pelo espectral e pela FFT
+o firmware fica em **49.980 B de flash e 33.828 B de RAM**, contra 23.864 B e 19.132 B
+da `main` (com a respiração, #110): **+26.116 B de flash e +14.696 B de RAM** pelo espectral e pela FFT
 juntos. Os 14.680 B do `espectral_t` são quase toda a RAM. As tabelas de 256 e 512 pontos
 também entram (o `fft_init` aceita os três tamanhos), embora o espectral só use 1024.
 
@@ -202,7 +202,9 @@ desvio tomado. **Não** modela a espera da flash (a 96 MHz o STM32F411 tem 3 est
 de espera, que o cache ART esconde em parte) nem a sobreposição de instruções do
 pipeline. O valor real na placa pode ser maior (pela flash) ou menor (pelo pipeline);
 com folga de mais de 10× no orçamento, a conclusão de que **cabe** não depende disso.
-O número de verdade sai do contador de ciclos da placa (`DWT->CYCCNT`), ainda a fazer.
+**Na placa** (`DWT->CYCCNT`, bancada do espectral, Release): o espectral inteiro tem pior
+caso de **~101 300 ciclos** (1,06 ms), contra ~107 400 do modelo; a média por amostra
+deu 951 no vetor e ~1 070 em regime com o sensor. O modelo errou pra cima ~6%.
 
 **O espectral inteiro** (`espectral_processa()` amostra a amostra sobre os 60 s do `s2_walk`,
 `uv run testes/fft/ciclos/ciclos.py espectral`): as 53 saídas saem iguais às do Python, e o
@@ -214,11 +216,10 @@ aplicar o Hann e achar o pico.
 Os números são do **Release (`-Os`)**. O Debug (`-O0`) é bem mais lento, então
 o orçamento deve ser conferido no build que vai pra apresentação.
 
-## Pendente antes de ir pra placa
+## Decisões pendentes
 
-- **Medir na placa** com `DWT->CYCCNT` (um laço que chama `fft_potencia` e lê o contador
-  antes e depois), pra trocar a estimativa pelo número real e fechar a #25.
 - **Decidir o tamanho** (256, 512 ou 1024) e desligar os outros: depende da janela
   do `espectral` (8 s, 800 amostras, pede 1024).
-- **Decidir onde a FFT roda:** no laço principal (precisa caber em um período de
-  amostra, o que cabe com folga) ou numa interrupção de baixa prioridade.
+- **Onde a FFT roda:** hoje no laço principal, dentro do `espectral_processa()` (a
+  interrupção só marca que há amostra). Cabe com folga num período de amostra (10,6%
+  medido); uma interrupção de baixa prioridade só valeria se o laço apertar.

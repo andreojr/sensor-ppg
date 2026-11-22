@@ -22,8 +22,8 @@ sidebar:
 | 1. Python (`analise/src/analise/espectral.py`) | feito, validado em 15 registros do PhysioNet |
 | 2. C (`Core/*/pds/espectral/`) | feito, bate com o Python (erro máx. de 7,6e-5 bpm) |
 | 3. Teste no PC (`testes/espectral/`) | feito, 3 casos contra os vetores do Python |
-| 4. Placa com a fonte falsa | **código pronto, compila; falta rodar na placa** (`-DBANCADA_ESPECTRAL=ON`) |
-| 5. Sensor real | **código pronto, compila; falta rodar com o sensor** (linha `e,...` na serial) |
+| 4. Placa com a fonte falsa | feito: `-DBANCADA_ESPECTRAL=ON`, 53 de 53 saídas iguais ao Python, ciclos medidos (DWT) |
+| 5. Sensor real | feito: dedo no MAX30102, placa × Python iguais, ~1 bpm do picos (`--confere`) |
 
 Esta página é atualizada em todo PR que mexe no módulo.
 
@@ -43,7 +43,7 @@ guarda as últimas `JANELA_S` e, a cada `HOP_S`, com a janela cheia, devolve um
    prática, de **~44 a ~208 bpm** (medido com senoides).
 5. **Interpolação parabólica** em volta do pico, no log da amplitude. É o que
    faz o erro cair para cerca de 1 bpm, mesmo com a resolução de 7,5 bpm.
-6. **Validade:** o pico precisa ser máximo local (maior que os dois vizinhos) e,
+6. **Validade:** o pico precisa ser máximo local (maior ou igual aos dois vizinhos) e,
    junto com os vizinhos, ter 30% ou mais da potência da banda (a *prominência*, de
    0 a 1). Ruído branco quase nunca passa; um pulso com ruído passa. Na borda da
    banda, o vizinho de fora entra na soma: sem a regra do máximo local, um componente
@@ -80,16 +80,41 @@ local, o `borda` dá diferenças no `valido`.
 `PPG_ATRASO_AMOSTRAS` (1 s) depois do sinal. Pra comparar com outra referência de tempo
 (o ECG, por exemplo), desconte esse atraso.
 
-**Custo** (código ARM emulado, modelo do Cortex-M4F, `arm-none-eabi-gcc` 16.2.0; ver
-[FFT](../fft/)): **~1 060 ciclos por amostra em média** (orçamento 9 600) e **~107 400 no
+**Custo estimado** (código ARM emulado, modelo do Cortex-M4F, `arm-none-eabi-gcc` 16.2.0; ver
+[FFT](../fft/); o medido na placa está abaixo): **~1 060 ciclos por amostra em média** nos 60 s
+do vetor, contando os 8 s em que a janela enche (~1 180 em regime) (orçamento 9 600) e **~107 400 no
 pior caso**, a amostra em que sai a FFT (orçamento 960 000, 11% de um período de amostra,
 1,1 ms a 96 MHz). Em Release,
 o espectral acrescenta ~26 KB de flash e ~14,7 KB de RAM ao firmware.
 
-**Na placa e com o sensor real:** o `main.c` já passa o filtrado pelo espectral e manda
-`e,n,bpm_valido,bpm` a cada segundo, e a bancada confere a fonte falsa. Nada disso rodou
-no hardware ainda: faltam as linhas `# bancada espectral` e um BPM do dedo comparado com
-um oxímetro ou com o picos.
+**Na placa com a fonte falsa (passo 4,** `-DBANCADA_ESPECTRAL=ON`, Release, 22/11/2026):
+
+```text
+# bancada espectral: 53 saidas (esperado 53), 0 fora da tolerancia, erro max 0 milesimos
+# bancada espectral: ciclos por amostra med 951 (orcamento 9600), max 101323 (orcamento 960000): OK
+```
+
+O pior caso **medido** pelo contador de ciclos (DWT) é de ~101 300 ciclos, ou 1,06 ms dos
+10 ms de um período de amostra (a emulação estimava ~107 400). Com o firmware normal,
+em regime (janela cheia, uma FFT por segundo), o `# espectral:` mostra média de
+~1 070 ciclos por amostra e máximo de ~101 300. Roda junto com a bancada da respiração
+sem mudar nada.
+
+**Com o sensor real (passo 5,** dedo do André parado, 60 s, 22/11/2026): o
+`main.c` passa o filtrado pelo espectral e manda `e,n,bpm_valido,bpm` a cada segundo.
+Com `uv run python -m analise.espectral --confere dados/<captura>.csv`, o Python roda no
+mesmo filtrado que a placa mandou:
+
+| O quê | Resultado |
+|---|---|
+| Saídas comparadas | 30 de 60 (3 linhas perdidas na serial tiraram as outras janelas) |
+| `valido` placa × Python | igual em todas |
+| BPM placa × Python | diferença máxima de 0,005 (o filtrado vem com 2 casas) |
+| BPM da placa | mediana de 64,4 bpm (de 55,6 a 73,9), 100% válidos |
+| Espectral × picos (60 / RR médio na mesma janela) | diferença mediana de 1,06 bpm, máxima de 9,5 |
+
+**Sem dedo, sai válido.** Antes do dedo, só com ruído no sensor, a placa marcou de 135 a
+141 bpm como válido. O espectral não sabe se há dedo: isso é do módulo `qualidade`.
 
 ## Validação
 

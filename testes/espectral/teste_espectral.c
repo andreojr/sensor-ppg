@@ -74,7 +74,8 @@ static int confere_caso(espectral_t *e, const caso_t *c)
     if (roda(e, c, valido2, bpm2, prom2, &primeira) != n)
         return falhas + 1;
     falhas += confere_int("valido (reiniciado)", valido2, valido, n) +
-              confere_float("bpm (reiniciado)", bpm2, bpm, n, 0.0f);
+              confere_float("bpm (reiniciado)", bpm2, bpm, n, 0.0f) +
+              confere_float("prominencia (reiniciado)", prom2, prom, n, 0.0f);
     return falhas;
 }
 

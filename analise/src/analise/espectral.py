@@ -11,8 +11,9 @@ Método, a cada passo:
   4. Maior pico de potência na banda BANDA_HZ.
   5. Interpolação parabólica em volta do pico: a frequência sai com precisão
      bem melhor que a distância entre bins.
-  6. Válido só se o pico concentra potência suficiente (PROMINENCIA): dentro da
-     banda, o pico e seus vizinhos imediatos têm pelo menos essa fração do total.
+  6. Válido só se o pico é máximo local (maior ou igual aos dois vizinhos) e
+     concentra potência suficiente (PROMINENCIA): o pico e seus vizinhos
+     imediatos têm pelo menos essa fração do total da banda.
 
 Resolução e atraso (estudado em espectral_validacao.py): a resolução de frequência é 1 / JANELA_S, e o BPM
 medido é o da janela inteira, ou seja, vem com atraso de cerca de JANELA_S / 2.
@@ -21,6 +22,11 @@ Validação contra o ECG: uv run python -m analise.espectral_validacao
 Vetores de referência pro teste em C (testes/espectral/vetores/), da pasta analise/:
 
     uv run python -m analise.espectral
+
+Na placa (passo 5): captura com o analise.captura e confere o BPM da placa (linhas
+"e,") com o Python sobre o mesmo filtrado e com o RR médio do picos na janela:
+
+    uv run python -m analise.espectral --confere dados/sensor_<data>_<hora>.csv
 """
 
 from __future__ import annotations
@@ -35,7 +41,7 @@ from analise import FS_HZ
 JANELA_S = 8.0
 HOP_S = 1.0
 NFFT = 1024
-BANDA_HZ = (0.7, 3.5)  # 42 a 210 bpm
+BANDA_HZ = (0.7, 3.5)  # 42 a 210 bpm nominal; válido na prática de ~44 a ~208
 PROMINENCIA = 0.3  # fração mínima da potência da banda no pico e vizinhos
 TOL_VETOR = 1e-3  # tolerância dos floats no teste em C (bpm e prominência)
 
@@ -181,6 +187,93 @@ def gera_vetores(testes: Path | None = None) -> list[Path]:
     return saidas
 
 
+def confere_placa(
+    filtrado: np.ndarray,
+    espectral_placa: np.ndarray,
+    picos_placa: np.ndarray | None = None,
+    atraso: int = 100,
+) -> dict:
+    """Compara o BPM da placa com o Python sobre o mesmo filtrado (e com o picos).
+
+    filtrado: colunas n, ir, vermelho (o _filtrado.csv). espectral_placa: n,
+    bpm_valido, bpm (o _espectral.csv). picos_placa: n_pico, ..., rr_ms, ... (o
+    _picos.csv), opcional. Só entram as saídas com as 800 amostras da janela na
+    captura (uma linha perdida na serial tira as janelas que a contêm). A placa
+    manda o filtrado com 2 casas, então o BPM bate até ~0,01, não exato.
+    atraso: PPG_ATRASO_AMOSTRAS, pra pôr a janela no tempo do n_pico do picos.
+    """
+    e = Espectral()
+    ir = dict(zip(filtrado[:, 0].astype(int), filtrado[:, 1].astype(np.float32), strict=True))
+    v_dif, bpm_dif, contra_picos, bpm_placa = 0, 0.0, [], []
+    n_janelas = 0
+    for n, valido, bpm in espectral_placa:
+        idx = range(int(n) - e.n_janela + 1, int(n) + 1)
+        if not all(k in ir for k in idx):
+            continue
+        n_janelas += 1
+        py = e._estima(np.array([ir[k] for k in idx], dtype=np.float32))
+        v_dif += int(bool(valido) != py.valido)
+        bpm_dif = max(bpm_dif, abs(float(bpm) - float(py.bpm)))
+        if not valido:
+            continue
+        bpm_placa.append(float(bpm))
+        if picos_placa is not None:
+            fim = n - atraso
+            dentro = picos_placa[
+                (picos_placa[:, 0] > fim - e.n_janela)
+                & (picos_placa[:, 0] <= fim)
+                & (picos_placa[:, 2] == 1)
+            ]
+            if len(dentro) >= 3:
+                contra_picos.append(float(bpm) - 60000.0 / dentro[:, 3].mean())
+    return {
+        "saidas": len(espectral_placa),
+        "janelas": n_janelas,
+        "valido_diferente": v_dif,
+        "bpm_dif_max": bpm_dif,
+        "bpm_placa": np.array(bpm_placa),
+        "contra_picos": np.array(contra_picos),
+    }
+
+
+def main(argv: list[str] | None = None) -> None:
+    import argparse
+
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument(
+        "--confere", type=Path, help="CSV da captura (com _filtrado, _espectral e _picos ao lado)"
+    )
+    args = ap.parse_args(argv)
+    if not args.confere:
+        for caminho in gera_vetores():
+            print(caminho)
+        return
+    lado = args.confere.with_name
+    arq = lado(args.confere.stem + "_espectral.csv")
+    if not arq.exists():
+        raise SystemExit(f"sem {arq.name}: a placa não mandou nenhuma linha e, (8 s de captura?)")
+    arq_picos = lado(args.confere.stem + "_picos.csv")
+    r = confere_placa(
+        np.loadtxt(lado(args.confere.stem + "_filtrado.csv"), delimiter=",", skiprows=1),
+        np.loadtxt(arq, delimiter=",", skiprows=1, ndmin=2),
+        np.loadtxt(arq_picos, delimiter=",", skiprows=1, ndmin=2) if arq_picos.exists() else None,
+    )
+    print(f"{r['saidas']} saídas da placa, {r['janelas']} com a janela inteira na captura")
+    print(
+        f"placa x Python: valido diferente em {r['valido_diferente']}, maior diferença de bpm {r['bpm_dif_max']:.3f}"
+    )
+    b = r["bpm_placa"]
+    if len(b):
+        print(f"bpm válido da placa: mediana {np.median(b):.1f} (de {b.min():.1f} a {b.max():.1f})")
+    c = r["contra_picos"]
+    if len(c):
+        print(
+            f"espectral - picos (60 / RR médio na janela): {len(c)} janelas, "
+            f"mediana |dif| {np.median(np.abs(c)):.2f} bpm, máx {np.abs(c).max():.2f}"
+        )
+    ok = r["janelas"] > 0 and r["valido_diferente"] == 0 and r["bpm_dif_max"] < 0.05
+    print("OK" if ok else "FALHOU")
+
+
 if __name__ == "__main__":
-    for caminho in gera_vetores():
-        print(caminho)
+    main()
