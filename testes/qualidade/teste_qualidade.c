@@ -212,6 +212,26 @@ static int estados(void)
         printf("referência esquecida: usavel %d motivo %u\n", s.usavel, (unsigned)q.motivo);
         falhas++;
     }
+    /* A referência só é esquecida na RUINS_ESQUECE-ésima janela ruim seguida, não antes. */
+    qualidade_init(&q);
+    (void)constante(&q, 100000.0f, 100000.0f, 500.0f, 6);
+    bool tinha_ref = q.tem_ref;
+    uint32_t n0 = q.prox_n;
+    for (uint32_t i = n0; i < n0 + (QUALIDADE_RUINS_ESQUECE + 4u) * PPG_FS_HZ; i++) {
+        ppg_amostra_t e = limpo(i, 100000.0f, 5.0f); /* sem pulso: janela ruim */
+        e.vermelho = e.ir;
+        if (!qualidade_processa(&q, &e, &s))
+            continue;
+        bool esperado = q.ruins < QUALIDADE_RUINS_ESQUECE;
+        if (q.ruins > 0u && q.tem_ref != esperado) {
+            printf("esquece: %u ruins, tem_ref %d\n", (unsigned)q.ruins, q.tem_ref);
+            falhas++;
+        }
+    }
+    if (!tinha_ref || q.tem_ref) {
+        printf("esquece: tinha %d, tem no fim %d\n", tinha_ref, q.tem_ref);
+        falhas++;
+    }
     printf("estados: %d falhas\n", falhas);
     return falhas;
 }

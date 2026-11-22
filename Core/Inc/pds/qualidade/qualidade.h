@@ -43,7 +43,7 @@
 #define QUALIDADE_BLOCO PPG_FS_HZ          /* 1 s: uma saída por bloco */
 #define QUALIDADE_JANELA (2u * QUALIDADE_BLOCO)
 #define QUALIDADE_ALFA 0.02f               /* 1 / (0,5 s x 100 Hz): corte ~0,32 Hz */
-#define QUALIDADE_DC_MIN 10000.0f          /* contagens; sem dedo ~1500, com dedo > 60 mil */
+#define QUALIDADE_DC_MIN 10000.0f          /* contagens; sem dedo ~1500, com dedo > 64 mil */
 #define QUALIDADE_SATURA 250000.0f         /* ~95% do topo do ADC (262143) */
 #define QUALIDADE_PI_MIN 0.0005f           /* 0,05% */
 #define QUALIDADE_PI_MAX 0.05f             /* 5% */
