@@ -23,8 +23,8 @@ sidebar:
 | 1. Python, validado no PhysioNet | feito |
 | 2. C sem HAL | feito: `qualidade.h`, `qualidade.c` |
 | 3. Teste no PC contra os vetores | feito: `testes/qualidade/`, no CI |
-| 4. Placa com a fonte falsa | bancada pronta (`-DBANCADA_QUALIDADE=ON`), **ainda não rodou** |
-| 5. Sensor real | linha `q,...` pela serial pronta, **ainda não rodou**; procedimento abaixo |
+| 4. Placa com a fonte falsa | feito: a bancada passou na placa |
+| 5. Sensor real | feito: a placa decide igual ao Python; mas com este módulo de sensor ela aceita trechos sem pulso de verdade (abaixo) |
 
 ## Método
 
@@ -255,7 +255,7 @@ os limiares iguais aos `#define` do C, e os vetores em dia (o Python de hoje,
 na entrada gravada no vetor, tem que dar a saída gravada; roda no CI sem
 baixar o PhysioNet).
 
-### 3. Placa com a fonte falsa (preparado, não rodou)
+### 3. Placa com a fonte falsa
 
 ```bash
 cmake --preset Debug -DBANCADA_QUALIDADE=ON
@@ -276,13 +276,21 @@ ciclos de cada chamada. Esperado:
 **Orçamento:** 2 000 ciclos por amostra no pior caso (~21 µs a 96 MHz, 0,2%
 da CPU a 100 Hz). O pior caso é a amostra que fecha o bloco. Compila com o
 Arm GNU com e sem a opção (e com as quatro bancadas juntas), sem warnings
-(com a bancada, a flash vai de 29 a 104 KB, por causa do vetor). No laço,
+(com a bancada, a flash vai de 34 a 109 KB, por causa do vetor). No laço,
 os ciclos da qualidade no sensor real saem a cada 10 s, junto dos da
 decimação e do filtro (`# qualidade: ciclos med ... max ...`).
 
-**Resultado na placa:** *(preencher)*
+**Resultado na placa** (21/11/2026):
 
-### 4. Sensor real (preparado, não rodou)
+```text
+# bancada qualidade: 55 saidas (esperado 55), 13 usaveis, 0 fora da tolerancia, erro rel max 123 milionesimos
+# bancada qualidade: ciclos por amostra med 491 max 1393 (orcamento 2000): OK
+```
+
+No laço, com o sensor, a qualidade ficou em `med 532 max 1163` ciclos,
+dentro do orçamento e longe dos outros módulos (o filtro gasta ~9 900).
+
+### 4. Sensor real
 
 Com a mesma opção, o laço principal passa cada amostra do bruto decimado
 pela qualidade e manda, uma vez por segundo:
@@ -305,4 +313,33 @@ essas linhas em `<nome>_qualidade.csv`, ao lado do cru e do bruto. Roteiro,
 A referência é o roteiro anotado. Conferir também com o bruto: nos trechos
 marcados usáveis, o pulso tem que estar visível no `_bruto.csv`.
 
-**Resultado com o sensor:** *(preencher)*
+**Resultado com o sensor** (21/11/2026, 80 s, roteiro curto com cronômetro:
+0–10 s sem dedo, 10–40 s parado, 40–50 s mexendo, 50–65 s parado, 65–75 s
+sem dedo; nenhuma amostra perdida):
+
+| trecho | o que a placa disse |
+|---|---|
+| sem dedo (0–9 s) | `dedo` 0, `motivo` 1 em todas as saídas |
+| dedo entra (~9 s) | usável aos 19 s (10 s: o transitório do dedo entrando dura ~6 s, depois 3 janelas boas) |
+| parado (19–38 s) | usável em 16 de 20 s; 4 s de `motivo` 8 (pi de 5,5 a 6,4%, acima do máximo de 5%) |
+| mexendo (39–53 s) | não usável em todas, `motivo` 8 (pi até 270%, razão até 66) |
+| parado de novo (54–64 s) | usável só 1 s; depois `motivo` 4 (pulso fraco): o dedo voltou mais apertado (dc de 90 para 128 mil) e o pulso caiu a ~1/3 da referência recém-aprendida |
+| sem dedo (64 s em diante) | `dedo` 0 em 1 s |
+
+**Placa = Python.** Rodando `analise.qualidade` no `_bruto.csv` gravado
+(começando no mesmo limite de bloco da placa), as 78 saídas em comum têm a
+mesma decisão (`usavel`, `dedo`, `motivo`) nas 78.
+
+**O que isso não valida.** As decisões de dedo ausente e de movimento estão
+certas. Mas, olhando o filtrado, **não há pulso regular em nenhum trecho**,
+nem nos que a placa marcou usáveis: a autocorrelação de 4 s (no atraso de
+0,4 a 1,5 s) ficou entre 0,04 e 0,26 nos trechos usáveis, quando um PPG bom
+passa de 0,7, e os RR do picos saíram misturando 300 e 1 500 ms. É o mesmo
+problema de montagem descrito em [Picos](../picos/): no módulo verde, os
+componentes em volta são mais altos que a janela do sensor e o dedo não
+encosta direito. A qualidade não pega isso porque nenhum dos critérios
+mede **regularidade**: um sinal irregular com altura e aspereza de pulso
+passa. Duas saídas possíveis: um critério de periodicidade (autocorrelação,
+custa CPU no fim do bloco) ou refazer esta captura com o suporte de dedo
+antes de mexer nos critérios. Também apareceu pi de 5 a 6% com o dedo parado,
+perto do limite de 5% calibrado no PhysioNet.
