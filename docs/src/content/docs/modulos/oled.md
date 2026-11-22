@@ -69,7 +69,7 @@ O protótipo do design deixa algumas coisas em aberto; estas são as escolhas, t
 
 | Item | Escolha | Tipo |
 |---|---|---|
-| Resolução | 128 × 64. A variante 128 × 32 do design **não foi feita** (as outras telas supõem 128 × 64) | suposição |
+| Resolução | 128 × 64, confirmada por quem tem o módulo. A variante 128 × 32 do design **não foi feita** | fato |
 | Endereço I2C | 0x3C (`DISPLAY_ENDERECO`; alguns módulos usam 0x3D) | suposição |
 | Orientação | segmentos e linhas remapeados (`A1`/`C8`); `-DDISPLAY_ORIENTACAO_NORMAL=0` desfaz | suposição |
 | Troca de telas | rodízio por tempo (8 s, 4 s, 4 s): o design não define um botão, e o `.ioc` não configura nenhum | decisão |
@@ -103,8 +103,7 @@ Os vetores e a tabela da fonte do C saem de `uv run python -m analise.oled` (em 
 - **Rodar na placa** com o módulo de verdade: ver se o endereço (0x3C) e a orientação estão certos, se o
   sinal da onda precisa mesmo ser trocado, e medir o tempo de uma página pelo contador de ciclos.
   A demonstração (`-DBANCADA_DISPLAY=ON`) serve pra isso sem o sensor.
-- **Confirmar o módulo:** 128 × 64 ou 128 × 32? Se for 128 × 32, as telas precisam ser refeitas no
-  molde da artboard "Comparação" do design.
+- **Confirmar o endereço I2C** (0x3C ou 0x3D) e a orientação no módulo de verdade. A resolução, 128 × 64, já está confirmada.
 - **Botão** pra trocar de tela, se o rodízio por tempo não servir: depende de configurar um pino no `.ioc`.
 - Os módulos de qualidade, SpO2, respiração, HRV e espectral entram quando mergearem: o display já lê os
   campos deles em `ppg_resultados_t` e mostra `--` enquanto estiverem inválidos.
