@@ -247,10 +247,10 @@ Python. Pode ser ligada junto com as outras.
 
 Com `-DBANCADA_QUALIDADE=ON`, a placa, logo depois de `serial_init()` e antes
 do sensor, toca o vetor `bordas` (o mesmo de `testes/qualidade/vetores/`,
-~70 KB na flash) no `qualidade_processa()`, confere com a saída do Python e
+~75 KB na flash) no `qualidade_processa()`, confere com a saída do Python e
 mede os ciclos por amostra: duas linhas `# bancada qualidade: ...`. Depois,
 no laço, cada amostra do bruto decimado passa pela qualidade e, uma vez por
-segundo, sai uma linha `q,n,dedo,usavel,indice,motivo,dc,pi,aspereza,razao`
+segundo, sai uma linha `q,n,dedo,usavel,indice,motivo,dc,pi,aspereza,razao,ritmo`
 (inteiros escalados, ver `bancada_qualidade.h`), que o `analise.captura`
 grava em `<nome>_qualidade.csv`. Sem a opção, nada disso entra no firmware.
 Procedimento e orçamento em [Qualidade](../modulos/qualidade/).

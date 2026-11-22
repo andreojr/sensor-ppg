@@ -339,26 +339,32 @@ sem o MAX30102), a placa toca as 5 800 amostras do vetor `bordas` no
 ciclos de cada chamada. Esperado:
 
 ```text
-# bancada qualidade: 55 saidas (esperado 55), 13 usaveis, 0 fora da tolerancia, erro rel max ... milionesimos
-# bancada qualidade: ciclos por amostra med ... max ... (orcamento 2000): OK
+# bancada qualidade: 55 saidas (esperado 55), 3 usaveis, 0 fora da tolerancia, erro rel max ... milionesimos
+# bancada qualidade: ciclos por amostra med ... max ... (orcamento 3000): OK
 ```
 
-**Orçamento:** 2 000 ciclos por amostra no pior caso (~21 µs a 96 MHz, 0,2%
-da CPU a 100 Hz). O pior caso é a amostra que fecha o bloco. Compila com o
+**Orçamento:** 3 000 ciclos por amostra no pior caso (~31 µs a 96 MHz, 0,3%
+da CPU a 100 Hz). Era 2 000 antes do ritmo; com ele, mesmo espalhando a
+conta em 25 passos por amostra, o pior caso no build Debug (sem otimização,
+onde cada multiplicação da autocorrelação custa ~30 ciclos) ficou em ~2 200,
+e o orçamento subiu pra 3 000 (decisão do André, 21/11/2026; o filtro gasta
+~9 900). Compila com o
 Arm GNU com e sem a opção (e com as quatro bancadas juntas), sem warnings
 (com a bancada, a flash vai de 34 a 111 KB, por causa do vetor). No laço,
 os ciclos da qualidade no sensor real saem a cada 10 s, junto dos da
 decimação e do filtro (`# qualidade: ciclos med ... max ...`).
 
-**Resultado na placa** (21/11/2026):
+**Resultado na placa, com o ritmo** (21/11/2026):
 
 ```text
-# bancada qualidade: 55 saidas (esperado 55), 13 usaveis, 0 fora da tolerancia, erro rel max 123 milionesimos
-# bancada qualidade: ciclos por amostra med 491 max 1393 (orcamento 2000): OK
+# bancada qualidade: 55 saidas (esperado 55), 3 usaveis, 0 fora da tolerancia, erro rel max 123 milionesimos
+# bancada qualidade: ciclos por amostra med 1660 max 2177 (orcamento 3000): OK
 ```
 
-No laço, com o sensor, a qualidade ficou em `med 532 max 1163` ciclos,
-dentro do orçamento e longe dos outros módulos (o filtro gasta ~9 900).
+No laço, com o sensor, `med 1454 max 2225`. Antes do ritmo eram 491/1393 na
+bancada e 532/1163 no laço. No vetor `bordas`, as janelas usáveis caíram de
+13 pra 3: os trechos limpos dele têm 6 s, e com o ritmo só ficam usáveis
+depois de 7 s limpos.
 
 ### 4. Sensor real
 
@@ -366,7 +372,7 @@ Com a mesma opção, o laço principal passa cada amostra do bruto decimado
 pela qualidade e manda, uma vez por segundo:
 
 ```text
-q,<n>,<dedo>,<usavel>,<indice x1000>,<motivo>,<dc>,<pi x100000>,<aspereza x100>,<razao x100>
+q,<n>,<dedo>,<usavel>,<indice x1000>,<motivo>,<dc>,<pi x100000>,<aspereza x100>,<razao x100>,<ritmo x1000>
 ```
 
 (só inteiros: o `printf` do firmware não tem float). `analise.captura` grava

@@ -25,10 +25,11 @@
 #include "qualidade/qualidade.h"
 
 /*
- * Orçamento por amostra: 2000 ciclos (~21 us a 96 MHz), 0,2% da CPU a 100 Hz.
- * O pior caso é a amostra que fecha o bloco (as divisões da janela).
+ * Orçamento por amostra: 3000 ciclos (~31 us a 96 MHz), 0,3% da CPU a 100 Hz.
+ * Era 2000; com o ritmo (25 passos da autocorrelação por amostra, no build
+ * Debug sem otimização) o pior caso foi a ~2200 e o André subiu pra 3000.
  */
-#define BANCADA_ORCAMENTO_QUALIDADE 2000u
+#define BANCADA_ORCAMENTO_QUALIDADE 3000u
 
 #ifdef BANCADA_QUALIDADE
 /* Roda o vetor bordas na qualidade e manda o resultado pela serial. true se passou. */
