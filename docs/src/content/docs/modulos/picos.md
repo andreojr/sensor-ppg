@@ -54,7 +54,9 @@ por vez**, sem guardar o sinal: só o estado de `picos_t`. Tudo em `float`.
    2000 ms e entre 0,7 e 1,4 vez o RR típico (média móvel dos RR). Um
    batimento perdido faz o RR dobrar e fica de fora, e o HRV ignora esse par.
 6. **BPM:** `60000 / média` dos últimos 8 RR válidos. Só vale (`valido`) com 4
-   ou mais.
+   ou mais **e** com ritmo regular: nos últimos 8 batimentos, pelo menos 6 são
+   "bons" (RR válido e a menos de 15% da mediana dos RR válidos). Ver "Regularidade
+   do BPM" abaixo.
 
 Nos primeiros 2 s o detector só aprende o nível do sinal e não detecta (o
 primeiro batimento fica sem referência). O pico é visto com 1 amostra de
@@ -76,10 +78,73 @@ a 0,6, refratário de 0,25 a 0,35 s e envelope de 0,5 a 3 s. O que se viu:
   0,35, então não é ajuste fino sobre 15 registros.
 - O **refratário** (0,25 a 0,35 s) muda pouco.
 
+### Regularidade do BPM
+
+**O problema.** Um sinal sem pulso (dedo mal apoiado) também gera "batimentos": o detector acha picos no
+ruído, com RR de ~300 a ~1 500 ms. Cada RR pode passar sozinho pela faixa do `rr_valido`, e o `valido` do BPM,
+que só pedia 4 RR válidos, **acreditava em 94% dos batimentos** (100% depois dos 8 primeiros, a mesma base da tabela abaixo) num ruído sem pulso (medido com ruído branco passando
+pelo mesmo filtro e pelo picos). Só o picos, que vê a forma do sinal, consegue reconhecer que os batimentos não
+formam um ritmo.
+
+**A regra.** `picos_bpm().valido` agora também exige ritmo regular: nos últimos **8 batimentos** (o `picos_t`
+guarda o `rr_valido` e o `rr_ms` de cada um), pelo menos **6 são bons**, isto é, têm RR válido e esse RR está a
+menos de **15%** da mediana dos RR válidos. O `ppg.h` não muda: só fica mais estrito o que `ppg_bpm_t.valido`
+significa ("BPM confiável pelo picos"). O BPM em si continua sendo a média dos últimos 8 RR válidos.
+
+**Como se escolheu.** Os números 6 de 8 e 15% eram o ponto de partida; a variante também mudou, pelos dados
+(`uv run python -m analise.picos_validacao --regularidade`, nos 66 registros do PhysioNet, baixados se faltarem, e em
+12 trechos de 60 s de ruído branco, fração do tempo com o `valido` ligado):
+
+| | todos os RR válidos perto da mediana (10 / 15 / 20 / 25%) | **6 de 8 bons** (10 / **15** / 20 / 25%) |
+|---|---|---|
+| sentado (22) | 72 / 89 / 95 / 98% | 91 / **97** / 99 / 100% |
+| andando (22) | 34 / 47 / 51 / 54% | 48 / **52** / 54 / 57% |
+| correndo (22) | 61 / 75 / 79 / 82% | 75 / **80** / 82 / 84% |
+| **ruído sem pulso (12)** | 0 / 2 / 5 / 10% | 1 / **3** / 8 / 14% |
+
+- **Exigir que *todos* os RR válidos fiquem perto da mediana** (a primeira ideia) rejeita o ruído tão bem quanto,
+  mas **derruba o BPM de gente saudável com HRV alta**: a `s9_sit` (RMSSD de 84 ms) fica com o `valido` ligado só 58%
+  do tempo, e uma única extrassístole desliga o BPM por 8 batimentos. Por isso a regra virou "6 de 8 bons": uma ou
+  duas fora do ritmo não derrubam, e o ruído continua caindo em 3%.
+- **15%** é o meio-termo: a 20% o ruído passa a ser aceito em 8% do tempo (14% a 25%), e a 10% já se perde o
+  BPM de gente saudável (91% sentado, 48% andando).
+- **Andando e correndo, o `valido` fica bem mais desligado** (52% e 80% do tempo, piores `s11_walk` com 0% e `s8_run`
+  com 4%; sentado, o pior é `s17_sit` com 78%). Nos registros andando em que ele fica baixo (s8, s10 a s14), o BPM do
+  picos erra de 5 a 17 bpm contra o ECG: desligar ali é o comportamento certo, não uma perda.
+- No registro com movimento forte, `s2_walk`, o `valido` fica ligado em só 22% dos batimentos, que é o certo: o
+  BPM dele erra 8,4 bpm.
+
+**Na placa** (`-DBANCADA_PICOS=ON`, Release, 22/11/2026, com a regra nova):
+
+```text
+# bancada picos: 47 batimentos (esperado 47), 0 fora da tolerancia, erro max 0 milesimos
+# bancada picos: ciclos por amostra med 108 max 1286 (orcamento 9600): OK
+```
+
+A bancada confere também o `bpm_valido` de cada batimento. No `s3_sit` ele só desliga nos 8 primeiros e depois fica
+ligado: na STM32 roda a espera dos 8 batimentos e o caso regular. A mediana, o 6 de 8 e o desligar/religar são
+conferidos no teste em C do PC (`ritmo_misto`).
+
+**Limitações.**
+
+- **Com arritmia de verdade, o `valido` desliga.** Fibrilação atrial, bigeminismo ou extrassístoles frequentes não
+  formam um ritmo por esse critério, e o picos deixa de dar BPM. É a escolha de "só mostrar quando tem certeza".
+  O picos não distingue arritmia de sinal ruim; o módulo `qualidade` (pulso presente) é o segundo teste.
+- **Latência:** o `valido` só liga com 8 batimentos no histórico (~6 a 10 s a 75 bpm), contra 4 RR válidos antes, e
+  volta a ligar só depois de os batimentos bons voltarem a ser 6 dos últimos 8.
+- **O BPM é média, não mediana:** com 7 ou 8 RR válidos e 1 ou 2 fora do ritmo, esses entram na média. A regra só
+  decide se mostra ou não.
+
+**Captura real (dedo mal apoiado, `--confere`).** Aquela captura tinha 49% de RR válidos e RR de 300 a 1 600 ms
+(ver "O que isso valida e o que não valida"), o mesmo perfil do ruído da varredura (52 a 66% de RR válidos, média de 60%), em que
+o `valido` liga 3% do tempo. A captura em si não está no repositório e **não foi reprocessada** com a regra nova.
+
 **Vetores de teste:** `uv run python -m analise.picos` (em `analise/`) grava
 `testes/picos/vetores/` com a entrada e a saída do Python. O teste em C
 (`testes/picos/teste_picos.c`) roda o `picos.c` sobre a mesma entrada e compara:
-instantes e `rr_valido` exatos, `fracao`, `rr_ms` e BPM com tolerância de 0,01.
+instantes, `rr_valido` e `bpm_valido` exatos, `fracao`, `rr_ms` e BPM com tolerância de 0,01. O vetor sintético
+`ritmo_misto` (ritmo, uma pausa de 1 000 ms, 10 pares de RR de 600 e 1 000 ms que passam um a um pelo `rr_valido`, e o
+ritmo de volta) faz o `valido` ligar, desligar e voltar, e confere C e Python nessas transições.
 
 ## Validação
 
@@ -124,7 +189,7 @@ que o HRV enxerga (e a validação por pares casados não mostra), nos 5 registr
 ECG**, e o erro do RMSSD fica entre −0,2 e 4,2 ms. O teste
 `test_corcova_antes_do_pico_nao_toma_o_lugar` reproduz o defeito.
 
-**O BPM não expira sozinho:** depois de 4 RR válidos, `picos_bpm()` continua
+**O BPM não expira sozinho:** depois de 8 batimentos regulares, `picos_bpm()` continua
 `valido` com o último valor mesmo que não chegue batimento novo (dedo
 retirado, sinal parado). Quem tira o "--" do display nesse caso é a
 `qualidade` (`dedo_presente`).
