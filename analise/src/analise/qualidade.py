@@ -61,6 +61,13 @@ SATURADO_BIT = 2
 PULSO_FRACO_BIT = 4
 MOVIMENTO_BIT = 8
 RUIDO_BIT = 16
+SEM_RITMO_BIT = 32
+
+# Ritmo: o y do passa-altas reduzido a 25 Hz, autocorrelação em 4 s.
+RITMO_DECIMA = 4           # 100 -> 25 Hz (média de 4)
+RITMO_N = 100              # 4 s a 25 Hz
+RITMO_ATRASO_MIN = 10      # 0,4 s: 150 bpm
+RITMO_ATRASO_MAX = 37      # 1,48 s: ~40 bpm
 
 
 @dataclass(frozen=True)
@@ -79,6 +86,7 @@ class Limiares:
     peso_ref: float = 0.25      # a referência anda 1/4 do caminho a cada janela boa
     janelas_aceita: int = 3
     ruins_esquece: int = 10
+    ritmo_min: float = 0.5      # PhysioNet limpo: 2,6% das janelas de 4 s abaixo
 
 
 LIMIARES = Limiares()
@@ -98,6 +106,7 @@ class Saida:
     pi: float
     aspereza: float
     razao: float            # 0 se ainda não há referência
+    ritmo: float = 0.0      # 0 se ainda não há 4 s de sinal
 
 
 @dataclass
@@ -126,6 +135,12 @@ class Qualidade:
     ruins: int = 0             # janelas ruins seguidas
     tem_ref: bool = False
     ref: float = 0.0           # altura de referência
+    anel: list[float] = field(default_factory=lambda: [0.0] * RITMO_N)  # y a 25 Hz
+    pos: int = 0
+    cheio: int = 0
+    soma4: float = 0.0
+    conta4: int = 0
+    foto: list[float] | None = None  # os 4 s do fim do bloco anterior, do mais antigo
 
     def reinicia(self) -> None:
         self.__init__(self.lim)
@@ -150,17 +165,27 @@ class Qualidade:
         b.maior = max(b.maior, ir, vm)
         b.min_y = min(b.min_y, y)
         b.max_y = max(b.max_y, y)
+        self.soma4 += y
+        self.conta4 += 1
+        if self.conta4 == RITMO_DECIMA:
+            self.anel[self.pos] = self.soma4 / RITMO_DECIMA
+            self.pos = (self.pos + 1) % RITMO_N
+            self.cheio = min(self.cheio + 1, RITMO_N)
+            self.soma4, self.conta4 = 0.0, 0
         self.conta += 1
         if self.conta < BLOCO:
             return None
 
         self.conta = 0
+        ritmo = ritmo_de(np.asarray(self.foto)) if self.foto is not None else None
+        self.foto = (self.anel[self.pos:] + self.anel[:self.pos]
+                     if self.cheio == RITMO_N else None)
         anterior, self.anterior, self.atual = self.anterior, b, _Bloco()
         if anterior is None:  # janela ainda não encheu
             return None
-        return self._janela(n, anterior, b)
+        return self._janela(n, anterior, b, ritmo)
 
-    def _janela(self, n: int, a: _Bloco, b: _Bloco) -> Saida:
+    def _janela(self, n: int, a: _Bloco, b: _Bloco, ritmo: float | None) -> Saida:
         lim = self.lim
         total = BLOCO * BLOCOS_JANELA
         dc_ir = (a.soma_ir + b.soma_ir) / total
@@ -184,6 +209,8 @@ class Qualidade:
                 motivo |= MOVIMENTO_BIT
             if aspereza > lim.aspereza_max:
                 motivo |= RUIDO_BIT
+            if ritmo is None or ritmo < lim.ritmo_min:
+                motivo |= SEM_RITMO_BIT
 
         if motivo:
             self.boas = 0
@@ -197,7 +224,18 @@ class Qualidade:
             self.tem_ref = True
         indice = self.boas / lim.janelas_aceita
         usavel = dedo and self.boas >= lim.janelas_aceita
-        return Saida(n, True, dedo, indice, usavel, motivo, dc_ir, pi, aspereza, razao)
+        return Saida(n, True, dedo, indice, usavel, motivo, dc_ir, pi, aspereza, razao,
+                     0.0 if ritmo is None else ritmo)
+
+
+def ritmo_de(z: np.ndarray) -> float:
+    """Maior autocorrelação normalizada de z (sem a média) nos atrasos de um batimento."""
+    z = np.asarray(z, dtype=float)
+    z = z - z.mean()
+    e = float(z @ z)
+    if e == 0.0:
+        return 0.0
+    return max(float(z[k:] @ z[:-k]) / e for k in range(RITMO_ATRASO_MIN, RITMO_ATRASO_MAX + 1))
 
 
 def roda(ir: np.ndarray, vm: np.ndarray, n: np.ndarray | None = None,
