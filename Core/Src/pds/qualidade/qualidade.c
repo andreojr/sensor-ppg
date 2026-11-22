@@ -2,6 +2,7 @@
 #include "qualidade/qualidade.h"
 
 #include <math.h>
+#include <stddef.h>
 #include <string.h>
 
 /* Passa-faixa 0,5-4 Hz: Butterworth 2ª ordem em 2 seções (b0 b1 b2 a1 a2), o
@@ -14,49 +15,84 @@ static const float SOS[2][5] = {
 
 static float passa_faixa(qualidade_t *q, float x)
 {
-    for (uint32_t i = 0; i < 2u; i++) {
-        float y = SOS[i][0] * x + q->z[2u * i];
-        q->z[2u * i] = SOS[i][1] * x - SOS[i][3] * y + q->z[2u * i + 1u];
-        q->z[2u * i + 1u] = SOS[i][2] * x - SOS[i][4] * y;
-        x = y;
-    }
-    return x;
+    float *z = q->z;
+    float y = SOS[0][0] * x + z[0];
+    z[0] = SOS[0][1] * x - SOS[0][3] * y + z[1];
+    z[1] = SOS[0][2] * x - SOS[0][4] * y;
+    x = y;
+    y = SOS[1][0] * x + z[2];
+    z[2] = SOS[1][1] * x - SOS[1][3] * y + z[3];
+    z[3] = SOS[1][2] * x - SOS[1][4] * y;
+    return y;
 }
 
 /*
- * Um pedaço da conta do ritmo sobre a foto, por amostra:
- *   passo 0       média, e tira a média da foto
- *   passo 1       energia
- *   passos 2..29  um atraso cada (ATRASO_MIN..ATRASO_MAX), guarda o maior r
+ * Até QUALIDADE_RITMO_POR_AMOSTRA passos da conta do ritmo sobre a janela
+ * parada w = anel[ini..ini+N):
+ *   etapa 0       média m
+ *   etapa 1       energia: soma de (w - m)^2
+ *   etapa 2..29   um atraso k cada: soma de (w[i] - m)(w[i-k] - m) / energia,
+ *                 guarda o maior
  */
-#define RITMO_PASSOS (2u + QUALIDADE_RITMO_ATRASO_MAX - QUALIDADE_RITMO_ATRASO_MIN + 1u)
+#define RITMO_ETAPAS (2u + QUALIDADE_RITMO_ATRASO_MAX - QUALIDADE_RITMO_ATRASO_MIN + 1u)
 
-static void ritmo_passo(qualidade_t *q)
+static void ritmo_passos(qualidade_t *q)
 {
-    if (!q->tem_foto || q->passo >= RITMO_PASSOS)
+    if (!q->tem_foto || q->pronto)
         return;
-    float *z = q->foto;
-    if (q->passo == 0u) {
-        float soma = 0.0f;
-        for (uint32_t i = 0; i < QUALIDADE_RITMO_N; i++)
-            soma += z[i];
-        float media = soma / (float)QUALIDADE_RITMO_N;
-        for (uint32_t i = 0; i < QUALIDADE_RITMO_N; i++)
-            z[i] -= media;
-    } else if (q->passo == 1u) {
-        float e = 0.0f;
-        for (uint32_t i = 0; i < QUALIDADE_RITMO_N; i++)
-            e += z[i] * z[i];
-        q->energia = e;
-        q->maior_r = -INFINITY;
-    } else if (q->energia > 0.0f) {
-        uint32_t k = QUALIDADE_RITMO_ATRASO_MIN + q->passo - 2u;
-        float r = 0.0f;
-        for (uint32_t i = k; i < QUALIDADE_RITMO_N; i++)
-            r += z[i] * z[i - k];
-        q->maior_r = fmaxf(q->maior_r, r / q->energia);
+    /* Em locais: no build Debug (-O0), cada q-> no laço é uma ida à memória. */
+    const float *w = &q->anel[q->ini];
+    const uint32_t N = QUALIDADE_RITMO_N;
+    uint32_t etapa = q->etapa, i = q->i, resta = QUALIDADE_RITMO_POR_AMOSTRA;
+    float acc = q->acc, m = q->media_r;
+    while (resta > 0u) {
+        uint32_t fim = N - i < resta ? N : i + resta;
+        resta -= fim - i;
+        if (etapa == 0u) {
+            for (; i < fim; i++)
+                acc += w[i];
+            if (i < N)
+                break;
+            m = acc / (float)N;
+            q->media_r = m;
+            acc = 0.0f;
+            i = 0;
+            etapa = 1u;
+        } else if (etapa == 1u) {
+            for (; i < fim; i++) {
+                float d = w[i] - m;
+                acc += d * d;
+            }
+            if (i < N)
+                break;
+            q->energia = acc;
+            q->maior_r = -INFINITY;
+            acc = 0.0f;
+            etapa = 2u;
+            i = QUALIDADE_RITMO_ATRASO_MIN;
+            if (q->energia <= 0.0f) {
+                q->pronto = true;
+                break;
+            }
+        } else {
+            uint32_t k = QUALIDADE_RITMO_ATRASO_MIN + etapa - 2u;
+            const float *wk = w - k;
+            for (; i < fim; i++)
+                acc += (w[i] - m) * (wk[i] - m);
+            if (i < N)
+                break;
+            q->maior_r = fmaxf(q->maior_r, acc / q->energia);
+            acc = 0.0f;
+            if (++etapa == RITMO_ETAPAS) {
+                q->pronto = true;
+                break;
+            }
+            i = k + 1u;
+        }
     }
-    q->passo++;
+    q->etapa = etapa;
+    q->i = i;
+    q->acc = acc;
 }
 
 static void bloco_zera(qualidade_bloco_t *b)
@@ -71,7 +107,7 @@ static void bloco_zera(qualidade_bloco_t *b)
 
 void qualidade_init(qualidade_t *q)
 {
-    memset(q, 0, sizeof *q);
+    memset(q, 0, offsetof(qualidade_t, anel)); /* o anel (1 KB) não precisa */
     bloco_zera(&q->atual);
     bloco_zera(&q->anterior);
 }
@@ -162,26 +198,33 @@ bool qualidade_processa(qualidade_t *q, const ppg_amostra_t *bruto, ppg_qualidad
     b->max_y = fmaxf(b->max_y, y);
     q->soma4 += passa_faixa(q, ir - q->x0);
     if (++q->conta4 == QUALIDADE_RITMO_DECIMA) {
-        q->anel[q->pos] = q->soma4 / (float)QUALIDADE_RITMO_DECIMA;
-        q->pos = (q->pos + 1u) % QUALIDADE_RITMO_N;
+        float v = q->soma4 / (float)QUALIDADE_RITMO_DECIMA;
+        q->anel[q->pos] = v;
+        q->anel[q->pos + QUALIDADE_RITMO_ANEL] = v;
+        if (++q->pos == QUALIDADE_RITMO_ANEL)
+            q->pos = 0;
         if (q->cheio < QUALIDADE_RITMO_N)
             q->cheio++;
         q->soma4 = 0.0f;
         q->conta4 = 0;
     }
-    ritmo_passo(q);
-    if (++q->conta < QUALIDADE_BLOCO)
+    if (++q->conta < QUALIDADE_BLOCO) {
+        ritmo_passos(q); /* a amostra que fecha o bloco não faz conta do ritmo */
         return false;
+    }
 
     q->conta = 0;
-    /* A conta sobre a foto do bloco anterior terminou nas primeiras amostras deste. */
-    bool tem_ritmo = q->tem_foto && q->passo >= RITMO_PASSOS;
+    /* A conta sobre a janela parada no fim do bloco anterior já terminou. */
+    bool tem_ritmo = q->tem_foto && q->pronto;
     float ritmo = q->energia > 0.0f ? q->maior_r : 0.0f;
     q->tem_foto = q->cheio == QUALIDADE_RITMO_N;
-    if (q->tem_foto) {
-        for (uint32_t i = 0; i < QUALIDADE_RITMO_N; i++)
-            q->foto[i] = q->anel[(q->pos + i) % QUALIDADE_RITMO_N];
-        q->passo = 0;
+    if (q->tem_foto) { /* os N pontos mais novos, que o próximo bloco não sobrescreve */
+        q->ini = (q->pos + QUALIDADE_RITMO_ANEL - QUALIDADE_RITMO_N) % QUALIDADE_RITMO_ANEL;
+        q->etapa = 0;
+        q->i = 0;
+        q->acc = 0.0f;
+        q->energia = 0.0f;
+        q->pronto = false;
     }
     bool cheia = q->tem_anterior;
     if (cheia)

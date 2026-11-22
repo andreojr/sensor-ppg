@@ -20,10 +20,11 @@ static long arredonda(float v)
 int qualidade_linha(char *linha, size_t tam, uint32_t n, const ppg_qualidade_t *s,
                     const qualidade_t *q)
 {
-    return snprintf(linha, tam, "q,%lu,%d,%d,%ld,%lu,%ld,%ld,%ld,%ld\n", (unsigned long)n,
+    return snprintf(linha, tam, "q,%lu,%d,%d,%ld,%lu,%ld,%ld,%ld,%ld,%ld\n", (unsigned long)n,
                     s->dedo_presente, s->usavel, arredonda(s->indice * 1000.0f),
                     (unsigned long)q->motivo, arredonda(q->dc_ir), arredonda(q->pi * 1e5f),
-                    arredonda(q->aspereza * 100.0f), arredonda(q->razao * 100.0f));
+                    arredonda(q->aspereza * 100.0f), arredonda(q->razao * 100.0f),
+                    arredonda(q->ritmo * 1000.0f));
 }
 
 /* Erro relativo, como no teste do PC. */
@@ -36,7 +37,7 @@ bool bancada_qualidade(void)
 {
     ciclos_liga(); /* bancada.h; pode rodar antes do ciclos_liga() do main */
 
-    qualidade_t q; /* 108 B: cabe na pilha */
+    static qualidade_t q; /* 964 B: fora da pilha */
     qualidade_init(&q);
 
     uint32_t saidas = 0, fora = 0, max_ciclos = 0, usaveis = 0;
@@ -60,8 +61,9 @@ bool bancada_qualidade(void)
         uint32_t k = saidas++;
         float erro = fmaxf(fmaxf(erro_rel(q.pi, bordas_saida_pi[k]),
                                  erro_rel(q.aspereza, bordas_saida_aspereza[k])),
-                           fmaxf(erro_rel(q.razao, bordas_saida_razao[k]),
-                                 erro_rel(q.dc_ir, bordas_saida_dc[k])));
+                           fmaxf(fmaxf(erro_rel(q.razao, bordas_saida_razao[k]),
+                                       erro_rel(q.dc_ir, bordas_saida_dc[k])),
+                                 erro_rel(q.ritmo, bordas_saida_ritmo[k])));
         if (erro > pior)
             pior = erro;
         fora += (int32_t)e.n != bordas_saida_n[k] || (int32_t)s.usavel != bordas_saida_usavel[k] ||

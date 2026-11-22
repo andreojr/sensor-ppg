@@ -17,8 +17,9 @@
  *   ritmo      maior autocorrelação normalizada dos últimos 4 s (IR num
  *              passa-faixa 0,5-4 Hz, reduzido a 25 Hz) nos atrasos de 0,4 a
  *              1,5 s: se o sinal se repete no ritmo de um coração. A conta é
- *              feita sobre a cópia dos 4 s tirada no fim do bloco anterior,
- *              espalhada pelas amostras do bloco (cabe no orçamento).
+ *              feita sobre os 4 s que fecharam o bloco anterior (que ficam
+ *              parados no buffer enquanto o bloco atual escreve), em
+ *              QUALIDADE_RITMO_POR_AMOSTRA passos por amostra (cabe no orçamento).
  *
  * Janela boa: dc dos dois canais >= QUALIDADE_DC_MIN, maior < QUALIDADE_SATURA,
  * pi entre PI_MIN e PI_MAX, aspereza entre ASPEREZA_MIN e ASPEREZA_MAX, razao
@@ -66,6 +67,9 @@
 #define QUALIDADE_RITMO_N 100u             /* 4 s a 25 Hz */
 #define QUALIDADE_RITMO_ATRASO_MIN 10u     /* 0,4 s: 150 bpm */
 #define QUALIDADE_RITMO_ATRASO_MAX 37u     /* 1,48 s: ~40 bpm */
+/* Buffer: os 4 s parados + os 25 pontos que chegam durante um bloco. */
+#define QUALIDADE_RITMO_ANEL (QUALIDADE_RITMO_N + QUALIDADE_BLOCO / QUALIDADE_RITMO_DECIMA)
+#define QUALIDADE_RITMO_POR_AMOSTRA 25u    /* passos da conta por amostra (~2 340 por bloco) */
 
 /* Por que a última janela foi ruim (bits de qualidade_t.motivo; 0 = boa). */
 #define QUALIDADE_SEM_DEDO 1u
@@ -104,14 +108,17 @@ typedef struct {
     float z[4];            /* estados das 2 seções do passa-faixa */
     float soma4;
     uint32_t conta4;
-    float anel[QUALIDADE_RITMO_N]; /* passa-faixa a 25 Hz, buffer circular */
     uint32_t pos;
     uint32_t cheio;
-    float foto[QUALIDADE_RITMO_N]; /* cópia do anel no fim do bloco anterior */
-    bool tem_foto;
-    uint32_t passo;        /* quanto da conta sobre a foto já foi feito neste bloco */
+    bool tem_foto;         /* há 4 s parados em anel[ini..ini+N) */
+    uint32_t ini;
+    uint32_t etapa;        /* 0 média, 1 energia, 2.. um atraso cada */
+    uint32_t i;
+    float acc;
+    float media_r;         /* média da janela parada */
     float energia;
     float maior_r;
+    bool pronto;           /* a conta sobre a janela parada terminou */
 
     /* Diagnóstico da última janela (pra serial e testes). */
     uint32_t motivo;
@@ -120,6 +127,11 @@ typedef struct {
     float aspereza;
     float razao;           /* 0 se não havia referência */
     float ritmo;           /* 0 se não havia 4 s de sinal */
+
+    /* Por último: qualidade_init não zera (só se lê o que cheio garante escrito).
+       Passa-faixa a 25 Hz, buffer circular guardado em dobro (cada ponto em pos e
+       pos + ANEL), pra janela de 4 s ser sempre contígua. */
+    float anel[2u * QUALIDADE_RITMO_ANEL];
 } qualidade_t;
 
 /* Zera o estado. Chamar de novo reinicia. */

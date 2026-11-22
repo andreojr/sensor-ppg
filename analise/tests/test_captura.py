@@ -108,18 +108,20 @@ def test_saida_do_hrv_vai_pro_csv_do_hrv(tmp_path):
 def test_qualidade_vai_pro_terceiro_csv(tmp_path):
     serial_falsa = io.BytesIO(
         b"0,100,200\n"
-        b"q,199,1,0,333,0,130069,410,452,104\n"
-        b"q,299,1,1,1000,8,130000,9596,200,24435\n"
+        b"q,199,1,0,333,0,130069,410,452,104,512\n"
+        b"q,299,1,1,1000,8,130000,9596,200,24435,0\n"
         b"q,399,1\n"
+        b"q,499,1,1,1000,8,130000,9596,200,24435\n"  # formato antigo, sem ritmo
     )
     destino = tmp_path / "x.csv"
     resumo = captura.grava(serial_falsa, destino, segundos=0.1)
-    assert resumo.amostras == 1 and resumo.por_ponto == {"qualidade": 2} and resumo.invalidas == 1
+    assert resumo.amostras == 1 and resumo.por_ponto == {"qualidade": 2} and resumo.invalidas == 2
     q = pd.read_csv(tmp_path / "x_qualidade.csv")
     assert list(q.columns) == list(captura.COLUNAS_QUALIDADE)
     assert q["indice"].tolist() == [0.333, 1.0]
     assert q["pi"].tolist() == [0.0041, 0.09596]
     assert q["razao"].tolist() == [1.04, 244.35]
+    assert q["ritmo"].tolist() == [0.512, 0.0]
 
 
 def test_plota_gera_png(tmp_path):

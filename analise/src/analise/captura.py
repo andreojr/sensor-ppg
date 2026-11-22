@@ -37,7 +37,9 @@ COLUNAS = ("n", "ir", "vermelho")
 PONTOS = {"b": "bruto", "f": "filtrado"}  # prefixo da linha -> ponto da cadeia na placa
 COLUNAS_PICOS = ("n_pico", "fracao", "rr_valido", "rr_ms", "bpm_valido", "bpm")
 COLUNAS_HRV = ("n_pico", "valido", "sdnn_ms", "rmssd_ms")
-COLUNAS_QUALIDADE = ("n", "dedo", "usavel", "indice", "motivo", "dc", "pi", "aspereza", "razao")
+COLUNAS_QUALIDADE = (
+    "n", "dedo", "usavel", "indice", "motivo", "dc", "pi", "aspereza", "razao", "ritmo",
+)
 
 
 class Fonte(Protocol):
@@ -114,17 +116,22 @@ def le_hrv(linha: str) -> tuple[int, int, float, float] | None:
         return None
 
 
-def le_qualidade(linha: str) -> tuple[int, int, int, float, int, int, float, float, float] | None:
-    """Converte "q,n,dedo,usavel,indice,motivo,dc,pi,aspereza,razao" (inteiros
+def le_qualidade(
+    linha: str,
+) -> tuple[int, int, int, float, int, int, float, float, float, float] | None:
+    """Converte "q,n,dedo,usavel,indice,motivo,dc,pi,aspereza,razao,ritmo" (inteiros
     escalados, ver Core/Inc/bancada_qualidade.h) em valores. None se não for."""
     partes = linha.strip().split(",")
-    if len(partes) != 10 or partes[0] != "q":
+    if len(partes) != 11 or partes[0] != "q":
         return None
     try:
-        n, dedo, usavel, indice, motivo, dc, pi, aspereza, razao = (int(p) for p in partes[1:])
+        n, dedo, usavel, indice, motivo, dc, pi, aspereza, razao, ritmo = (
+            int(p) for p in partes[1:]
+        )
     except ValueError:
         return None
-    return n, dedo, usavel, indice / 1000, motivo, dc, pi / 1e5, aspereza / 100, razao / 100
+    return (n, dedo, usavel, indice / 1000, motivo, dc, pi / 1e5, aspereza / 100, razao / 100,
+            ritmo / 1000)
 
 
 # prefixo -> (csv, leitor, colunas) das linhas de saída dos módulos

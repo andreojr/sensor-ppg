@@ -636,7 +636,7 @@ static void decima(const max30102_amostra_t *amostra)
     ciclos_conta(&ciclos_qualidade, ciclos_agora() - t0);
     if (julgou)
     {
-      char linha[80]; /* até ~70 B com os campos no máximo */
+      char linha[96]; /* até ~76 B com os campos no máximo */
       int tam = qualidade_linha(linha, sizeof linha, bruto.n, &q, &qualidade);
       serial_escreve(linha, (uint32_t)tam);
     }

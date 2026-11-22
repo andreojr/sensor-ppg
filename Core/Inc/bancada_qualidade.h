@@ -11,7 +11,7 @@
  * ...").
  *
  * Passo 5, qualidade_linha(): no laço, a cada saída da qualidade sobre o
- * bruto do sensor, uma linha "q,n,dedo,usavel,indice,motivo,dc,pi,aspereza,razao"
+ * bruto do sensor, uma linha "q,n,dedo,usavel,indice,motivo,dc,pi,aspereza,razao,ritmo"
  * (só inteiros: o printf do nano.specs não tem float). analise.captura grava
  * essas linhas em <nome>_qualidade.csv.
  */
@@ -36,7 +36,8 @@ bool bancada_qualidade(void);
 
 /*
  * Escreve em linha a saída da qualidade (com o diagnóstico de q), sem float:
- *   q,<n>,<dedo>,<usavel>,<indice x1000>,<motivo>,<dc>,<pi x1e5>,<aspereza x100>,<razao x100>
+ *   q,<n>,<dedo>,<usavel>,<indice x1000>,<motivo>,<dc>,<pi x1e5>,<aspereza x100>,<razao x100>,
+ *     <ritmo x1000>
  * pi x1e5 = milésimos de ponto percentual (400 = 0,400%). Devolve o tamanho.
  */
 int qualidade_linha(char *linha, size_t tam, uint32_t n, const ppg_qualidade_t *s,
