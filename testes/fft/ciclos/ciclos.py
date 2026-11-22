@@ -20,7 +20,13 @@ contagem de instruções é exata. A medida de verdade é com o contador de cicl
 placa (DWT->CYCCNT).
 
 Uso (da raiz do repositório; precisa do arm-none-eabi-gcc no PATH):
-  uv run testes/fft/ciclos/ciclos.py
+  uv run testes/fft/ciclos/ciclos.py             só a FFT, de 256 a 1024 pontos
+  uv run testes/fft/ciclos/ciclos.py espectral   o espectral inteiro, amostra a amostra
+
+O modo espectral roda o espectral_processa() sobre os 60 s do vetor s2_walk (6000
+amostras), confere cada saída com o vetor do Python (valido e bpm) e dá a média de
+ciclos por amostra e o pior caso (a amostra em que sai a FFT). Esses dois números são
+os que a bancada da placa (BANCADA_ESPECTRAL) confere: média <= 9 600 e pior <= 960 000.
 """
 
 from __future__ import annotations
@@ -47,25 +53,32 @@ ORCAMENTO = 96_000_000 // FS_HZ  # ciclos por amostra: 96 MHz / 100 Hz
 FLAGS = ["-mcpu=cortex-m4", "-mfpu=fpv4-sp-d16", "-mfloat-abi=hard", "-mthumb", "-Os",
          "-ffunction-sections", "-fdata-sections", "-std=gnu11"]
 INCLUDES = [f"-I{DSP / 'Include'}", f"-I{RAIZ / 'Drivers' / 'CMSIS' / 'Include'}",
-            f"-I{RAIZ / 'Core' / 'Inc' / 'pds'}"]
+            f"-I{RAIZ / 'Core' / 'Inc' / 'pds'}", f"-I{RAIZ / 'testes'}"]
 
 
 def gcc(*args: str) -> None:
     subprocess.run(["arm-none-eabi-gcc", *args], check=True)
 
 
-def compila(saida: Path) -> tuple[bytes, dict[str, int]]:
+def compila(saida: Path, modo: str = "fft") -> tuple[bytes, dict[str, int]]:
     objetos = []
-    fontes = [*sorted((DSP / "Source").glob("*/*.c")), RAIZ / "Core/Src/pds/fft/fft.c", AQUI / "bench.c"]
+    fontes = [*sorted((DSP / "Source").glob("*/*.c")), RAIZ / "Core/Src/pds/fft/fft.c"]
+    if modo == "espectral":
+        fontes += [RAIZ / "Core/Src/pds/espectral/espectral.c", AQUI / "bench_espectral.c"]
+    else:
+        fontes += [AQUI / "bench.c"]
     for fonte in fontes:
         obj = saida / (fonte.stem + ".o")
         extra = ["-w"] if DSP in fonte.parents else []
         gcc(*FLAGS, *extra, *INCLUDES, "-c", str(fonte), "-o", str(obj))
         objetos.append(str(obj))
     elf = saida / "bench.elf"
-    gcc("-mcpu=cortex-m4", "-mfpu=fpv4-sp-d16", "-mfloat-abi=hard", "-mthumb", "-nostdlib",
-        "-nostartfiles", "-Wl,--gc-sections", f"-Wl,-T,{AQUI / 'm.ld'}", "-Wl,--undefined=entra_fft",
-        "-o", str(elf), *objetos, "-lgcc")
+    # O espectral usa cosf e logf (libm), então liga a libc enxuta do firmware; a FFT sozinha não precisa.
+    libc = ["--specs=nano.specs", "--specs=nosys.specs"] if modo == "espectral" else ["-nostdlib"]
+    gcc("-mcpu=cortex-m4", "-mfpu=fpv4-sp-d16", "-mfloat-abi=hard", "-mthumb", *libc,
+        "-nostartfiles", "-Wl,--gc-sections", f"-Wl,-T,{AQUI / 'm.ld'}",
+        f"-Wl,--undefined={'entra_amostra' if modo == 'espectral' else 'entra_fft'}",
+        "-o", str(elf), *objetos, "-lm", "-lc", "-lgcc")
     imagem = saida / "bench.bin"
     subprocess.run(["arm-none-eabi-objcopy", "-O", "binary", str(elf), str(imagem)], check=True)
     nm = subprocess.check_output(["arm-none-eabi-nm", str(elf)], text=True)
@@ -102,7 +115,8 @@ def novo(imagem: bytes, simbolos: dict[str, int], n: int) -> Uc:
     # A FPU do Cortex-M4 sai desligada; o firmware liga no SystemInit. Aqui, direto.
     uc.reg_write(UC_ARM_REG_C1_C0_2, 0xF00000)
     uc.reg_write(UC_ARM_REG_FPEXC, 0x40000000)
-    uc.mem_write(simbolos["n_cfg"], struct.pack("<I", n))
+    if "n_cfg" in simbolos:  # só o programa da FFT tem o tamanho a configurar
+        uc.mem_write(simbolos["n_cfg"], struct.pack("<I", n))
     return uc
 
 
@@ -128,6 +142,9 @@ def roda(uc: Uc, entrada: int, contar: bool, md: Cs) -> dict[str, int]:
     h = uc.hook_add(UC_HOOK_CODE, gancho) if contar else None
     chegou: list[int] = []
     uc.hook_add(UC_HOOK_INTR, lambda u, n, _: (chegou.append(1), u.emu_stop()))
+    # O bench termina num BKPT em vez de retornar, então a pilha não volta sozinha: sem isto, ela
+    # desce a cada chamada e, depois de milhares de amostras, invade os dados do módulo.
+    uc.reg_write(UC_ARM_REG_SP, 0x20020000)
     uc.emu_start(entrada | 1, 0x30000, count=5_000_000)  # |1: modo Thumb
     if h is not None:
         uc.hook_del(h)
@@ -144,10 +161,57 @@ def sinal(n: int) -> np.ndarray:
     return x.astype(np.float32)
 
 
+def le_vetor(nome: str) -> np.ndarray:
+    """Um array de testes/espectral/vetores/s2_walk.h (o vetor do teste no PC)."""
+    import re
+
+    texto = (RAIZ / "testes/espectral/vetores/s2_walk.h").read_text(encoding="utf-8")
+    m = re.search(rf"s2_walk_{nome}\[\d+\] = \{{(.*?)\}};", texto, re.DOTALL)
+    return np.array([float(v.strip().removesuffix("f")) for v in m.group(1).split(",") if v.strip()])
+
+
+def espectral(md: Cs) -> None:
+    """O espectral inteiro, uma amostra por vez, no código ARM."""
+    with tempfile.TemporaryDirectory() as pasta:
+        imagem, simbolos = compila(Path(pasta), "espectral")
+    uc = novo(imagem, simbolos, 0)
+    roda(uc, simbolos["entra_init"], False, md)
+    if struct.unpack("<I", bytes(uc.mem_read(simbolos["ok"], 4)))[0] != 1:
+        sys.exit("espectral_init falhou")
+    esperado_valido, esperado_bpm = le_vetor("valido"), le_vetor("bpm")
+    n_amostras = len(le_vetor("entrada"))
+    soma = maior = saidas = fora = 0
+    pior_bpm = 0.0
+    for i in range(n_amostras):
+        uc.mem_write(simbolos["indice"], struct.pack("<I", i))
+        st = roda(uc, simbolos["entra_amostra"], True, md)
+        soma += st["ciclos"]
+        maior = max(maior, st["ciclos"])
+        if struct.unpack("<I", bytes(uc.mem_read(simbolos["saiu"], 4)))[0]:
+            valido = struct.unpack("<I", bytes(uc.mem_read(simbolos["valido"], 4)))[0]
+            bpm = struct.unpack("<f", bytes(uc.mem_read(simbolos["bpm"], 4)))[0]
+            fora += valido != esperado_valido[saidas]
+            pior_bpm = max(pior_bpm, abs(bpm - esperado_bpm[saidas]))
+            saidas += 1
+    media = soma // n_amostras
+    print(f"imagem ARM: {len(imagem)} bytes (código, tabelas e o vetor do s2_walk)\n")
+    print(f"amostras: {n_amostras}, saídas: {saidas} (esperado {len(esperado_valido)})")
+    print(f"saídas com valido diferente do Python: {fora}; maior diferença de bpm: {pior_bpm:.1e}")
+    print(f"ciclos por amostra (modelo): média {media:,} (orçamento 9,600: "
+          f"{'OK' if media <= 9600 else 'FALHOU'}), "
+          f"pior caso {maior:,} (orçamento 960,000: {'OK' if maior <= 960000 else 'FALHOU'})")
+    print(f"pior caso = {100 * maior / ORCAMENTO:.1f}% de um período de amostra "
+          f"({1000 * maior / 96_000_000:.2f} ms a 96 MHz)")
+    if saidas != len(esperado_valido) or fora or pior_bpm > 1e-3:
+        sys.exit("o espectral no ARM não bate com o Python")
+
+
 def main() -> None:
     if shutil.which("arm-none-eabi-gcc") is None:
         sys.exit("arm-none-eabi-gcc não está no PATH (Arm GNU Toolchain)")
     md = Cs(CS_ARCH_ARM, CS_MODE_THUMB | CS_MODE_MCLASS)
+    if sys.argv[1:] == ["espectral"]:
+        return espectral(md)
     with tempfile.TemporaryDirectory() as pasta:
         imagem, simbolos = compila(Path(pasta))
 

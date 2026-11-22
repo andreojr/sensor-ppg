@@ -88,6 +88,21 @@ def test_batimentos_vao_pro_csv_do_picos(tmp_path):
     assert picos["rr_ms"].tolist() == [0.0, 803.49]
 
 
+def test_bpm_do_espectral_vai_pro_csv_do_espectral(tmp_path):
+    serial_falsa = io.BytesIO(
+        b"# espectral: e,n,bpm_valido,bpm\n0,100,200\ne,799,1,73.85\ne,899,0,0.00\ne,1,x,0\ne,999\n"
+    )
+    destino = tmp_path / "x.csv"
+    resumo = captura.grava(serial_falsa, destino, segundos=0.1)
+    assert resumo.amostras == 1 and resumo.invalidas == 2
+    assert resumo.por_ponto == {"espectral": 2}
+    esp = pd.read_csv(tmp_path / "x_espectral.csv")
+    assert list(esp.columns) == list(captura.COLUNAS_ESPECTRAL)
+    assert esp["n"].tolist() == [799, 899]
+    assert esp["bpm_valido"].tolist() == [1, 0]
+    assert esp["bpm"].tolist() == [73.85, 0.0]
+
+
 def test_plota_gera_png(tmp_path):
     csv = tmp_path / "x.csv"
     csv.write_text("n,ir,vermelho\n100,1,2\n101,3,4\n102,5,6\n", encoding="utf-8")

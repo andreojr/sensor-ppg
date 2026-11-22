@@ -196,6 +196,13 @@ pipeline. O valor real na placa pode ser maior (pela flash) ou menor (pelo pipel
 com folga de mais de 10× no orçamento, a conclusão de que **cabe** não depende disso.
 O número de verdade sai do contador de ciclos da placa (`DWT->CYCCNT`), ainda a fazer.
 
+**O espectral inteiro** (`espectral_processa()` amostra a amostra sobre os 60 s do `s2_walk`,
+`uv run testes/fft/ciclos/ciclos.py espectral`): as 53 saídas saem iguais às do Python, e o
+custo é de **~1 054 ciclos por amostra em média** (orçamento 9 600) e **~106 211 no pior caso**,
+a amostra em que sai a FFT (orçamento 960 000; 11,1% de um período de amostra, 1,11 ms a
+96 MHz). A FFT de 1024 pontos é ~83 300 desses; o resto é copiar a janela, tirar a média,
+aplicar o Hann e achar o pico.
+
 Os números são do **Release (`-Os`)**. O Debug (`-O0`) é bem mais lento, então
 o orçamento deve ser conferido no build que vai pra apresentação.
 

@@ -17,12 +17,16 @@ Método, a cada passo:
 Resolução e atraso (estudado em espectral_validacao.py): a resolução de frequência é 1 / JANELA_S, e o BPM
 medido é o da janela inteira, ou seja, vem com atraso de cerca de JANELA_S / 2.
 
-Uso (da pasta analise/):  uv run python -m analise.espectral_validacao
+Validação contra o ECG: uv run python -m analise.espectral_validacao
+Vetores de referência pro teste em C (testes/espectral/vetores/), da pasta analise/:
+
+    uv run python -m analise.espectral
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 
@@ -33,11 +37,15 @@ HOP_S = 1.0
 NFFT = 1024
 BANDA_HZ = (0.7, 3.5)  # 42 a 210 bpm
 PROMINENCIA = 0.3  # fração mínima da potência da banda no pico e vizinhos
+TOL_VETOR = 1e-3  # tolerância dos floats no teste em C (bpm e prominência)
 
 
 @dataclass(frozen=True)
 class Bpm:
-    """ppg_bpm_t mais o instante: n é a amostra em que a janela terminou."""
+    """ppg_bpm_t mais o instante: n é a amostra em que a janela terminou.
+
+    bpm é 0 quando valido é False.
+    """
 
     n: int
     valido: bool
@@ -99,10 +107,53 @@ class Espectral:
         den = a - 2 * b + c
         d = 0.5 * (a - c) / den if den != 0 else 0.0
         f_hz = (k + d) * FS_HZ / self.nfft
-        return Bpm(self.n - 1, prominencia >= self.prominencia, 60.0 * f_hz, prominencia)
+        valido = prominencia >= self.prominencia
+        # Inválido sai com bpm 0, como o picos_bpm(): o display mostra "--".
+        return Bpm(self.n - 1, valido, 60.0 * f_hz if valido else 0.0, prominencia)
 
 
 def estima(filtrado: np.ndarray, **parametros) -> list[Bpm]:
     """Roda o módulo num trecho e devolve todos os BPM."""
     e = Espectral(**parametros)
     return [r for x in filtrado if (r := e.processa(x)) is not None]
+
+
+CASOS = (
+    ("s1_sit", "limpo, sentado"),
+    ("s2_walk", "artefato de movimento: pico fraco, valido = false"),
+)
+VETOR_DURACAO_S = 60.0
+
+
+def gera_vetores(testes: Path | None = None) -> list[Path]:
+    """Grava testes/espectral/vetores/<caso>.h: entrada e o que o C tem que devolver."""
+    from analise import fonte_falsa, physionet, vetores
+
+    saidas = []
+    for nome, descricao in CASOS:
+        f = fonte_falsa.gera(physionet.carrega(nome), 30.0, VETOR_DURACAO_S)
+        entrada = f.filtrado_ir.astype(np.float32)
+        r = estima(entrada)
+        arrays = {
+            "entrada": entrada,
+            "valido": [x.valido for x in r],
+            "bpm": [x.bpm for x in r],
+            "prominencia": [x.prominencia for x in r],
+        }
+        extra = {"testes": testes} if testes else {}
+        saidas.append(
+            vetores.gera_vetor(
+                "espectral",
+                nome,
+                arrays,
+                tol=TOL_VETOR,
+                descricao=f"{nome} ({descricao}): {VETOR_DURACAO_S:g} s do filtrado_ir.",
+                **extra,
+            )
+        )
+    return saidas
+
+
+if __name__ == "__main__":
+    for caminho in gera_vetores():
+        print(caminho)

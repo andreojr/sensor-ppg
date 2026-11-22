@@ -6,7 +6,8 @@ Linhas "b,n,ir,vermelho" e "f,n,ir,vermelho" são o bruto (decimado) e o
 filtrado que a placa calculou a 100 Hz: vão pra <nome>_bruto.csv e
 <nome>_filtrado.csv, ao lado do primeiro. Linhas
 "p,n_pico,fracao,rr_valido,rr_ms,bpm_valido,bpm" são os batimentos do picos
-na placa: vão pra <nome>_picos.csv.
+na placa: vão pra <nome>_picos.csv. Linhas "e,n,bpm_valido,bpm" são o BPM do
+espectral (um por segundo): vão pra <nome>_espectral.csv.
 
 Uso:
     uv run python -m analise.captura COM3 --segundos 30
@@ -33,6 +34,7 @@ DADOS = Path(__file__).resolve().parents[2] / "dados"
 COLUNAS = ("n", "ir", "vermelho")
 PONTOS = {"b": "bruto", "f": "filtrado"}  # prefixo da linha -> ponto da cadeia na placa
 COLUNAS_PICOS = ("n_pico", "fracao", "rr_valido", "rr_ms", "bpm_valido", "bpm")
+COLUNAS_ESPECTRAL = ("n", "bpm_valido", "bpm")
 
 
 class Fonte(Protocol):
@@ -76,6 +78,17 @@ def le_ponto(linha: str) -> tuple[str, tuple[int, float, float]] | None:
         return None
     try:
         return PONTOS[partes[0]], (int(partes[1]), float(partes[2]), float(partes[3]))
+    except ValueError:
+        return None
+
+
+def le_espectral(linha: str) -> tuple[int, int, float] | None:
+    """Converte "e,n,bpm_valido,bpm". None se não for."""
+    partes = linha.strip().split(",")
+    if len(partes) != 4 or partes[0] != "e":
+        return None
+    try:
+        return int(partes[1]), int(partes[2]), float(partes[3])
     except ValueError:
         return None
 
@@ -126,11 +139,27 @@ def grava(fonte: Fonte, destino: Path, segundos: float | None = None) -> Resumo:
                         resumo.invalidas += 1
                         continue
                     if "picos" not in abertos:
-                        arq = destino_ponto(destino, "picos").open("w", newline="", encoding="utf-8")
+                        arq = destino_ponto(destino, "picos").open(
+                            "w", newline="", encoding="utf-8"
+                        )
                         abertos["picos"] = (arq, csv.writer(arq))
                         abertos["picos"][1].writerow(COLUNAS_PICOS)
                     abertos["picos"][1].writerow(batimento)
                     resumo.por_ponto["picos"] = resumo.por_ponto.get("picos", 0) + 1
+                    continue
+                if linha.startswith("e,"):
+                    bpm = le_espectral(linha)
+                    if bpm is None:
+                        resumo.invalidas += 1
+                        continue
+                    if "espectral" not in abertos:
+                        arq = destino_ponto(destino, "espectral").open(
+                            "w", newline="", encoding="utf-8"
+                        )
+                        abertos["espectral"] = (arq, csv.writer(arq))
+                        abertos["espectral"][1].writerow(COLUNAS_ESPECTRAL)
+                    abertos["espectral"][1].writerow(bpm)
+                    resumo.por_ponto["espectral"] = resumo.por_ponto.get("espectral", 0) + 1
                     continue
                 if linha[:2] in {f"{p}," for p in PONTOS}:
                     lido = le_ponto(linha)
@@ -176,10 +205,14 @@ def main(argv: list[str] | None = None) -> None:
         print(f"gravando {args.porta} em {destino} (Ctrl+C pra parar)")
         resumo = grava(porta, destino, args.segundos)
 
-    print(f"{resumo.amostras} amostras em {resumo.segundos:.1f} s "
-          f"({resumo.amostras / max(resumo.segundos, 1e-9):.1f}/s; esperado {SENSOR_FS_HZ}/s)")
-    print(f"saltos no n: {len(resumo.saltos)} ({resumo.perdidas} amostras perdidas); "
-          f"linhas inválidas: {resumo.invalidas}")
+    print(
+        f"{resumo.amostras} amostras em {resumo.segundos:.1f} s "
+        f"({resumo.amostras / max(resumo.segundos, 1e-9):.1f}/s; esperado {SENSOR_FS_HZ}/s)"
+    )
+    print(
+        f"saltos no n: {len(resumo.saltos)} ({resumo.perdidas} amostras perdidas); "
+        f"linhas inválidas: {resumo.invalidas}"
+    )
     for ponto, linhas in resumo.por_ponto.items():
         print(f"{linhas} linhas do {ponto} da placa em {destino_ponto(destino, ponto)}")
     for c in resumo.comentarios:

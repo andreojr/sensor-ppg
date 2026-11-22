@@ -24,6 +24,21 @@ void ciclos_relata(ciclos_t *c, const char *nome, uint32_t orcamento)
     c->conta = 0;
 }
 
+void ciclos_relata_max(ciclos_t *c, const char *nome, uint32_t orcamento_med,
+                       uint32_t orcamento_max)
+{
+    char linha[112];
+    int n = snprintf(linha, sizeof linha,
+                     "# %s: ciclos med %lu (orcamento %lu) max %lu (orcamento %lu)\n", nome,
+                     (unsigned long)(c->conta ? c->soma / c->conta : 0u),
+                     (unsigned long)orcamento_med, (unsigned long)c->max,
+                     (unsigned long)orcamento_max);
+    serial_escreve(linha, (uint32_t)n);
+    c->soma = 0;
+    c->max = 0;
+    c->conta = 0;
+}
+
 #ifdef BANCADA_DECIMACAO
 
 #include <math.h>
@@ -195,3 +210,65 @@ bool bancada_picos(void)
 }
 
 #endif /* BANCADA_PICOS */
+
+#ifdef BANCADA_ESPECTRAL
+
+#include <math.h>
+
+#include "espectral/espectral.h"
+/* O mesmo vetor do teste no PC: o s2_walk tem saídas válidas e inválidas. */
+#include "espectral/vetores/s2_walk.h"
+
+bool bancada_espectral(void)
+{
+    static espectral_t e; /* ~15 KB: fora da pilha */
+    if (!espectral_init(&e)) {
+        static const char erro[] = "# bancada espectral: FFT de 1024 pontos nao compilada: FALHOU\n";
+        serial_escreve(erro, sizeof erro - 1u);
+        serial_envia();
+        return false;
+    }
+
+    ciclos_t c = {0};
+    uint32_t k = 0, fora = 0;
+    float pior = 0.0f;
+    for (uint32_t i = 0; i < S2_WALK_ENTRADA_N; i++) {
+        ppg_amostra_t x = {i, s2_walk_entrada[i], 0.0f};
+        ppg_bpm_t s;
+        uint32_t t0 = ciclos_agora();
+        bool saiu = espectral_processa(&e, &x, &s);
+        ciclos_conta(&c, ciclos_agora() - t0);
+        if (!saiu)
+            continue;
+        if (k < S2_WALK_VALIDO_N) {
+            float erro = fmaxf(fabsf(s.bpm - s2_walk_bpm[k]),
+                               fabsf(espectral_prominencia(&e) - s2_walk_prominencia[k]));
+            if (erro > pior)
+                pior = erro;
+            fora += (int32_t)s.valido != s2_walk_valido[k] || !(erro <= S2_WALK_TOL);
+        }
+        k++;
+    }
+
+    uint32_t media = (uint32_t)(c.soma / c.conta);
+    bool ok = k == S2_WALK_VALIDO_N && fora == 0 && media <= BANCADA_ORCAMENTO_ESPECTRAL &&
+              c.max <= BANCADA_ORCAMENTO_ESPECTRAL_MAX;
+    char linha[160];
+    int n = snprintf(linha, sizeof linha,
+                     "# bancada espectral: %lu saidas (esperado %lu), %lu fora da tolerancia, "
+                     "erro max %lu milesimos\n",
+                     (unsigned long)k, (unsigned long)S2_WALK_VALIDO_N, (unsigned long)fora,
+                     (unsigned long)(pior * 1000.0f + 0.5f));
+    serial_escreve(linha, (uint32_t)n);
+    n = snprintf(linha, sizeof linha,
+                 "# bancada espectral: ciclos por amostra med %lu (orcamento %lu), max %lu "
+                 "(orcamento %lu): %s\n",
+                 (unsigned long)media, (unsigned long)BANCADA_ORCAMENTO_ESPECTRAL,
+                 (unsigned long)c.max, (unsigned long)BANCADA_ORCAMENTO_ESPECTRAL_MAX,
+                 ok ? "OK" : "FALHOU");
+    serial_escreve(linha, (uint32_t)n);
+    serial_envia();
+    return ok;
+}
+
+#endif /* BANCADA_ESPECTRAL */

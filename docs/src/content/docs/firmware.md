@@ -12,6 +12,7 @@ Código que usa HAL, em `Core/Inc` e `Core/Src` (fora de `pds/`).
 | Decimação na placa (400 → 100 Hz) e ciclos (DWT) | João | feita: `main.c` e `bancada.c`; ver [Decimação](../modulos/decimacao/) |
 | Filtro na placa (bruto → filtrado) | João | feito: `main.c` e `bancada.c`; ver [Filtro](../modulos/filtro/) |
 | Picos na placa (filtrado → batimentos e BPM) | Celso / André | feito: `main.c` e `bancada.c`; ver [Picos](../modulos/picos/) |
+| Espectral na placa (filtrado → BPM pela FFT) | Celso | **código pronto e compilando, ainda não rodou na placa**: `main.c` e `bancada.c`; ver [Espectral](../modulos/espectral/) e [FFT](../modulos/fft/) |
 | Bancada do HRV na placa (`-DBANCADA_HRV=ON`) | André | feita: `bancada_hrv.c`, passou na placa; ver [HRV](../modulos/hrv/) |
 | Fonte falsa (PhysioNet em flash) | André | a fazer |
 | Timer, filas e laço principal (TIM2 a 100 Hz já configurado) | André | a fazer |
@@ -80,6 +81,7 @@ INT ficar baixo, não vem outra borda de descida, e sem isso a leitura travaria.
 # decimacao 100 Hz: b,n,ir,vermelho
 # filtro 100 Hz, atraso 100: f,n,ir,vermelho
 # picos: p,n_pico,fracao,rr_valido,rr_ms,bpm_valido,bpm
+# espectral: e,n,bpm_valido,bpm
 0,112034,98765
 1,112040,98771
 ...
@@ -88,9 +90,12 @@ f,0,0.00,0.00
 ...
 p,1234,0.2500,1,812.50,1,73.85
 ...
+e,799,1,73.85
+...
 # decimacao: ciclos med ... max ... (orcamento 2400)
 # filtro: ciclos med ... max ... (orcamento 19200)
 # picos: ciclos med ... max ... (orcamento 9600)
+# espectral: ciclos med ... (orcamento 9600) max ... (orcamento 960000)
 ```
 
 - `n` é o índice da amostra a 400 Hz desde o boot. Se o sensor descartar
@@ -112,12 +117,18 @@ p,1234,0.2500,1,812.50,1,73.85
   (`picos_bpm()`, 2 casas). Cada uma sai 300 ms depois do pico no `n` do
   filtrado (o candidato pendente), ou seja, ~1,3 s depois do pulso de verdade
   (mais 1 s do atraso do filtro).
+- Linhas que começam com `e,` são o **BPM do espectral** (`espectral_processa()` sobre o
+  filtrado), uma por segundo, a partir de 8 s de sinal (a janela da FFT): `n` (o do
+  filtrado em que a janela terminou), `bpm_valido` (0/1) e `bpm` (2 casas, 0 quando
+  inválido). O `n` conta o atraso do filtro, como nas linhas `f,`.
 - A cada 10 s, `# decimacao: ...` e `# filtro: ciclos med X max Y` medem o
   `decimacao_processa()` e o `filtro_processa()` com o contador de ciclos do
   núcleo (DWT). Os orçamentos são 1% da CPU pra decimação (96 MHz / 400 Hz /
   100 = 2400 ciclos por amostra do sensor), 2% pro filtro (19 200 ciclos
   por amostra a 100 Hz) e 1% pro picos (9 600); `# picos: ...` mede o
-  `picos_processa()`.
+  `picos_processa()`. O espectral tem dois orçamentos: **média** de 9 600 ciclos por
+  amostra (1%) e **pior caso** de 960 000 (a amostra em que sai a FFT, uma por segundo,
+  tem que caber num período de amostra: 96 MHz / 100 Hz).
 - Linhas que começam com `#` são comentário. Se o sensor não responder no
   boot, sai `# erro: MAX30102 nao respondeu na I2C1` e a placa para. Se a
   taxa do sensor não tiver filtro de decimação, sai
@@ -215,6 +226,25 @@ Python. Pode ser ligada junto com as outras.
 # bancada picos: 47 batimentos (esperado 47), 0 fora da tolerancia, erro max ... milesimos
 # bancada picos: ciclos por amostra med ... max ... (orcamento 9600): OK
 ```
+
+### Bancada do espectral (fonte falsa)
+
+Com `-DBANCADA_ESPECTRAL=ON`: os 60 s do filtrado do `s2_walk` (o vetor de
+`testes/espectral/vetores/s2_walk.h`, ~24 KB na flash, com saídas válidas e inválidas)
+passam pelo espectral e são conferidos com o Python (`valido` exato; `bpm` e prominência
+com tolerância de 0,001). Confere também os dois orçamentos de ciclos. Pode ser ligada
+junto com as outras.
+
+```text
+# bancada espectral: 53 saidas (esperado 53), 0 fora da tolerancia, erro max ... milesimos
+# bancada espectral: ciclos por amostra med ... (orcamento 9600), max ... (orcamento 960000): OK
+```
+
+**Estado: não rodou na placa.** O código compila (Debug e Release, sem avisos) e o
+mesmo código ARM foi emulado (`uv run testes/fft/ciclos/ciclos.py espectral`): 53 saídas
+iguais às do Python, média de ~1 050 ciclos por amostra e pior caso de ~106 000 (modelo
+do Cortex-M4F, sem a espera da flash). Falta rodar na placa pra trocar a estimativa
+pela medida do contador de ciclos (DWT) e ver as linhas `# bancada espectral` acima.
 
 | Sintoma | Causa provável |
 |---|---|

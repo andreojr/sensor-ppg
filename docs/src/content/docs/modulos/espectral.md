@@ -20,10 +20,10 @@ sidebar:
 | Passo | Situação |
 |---|---|
 | 1. Python (`analise/src/analise/espectral.py`) | feito, validado em 15 registros do PhysioNet |
-| 2. C (`Core/*/pds/espectral/`) | a fazer |
-| 3. Teste no PC (`testes/espectral/`) | a fazer |
-| 4. Placa com a fonte falsa | a fazer |
-| 5. Sensor real | a fazer |
+| 2. C (`Core/*/pds/espectral/`) | feito, bate com o Python (erro máx. de 1,5e-5 bpm) |
+| 3. Teste no PC (`testes/espectral/`) | feito, 2 casos contra os vetores do Python |
+| 4. Placa com a fonte falsa | **código pronto, compila; falta rodar na placa** (`-DBANCADA_ESPECTRAL=ON`) |
+| 5. Sensor real | **código pronto, compila; falta rodar com o sensor** (linha `e,...` na serial) |
 
 Esta página é atualizada em todo PR que mexe no módulo.
 
@@ -50,6 +50,31 @@ bpm entre bins), e o BPM é o da janela inteira, então chega com atraso de cerc
 
 **Parâmetros:** `JANELA_S = 8 s`, `HOP_S = 1 s`, `NFFT = 1024`, 800 amostras de
 janela. A janela de 8 s é o meio-termo medido abaixo.
+
+## Em C
+
+`espectral_t` guarda a janela de 800 amostras, a janela de Hann (calculada no
+`espectral_init`), as duas áreas da FFT de 1024 pontos e o estado: **~14,7 KB de RAM**
+(aloque fora da pilha). `espectral_processa()` devolve `true` uma vez por segundo, a
+partir da amostra 800, e **`bpm = 0` quando `valido = false`**, como o `picos_bpm()`
+(o display mostra "--"). A FFT é a do módulo [FFT](../fft/) (CMSIS-DSP).
+
+Diferenças pro Python, todas dentro da tolerância: o C faz as contas em `float` (a janela de
+Hann com `cosf`, a média por soma sequencial) e o NumPy em `float64`/pairwise. No teste
+(`testes/espectral/teste_espectral.c`, sobre 60 s do `s1_sit` e do `s2_walk`, 53 saídas
+cada) o `valido` sai **igual em todas** e o BPM difere no máximo **1,5e-5** (tolerância
+1e-3); reiniciar dá o mesmo resultado. O teste falha de verdade: com o limite de
+validade em 0,6 em vez de 0,3, o `s2_walk` dá 36 diferenças.
+
+**Custo** (código ARM emulado, modelo do Cortex-M4F; ver [FFT](../fft/)): **~1 050 ciclos por
+amostra em média** (orçamento 9 600) e **~106 000 no pior caso**, a amostra em que
+sai a FFT (orçamento 960 000, 11% de um período de amostra, 1,1 ms a 96 MHz). Em Release,
+o espectral acrescenta ~26 KB de flash e ~14,7 KB de RAM ao firmware.
+
+**Na placa e com o sensor real:** o `main.c` já passa o filtrado pelo espectral e manda
+`e,n,bpm_valido,bpm` a cada segundo, e a bancada confere a fonte falsa. Nada disso rodou
+no hardware ainda: faltam as linhas `# bancada espectral` e um BPM do dedo comparado com
+um oxímetro ou com o picos.
 
 ## Validação
 
