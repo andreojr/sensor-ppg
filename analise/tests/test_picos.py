@@ -2,7 +2,7 @@ import numpy as np
 from scipy import signal
 
 from analise import FS_HZ
-from analise.picos import ATRASO_AMOSTRAS, ESPERA, Picos, detecta
+from analise.picos import ATRASO_AMOSTRAS, ESPERA, Picos, detecta, trem_de_pulsos
 
 # A senoide entra direto, sem o filtro: o instante na entrada é n_pico + o atraso
 # que o picos desconta (PPG_ATRASO_AMOSTRAS).
@@ -234,16 +234,6 @@ def test_confere_usa_o_trecho_depois_do_reset():
 # ---- Regularidade: o BPM só vale se os últimos batimentos formam um ritmo -------------------
 
 
-def trem(intervalos_amostras: list[int], inicio: int = 300) -> np.ndarray:
-    """Pulsos de largura de dedo (gaussianas de 40 ms) a cada intervalo, com 2 s de silêncio antes."""
-    picos_em = inicio + np.concatenate([[0], np.cumsum(intervalos_amostras)])
-    t = np.arange(int(picos_em[-1]) + 300, dtype=float)
-    x = np.zeros_like(t)
-    for t0 in picos_em:
-        x += np.exp(-((t - t0) ** 2) / (2 * 4**2))
-    return x.astype(np.float32)
-
-
 def valido_por_batimento(x: np.ndarray) -> list[bool]:
     p = Picos()
     out = []
@@ -254,7 +244,7 @@ def valido_por_batimento(x: np.ndarray) -> list[bool]:
 
 
 def test_ritmo_regular_liga_o_valido_depois_de_8_batimentos():
-    v = valido_por_batimento(trem([80] * 40))  # 75 bpm
+    v = valido_por_batimento(trem_de_pulsos([80] * 40))  # 75 bpm
     assert not any(v[:7]) and all(v[8:])  # precisa de 8 batimentos pra olhar, depois fica ligado
     assert len(v) >= 30
 
@@ -262,14 +252,14 @@ def test_ritmo_regular_liga_o_valido_depois_de_8_batimentos():
 def test_um_batimento_fora_do_ritmo_nao_derruba_o_valido():
     """Uma extrassístole (RR de 1000 ms entre os de 800) é válida pro rr_valido mas fica a 25% da
     mediana: é 1 batimento ruim em 8, e o ritmo continua valendo."""
-    v = valido_por_batimento(trem([80] * 15 + [100] + [80] * 15))
+    v = valido_por_batimento(trem_de_pulsos([80] * 15 + [100] + [80] * 15))
     assert all(v[8:])
 
 
 def test_ritmo_irregular_desliga_o_valido_mesmo_com_rr_valido():
     """RR de 600 e 1000 ms alternados: cada um passa pela faixa de rr_valido, mas nenhum fica perto da
     mediana (800 ms): sem ritmo, sem BPM. É o que acontece com arritmia de verdade."""
-    x = trem([60, 100] * 20)
+    x = trem_de_pulsos([60, 100] * 20)
     p = Picos()
     batimentos = [b for amostra in x if (b := p.processa(amostra)) is not None]
     assert (
@@ -304,7 +294,7 @@ def test_a_regra_da_varredura_e_a_do_modulo():
 
 def test_historico_zera_no_reinicia():
     p = Picos()
-    for amostra in trem([80] * 20):
+    for amostra in trem_de_pulsos([80] * 20):
         p.processa(amostra)
     assert p.regular()
     p.reinicia()

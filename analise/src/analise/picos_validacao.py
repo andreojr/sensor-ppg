@@ -163,13 +163,18 @@ def fracao_ligada(batimentos, tol: float, todos: bool) -> float:
 
 def varredura_regularidade() -> str:
     """Fração do tempo com o valido ligado, por atividade e por ruído, pra cada critério e tolerância."""
-    no_cache = [n for n in physionet.registros() if (physionet.PASTA_PADRAO / f"{n}.dat").exists()]
+    # Todos os 66 registros (baixa os que faltam): o resultado não depende do cache.
     por_ativ: dict[str, list[list[float]]] = {}
-    for nome in no_cache:
+    pior: dict[str, tuple[float, str]] = {}
+    for nome in physionet.registros():
         f = fonte_falsa.gera(physionet.carrega(nome), INICIO_S, DURACAO_S)
         bs, _ = detecta(f.filtrado_ir.astype(np.float32))
         linha = [fracao_ligada(bs, t, todos) for todos in (True, False) for t in TOLERANCIAS]
-        por_ativ.setdefault(nome.split("_")[1], []).append(linha)
+        ativ = nome.split("_")[1]
+        por_ativ.setdefault(ativ, []).append(linha)
+        v = linha[len(TOLERANCIAS) + TOLERANCIAS.index(0.15)]  # 6 de 8, 15%
+        if ativ not in pior or v < pior[ativ][0]:
+            pior[ativ] = (v, nome)
 
     # Sem pulso: ruído branco com a mesma passagem pelo filtro e pelo picos (12 trechos de 60 s).
     rng = np.random.default_rng(0)
@@ -194,6 +199,8 @@ def varredura_regularidade() -> str:
             + "  |"
             + "".join(f"  {v:>8.0%}" for v in m[4:])
         )
+    linhas.append("pior registro (6 de 8, 15%): " + ", ".join(
+        f"{a} {n} {v:.0%}" for a, (v, n) in pior.items()))
     return "\n".join(linhas)
 
 
