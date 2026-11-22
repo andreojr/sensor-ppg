@@ -61,6 +61,23 @@ segurando o SDA em 0 esperando o resto do byte. A I2C1 vê o barramento ocupado
 e o init falha. Até 9 pulsos no SCL, feitos por GPIO, terminam o byte, e um
 STOP libera o barramento.
 
+Resistores (pull-up). O módulo do MAX30102 puxa SDA, SCL e INT para **1,8 V**,
+bem no limite do que o STM32 a 3,3 V lê como 1 (~1,8 V). No INT isso dava
+interrupção falsa: o clock do I2C acoplava no fio e a EXTI disparava a cada
+pulso do SCL (~80 mil por segundo, medido na placa), e o laço lia a FIFO a cada
+~2 ms em vez de esperar as 17 amostras. Por isso:
+
+| Pino | Ligação | Por quê |
+|---|---|---|
+| SDA (B7) | 2 kΩ pro 3V3 | dreno aberto: STM32 e sensor puxam o SDA, o resistor sobe |
+| INT (B5) | 2 kΩ pro 3V3 | leva o nível alto pra ~2,8 V, longe do limite: acabam as interrupções falsas |
+| SCL (B6) | sem resistor | **push-pull**: só o STM32 dirige o clock (o sensor não estica o SCL), então o próprio pino sobe e desce |
+
+O CubeMX só deixa os pinos do I2C em dreno aberto; o push-pull do SCL fica no
+`USER CODE` do `I2C1_MspInit` (`stm32f4xx_hal_msp.c`) e no `destrava_i2c1()`.
+O SDA continua em dreno aberto: se os dois lados pudessem empurrar o SDA, um
+pra 1 e outro pra 0, seria curto.
+
 Sem rollover, se a FIFO encher o sensor descarta as amostras **novas** e conta
 no OVF_COUNTER. Assim dá pra saber quantas se perderam.
 
@@ -155,6 +172,7 @@ Ligações, com tudo desligado do USB:
 |---|---|
 | MAX30102 VIN / GND | 3V3 / G |
 | MAX30102 SCL / SDA / INT | B6 / B7 / B5 |
+| 2 kΩ, um em cada | B7 (SDA) → 3V3 e B5 (INT) → 3V3; o SCL fica sem resistor |
 | ST-LINK SWDIO / SWCLK / GND / 3.3V | DIO / SCK / G / 3V3 |
 | Adaptador RX / GND | A9 / G (o VCC do adaptador fica solto) |
 
