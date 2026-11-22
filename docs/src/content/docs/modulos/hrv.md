@@ -27,7 +27,7 @@ por enquanto `lf_hf_valido` sai sempre `false`.
 | 2. C sem HAL | feito: `hrv.h`, `hrv.c` |
 | 3. Teste no PC contra os vetores | feito: `testes/hrv/`, no CI |
 | 4. Placa com a fonte falsa | feito: bancada passou na STM32 (`-DBANCADA_HRV=ON`) |
-| 5. Sensor real | código pronto (linhas `h,` e `--confere`), falta capturar |
+| 5. Sensor real | feito: a placa calcula igual ao Python; o valor fisiológico depende do suporte de dedo (abaixo) |
 
 ## Método
 
@@ -274,4 +274,28 @@ a referência é fisiológica:
 3. Se der, uma cinta peitoral (Polar H10 ou parecida) ao mesmo tempo, como
    gabarito de RR.
 
-**Resultado com o sensor:** *(preencher)*
+**Resultado com o sensor** (dedo pressionado com a mão, 2 min desde o boot, 21/11/2026):
+
+```text
+captura desde o boot: 164 batimentos comparados, 52 com HRV válido
+erro máximo: SDNN 0.005 ms, RMSSD 0.005 ms; valido diferente em 0 (+0 na borda da cobertura)
+SDNN mediano 89.0 ms, RMSSD mediano 66.2 ms: OK
+# hrv: ciclos med 3757 max 4005 (orcamento 20000)
+```
+
+A placa calcula o HRV igual ao Python em todos os batimentos (erro de 0,005
+ms, o arredondamento da serial). O custo é de ~3 800 ciclos por batimento,
+19% do orçamento.
+
+O valor fisiológico ainda não é confiável: 25% dos RR saíram rejeitados, e o
+RMSSD de 66 ms passa da faixa típica de repouso (20 a 60 ms), provavelmente
+por batimentos falsos que sobraram. A causa é mecânica: no módulo verde
+"MAX30100/30102", os capacitores e reguladores em volta do sensor são mais
+altos que a janela dele. Com o dedo apoiado de leve, ele não encosta na
+janela e o pulso some; pressionando com a mão, o pulso aparece (autocorrelação
+de 0,5 a 0,6 a ~70 bpm em 20 s), mas ninguém segura a pressão constante por
+minutos. Em capturas de 2 a 3 min com o dedo solto, só 45 a 52% dos RR saíram
+válidos e o HRV nunca ficou válido. **O projeto precisa de um suporte que
+segure o dedo sobre o sensor com pressão leve e constante** (como um
+oxímetro de dedo); com ele, a captura de repouso e a de respiração guiada
+abaixo valem como validação fisiológica.
