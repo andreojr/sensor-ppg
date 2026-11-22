@@ -383,11 +383,18 @@ def main(argv: list[str] | None = None) -> None:
         return
     if args.confere or args.metronomo:
         base = args.confere or args.metronomo
-        resp = np.loadtxt(base.with_name(base.stem + "_respiracao.csv"), delimiter=",",
-                          skiprows=1, ndmin=2)
+        arq = base.with_name(base.stem + "_respiracao.csv")
+        resp = np.loadtxt(arq, delimiter=",", skiprows=1, ndmin=2) if arq.exists() else np.empty((0, 3))
+        if len(resp) == 0:
+            raise SystemExit(f"sem linhas r, em {arq.name}: a placa não mandou estimativas")
         if args.confere:
             bruto = np.loadtxt(base.with_name(base.stem + "_bruto.csv"), delimiter=",", skiprows=1)
             r = confere_placa(bruto, resp)
+            if r["comparadas"] == 0:
+                raise SystemExit(
+                    f"nenhuma estimativa pra comparar: no meio, o --confere precisa de mais de "
+                    f"{JANELA_S + AQUECE_S} s depois do 1º bloco alinhado (capture mais ou resete a placa)"
+                )
             ok = r["comparadas"] > 0 and r["valido_diferente"] == 0 and r["erro_max_rpm"] <= 0.5
             modo = "desde o boot" if r["desde_boot"] else f"no meio (depois de {JANELA_S + AQUECE_S} s)"
             print(f"captura {modo}: {r['comparadas']} estimativas comparadas; valido diferente em "
