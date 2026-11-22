@@ -25,6 +25,7 @@
 
 #include "bancada.h"
 #include "bancada_hrv.h"
+#include "bancada_qualidade.h"
 #include "decimacao/decimacao.h"
 #include "filtro/filtro.h"
 #include "hrv/hrv.h"
@@ -79,6 +80,10 @@ static ciclos_t ciclos_picos;
 static ciclos_t ciclos_espectral;
 static ciclos_t ciclos_hrv; /* por batimento, não por amostra */
 static ciclos_t ciclos_respiracao;
+#ifdef BANCADA_QUALIDADE
+static qualidade_t qualidade;              /* bruto -> qualidade, linha "q,..." por segundo */
+static ciclos_t ciclos_qualidade;
+#endif
 
 /* USER CODE END PV */
 
@@ -141,6 +146,11 @@ int main(void)
 #ifdef BANCADA_HRV
   /* Fonte falsa no HRV, antes do sensor (roda mesmo sem o MAX30102). */
   (void)bancada_hrv();
+#endif
+#ifdef BANCADA_QUALIDADE
+  /* Vetor da qualidade, antes do sensor (roda mesmo sem o MAX30102). */
+  (void)bancada_qualidade();
+  qualidade_init(&qualidade);
 #endif
   destrava_i2c1();
   if (max30102_init(&hi2c1) != HAL_OK)
@@ -683,6 +693,18 @@ static void decima(const max30102_amostra_t *amostra)
     {
       envia_respiracao(bruto.n, &resp);
     }
+#ifdef BANCADA_QUALIDADE
+    ppg_qualidade_t q;
+    t0 = ciclos_agora();
+    bool julgou = qualidade_processa(&qualidade, &bruto, &q);
+    ciclos_conta(&ciclos_qualidade, ciclos_agora() - t0);
+    if (julgou)
+    {
+      char linha[80]; /* até ~70 B com os campos no máximo */
+      int tam = qualidade_linha(linha, sizeof linha, bruto.n, &q, &qualidade);
+      serial_escreve(linha, (uint32_t)tam);
+    }
+#endif
   }
 
   if (ciclos_decimacao.conta == MAX30102_FS_HZ * 10u)
@@ -694,6 +716,9 @@ static void decima(const max30102_amostra_t *amostra)
                       BANCADA_ORCAMENTO_ESPECTRAL_MAX);
     ciclos_relata(&ciclos_hrv, "hrv", BANCADA_ORCAMENTO_HRV);
     ciclos_relata(&ciclos_respiracao, "respiracao", BANCADA_ORCAMENTO_RESPIRACAO);
+#ifdef BANCADA_QUALIDADE
+    ciclos_relata(&ciclos_qualidade, "qualidade", BANCADA_ORCAMENTO_QUALIDADE);
+#endif
   }
 }
 

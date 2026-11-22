@@ -11,6 +11,8 @@ na placa: vão pra <nome>_picos.csv. Linhas "e,n,bpm_valido,bpm" são o BPM do
 espectral (um por segundo): vão pra <nome>_espectral.csv. Linhas
 "h,n_pico,valido,sdnn,rmssd" são a saída do HRV a cada batimento: vão pra
 <nome>_hrv.csv.
+Linhas "q,..." (com -DBANCADA_QUALIDADE=ON) são a qualidade do bruto, uma
+por segundo: vão pra <nome>_qualidade.csv.
 
 Uso:
     uv run python -m analise.captura COM3 --segundos 30
@@ -44,6 +46,7 @@ PONTOS = {
 COLUNAS_PICOS = ("n_pico", "fracao", "rr_valido", "rr_ms", "bpm_valido", "bpm")
 COLUNAS_ESPECTRAL = ("n", "bpm_valido", "bpm")
 COLUNAS_HRV = ("n_pico", "valido", "sdnn_ms", "rmssd_ms")
+COLUNAS_QUALIDADE = ("n", "dedo", "usavel", "indice", "motivo", "dc", "pi", "aspereza", "razao")
 
 
 class Fonte(Protocol):
@@ -131,11 +134,25 @@ def le_hrv(linha: str) -> tuple[int, int, float, float] | None:
         return None
 
 
+def le_qualidade(linha: str) -> tuple[int, int, int, float, int, int, float, float, float] | None:
+    """Converte "q,n,dedo,usavel,indice,motivo,dc,pi,aspereza,razao" (inteiros
+    escalados, ver Core/Inc/bancada_qualidade.h) em valores. None se não for."""
+    partes = linha.strip().split(",")
+    if len(partes) != 10 or partes[0] != "q":
+        return None
+    try:
+        n, dedo, usavel, indice, motivo, dc, pi, aspereza, razao = (int(p) for p in partes[1:])
+    except ValueError:
+        return None
+    return n, dedo, usavel, indice / 1000, motivo, dc, pi / 1e5, aspereza / 100, razao / 100
+
+
 # Prefixo da linha -> (ponto, leitor, colunas do CSV) das saídas que não são amostra.
 LEITORES = {
     "p,": ("picos", le_batimento, COLUNAS_PICOS),
     "h,": ("hrv", le_hrv, COLUNAS_HRV),
     "e,": ("espectral", le_espectral, COLUNAS_ESPECTRAL),
+    "q,": ("qualidade", le_qualidade, COLUNAS_QUALIDADE),
 }
 
 

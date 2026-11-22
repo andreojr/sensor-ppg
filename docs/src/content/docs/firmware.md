@@ -16,6 +16,7 @@ Código que usa HAL, em `Core/Inc` e `Core/Src` (fora de `pds/`).
 | Espectral na placa (filtrado → BPM pela FFT) | Celso | feito: `main.c`, linhas `e,`, bate com o Python na placa; ver [Espectral](../modulos/espectral/) e [FFT](../modulos/fft/) |
 | Respiração na placa (bruto → rpm, 1 por segundo) | João | feita: `main.c` e `bancada.c`; ver [Respiração](../modulos/respiracao/) |
 | Bancada do HRV na placa (`-DBANCADA_HRV=ON`) | André | feita: `bancada_hrv.c`, passou na placa; ver [HRV](../modulos/hrv/) |
+| Bancada da qualidade na placa (`-DBANCADA_QUALIDADE=ON`) | André | pronta, não rodou: `bancada_qualidade.c`; ver [Qualidade](../modulos/qualidade/) |
 | Fonte falsa (PhysioNet em flash) | André | a fazer |
 | Timer, filas e laço principal (TIM2 a 100 Hz já configurado) | André | a fazer |
 | Display OLED (I2C3) | Celso | a fazer |
@@ -292,6 +293,18 @@ ocupam ~300 KB de flash; as cinco bancadas, ~341 KB.
 # bancada respiracao: 299 estimativas (esperado 299), 0 diferentes, erro max 0 milesimos de rpm
 # bancada respiracao: ciclos por amostra med ... max ... (orcamento 9600): OK
 ```
+
+### Bancada da qualidade (`bancada_qualidade.c`)
+
+Com `-DBANCADA_QUALIDADE=ON`, a placa, logo depois de `serial_init()` e antes
+do sensor, toca o vetor `bordas` (o mesmo de `testes/qualidade/vetores/`,
+~70 KB na flash) no `qualidade_processa()`, confere com a saída do Python e
+mede os ciclos por amostra: duas linhas `# bancada qualidade: ...`. Depois,
+no laço, cada amostra do bruto decimado passa pela qualidade e, uma vez por
+segundo, sai uma linha `q,n,dedo,usavel,indice,motivo,dc,pi,aspereza,razao`
+(inteiros escalados, ver `bancada_qualidade.h`), que o `analise.captura`
+grava em `<nome>_qualidade.csv`. Sem a opção, nada disso entra no firmware.
+Procedimento e orçamento em [Qualidade](../modulos/qualidade/).
 
 | Sintoma | Causa provável |
 |---|---|
