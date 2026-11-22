@@ -65,6 +65,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/Core/Src/serial.c
     ${CMAKE_SOURCE_DIR}/Core/Src/bancada.c
     ${CMAKE_SOURCE_DIR}/Core/Src/bancada_hrv.c
+    ${CMAKE_SOURCE_DIR}/Core/Src/bancada_qualidade.c
     ${PDS_SOURCES}
     ${CMSIS_DSP_SOURCES}
 )
@@ -101,6 +102,16 @@ endif()
 option(BANCADA_HRV "Confere o HRV na placa com a fonte falsa" OFF)
 if(BANCADA_HRV)
     target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE BANCADA_HRV)
+    target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/testes)
+endif()
+
+# Bancada da qualidade: na partida, toca o vetor "bordas" na qualidade/ e
+# confere com o Python (passo 4); no laço, uma linha "q,..." por segundo com a
+# qualidade do bruto do sensor (passo 5).
+# cmake --preset Debug -DBANCADA_QUALIDADE=ON
+option(BANCADA_QUALIDADE "Confere a qualidade na placa e manda a do sensor pela serial" OFF)
+if(BANCADA_QUALIDADE)
+    target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE BANCADA_QUALIDADE)
     target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/testes)
 endif()
 
