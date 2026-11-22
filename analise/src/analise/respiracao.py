@@ -330,9 +330,12 @@ def confere_placa(bruto: np.ndarray, resp_placa: np.ndarray) -> dict:
 
     bruto = depois_do_reset(bruto)
     resp_placa = depois_do_reset(resp_placa)
+    # Linha perdida na serial (no PC, não na placa): fica o maior trecho
+    # contínuo, comparado como captura no meio se não começar no n = 0.
+    quebras = np.flatnonzero(np.diff(bruto[:, 0]) != 1) + 1
+    trechos = np.split(bruto, quebras)
+    bruto = max(trechos, key=len)
     n = bruto[:, 0].astype(np.int64)
-    if np.any(np.diff(n) != 1):
-        raise ValueError("o bruto tem saltos no n: a comparação não vale")
     desde_boot = bool(n[0] == 0)
     ciclo = BLOCO * PASSO
     k0 = int((-n[0]) % ciclo)  # primeiro n alinhado com os blocos da placa
@@ -350,7 +353,7 @@ def confere_placa(bruto: np.ndarray, resp_placa: np.ndarray) -> dict:
         if v_py and valido:
             pior = max(pior, abs(rpm - rpm_py))
     return {"comparadas": comparadas, "valido_diferente": diferentes, "erro_max_rpm": pior,
-            "desde_boot": desde_boot}
+            "desde_boot": desde_boot, "lacunas": len(trechos) - 1}
 
 
 def confere_metronomo(resp_placa: np.ndarray, rpm_alvo: float, descarte_s: float = 60) -> dict:
@@ -397,6 +400,9 @@ def main(argv: list[str] | None = None) -> None:
                 )
             ok = r["comparadas"] > 0 and r["valido_diferente"] == 0 and r["erro_max_rpm"] <= 0.5
             modo = "desde o boot" if r["desde_boot"] else f"no meio (depois de {JANELA_S + AQUECE_S} s)"
+            if r["lacunas"]:
+                print(f"{r['lacunas']} lacuna(s) no bruto (linhas perdidas na serial): "
+                      "comparo o maior trecho contínuo")
             print(f"captura {modo}: {r['comparadas']} estimativas comparadas; valido diferente em "
                   f"{r['valido_diferente']}; erro máximo {r['erro_max_rpm']:.3f} rpm: "
                   f"{'OK' if ok else 'DIVERGE'}")

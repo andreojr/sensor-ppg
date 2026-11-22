@@ -79,13 +79,14 @@ def test_confere_placa_e_metronomo():
     s = respiracao.estima(x)
     placa = np.column_stack([s[:, 0], s[:, 2], s[:, 1]])
     r = respiracao.confere_placa(bruto, placa)
-    assert r == {"comparadas": 120, "valido_diferente": 0, "erro_max_rpm": 0.0, "desde_boot": True}
+    assert r == {"comparadas": 120, "valido_diferente": 0, "erro_max_rpm": 0.0, "desde_boot": True,
+                 "lacunas": 0}
     placa[100, 1] += 1
     assert respiracao.confere_placa(bruto, placa)["erro_max_rpm"] == pytest.approx(1)
     m = respiracao.confere_metronomo(placa, 10)
     assert m["validas"] == m["estimativas"] == 60 and m["mediana_rpm"] == pytest.approx(10, abs=0.1)
-    with pytest.raises(ValueError):  # salto no n
-        respiracao.confere_placa(np.delete(bruto, 500, axis=0), placa)
+    r = respiracao.confere_placa(np.delete(bruto, 500, axis=0), placa)  # linha perdida no começo
+    assert r["lacunas"] == 1 and not r["desde_boot"] and r["valido_diferente"] == 0
 
 
 def test_confere_no_meio_e_depois_do_reset():
