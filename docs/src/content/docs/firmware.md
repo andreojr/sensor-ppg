@@ -292,6 +292,14 @@ Se o clock mudar, **o baud rate da USART1 e o TIM2 mudam junto**: recalcular.
 | Pull | **Pull-up** | o INT é dreno aberto |
 | NVIC | EXTI line[9:5] interrupts | |
 
+### I2C3: display OLED (Connectivity)
+
+| Campo | Valor | Por quê |
+|---|---|---|
+| I2C Speed Mode | **Fast Mode**, 400000 | um quadro inteiro do SSD1306 (1024 bytes) leva ~23 ms a 400 kHz e ~92 ms a 100 kHz. Depois do INT do sensor só cabem 37,5 ms de bloqueio do laço; 30 ms foram medidos na placa sem perda |
+| Fast Mode Duty Cycle | Tlow/Thigh = 2 | padrão |
+| Pinos | PA8 = SCL, PB4 = SDA | |
+
 ### TIM2: processamento a 100 Hz (Timers)
 
 | Campo | Valor | Por quê |
