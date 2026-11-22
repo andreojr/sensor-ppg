@@ -81,7 +81,7 @@ a 0,6, refratário de 0,25 a 0,35 s e envelope de 0,5 a 3 s. O que se viu:
 ### Regularidade do BPM
 
 **O problema.** Um sinal sem pulso (dedo mal apoiado) também gera "batimentos": o detector acha picos no
-ruído, com RR de 300 a 1 600 ms. Cada RR pode passar sozinho pela faixa do `rr_valido`, e o `valido` do BPM,
+ruído, com RR de ~300 a ~1 500 ms. Cada RR pode passar sozinho pela faixa do `rr_valido`, e o `valido` do BPM,
 que só pedia 4 RR válidos, **acreditava em 94% dos batimentos** (100% depois dos 8 primeiros, a mesma base da tabela abaixo) num ruído sem pulso (medido com ruído branco passando
 pelo mesmo filtro e pelo picos). Só o picos, que vê a forma do sinal, consegue reconhecer que os batimentos não
 formam um ritmo.
@@ -121,7 +121,9 @@ significa ("BPM confiável pelo picos"). O BPM em si continua sendo a média dos
 # bancada picos: ciclos por amostra med 108 max 1286 (orcamento 9600): OK
 ```
 
-A bancada confere também o `bpm_valido` de cada batimento, então a regra de ritmo roda na STM32 igual ao Python.
+A bancada confere também o `bpm_valido` de cada batimento. No `s3_sit` ele só desliga nos 8 primeiros e depois fica
+ligado: na STM32 roda a espera dos 8 batimentos e o caso regular. A mediana, o 6 de 8 e o desligar/religar são
+conferidos no teste em C do PC (`ritmo_misto`).
 
 **Limitações.**
 
@@ -134,14 +136,14 @@ A bancada confere também o `bpm_valido` de cada batimento, então a regra de ri
   decide se mostra ou não.
 
 **Captura real (dedo mal apoiado, `--confere`).** Aquela captura tinha 49% de RR válidos e RR de 300 a 1 600 ms
-(ver "O que isso valida e o que não valida"), o mesmo perfil do ruído da varredura (53 a 59% de RR válidos), em que
+(ver "O que isso valida e o que não valida"), o mesmo perfil do ruído da varredura (52 a 66% de RR válidos, média de 60%), em que
 o `valido` liga 3% do tempo. A captura em si não está no repositório e **não foi reprocessada** com a regra nova.
 
 **Vetores de teste:** `uv run python -m analise.picos` (em `analise/`) grava
 `testes/picos/vetores/` com a entrada e a saída do Python. O teste em C
 (`testes/picos/teste_picos.c`) roda o `picos.c` sobre a mesma entrada e compara:
 instantes, `rr_valido` e `bpm_valido` exatos, `fracao`, `rr_ms` e BPM com tolerância de 0,01. O vetor sintético
-`ritmo_misto` (ritmo, uma extrassístole, 10 pares de RR de 600 e 1 000 ms que passam um a um pelo `rr_valido`, e o
+`ritmo_misto` (ritmo, uma pausa de 1 000 ms, 10 pares de RR de 600 e 1 000 ms que passam um a um pelo `rr_valido`, e o
 ritmo de volta) faz o `valido` ligar, desligar e voltar, e confere C e Python nessas transições.
 
 ## Validação
