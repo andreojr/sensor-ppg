@@ -12,6 +12,7 @@ Código que usa HAL, em `Core/Inc` e `Core/Src` (fora de `pds/`).
 | Decimação na placa (400 → 100 Hz) e ciclos (DWT) | João | feita: `main.c` e `bancada.c`; ver [Decimação](../modulos/decimacao/) |
 | Filtro na placa (bruto → filtrado) | João | feito: `main.c` e `bancada.c`; ver [Filtro](../modulos/filtro/) |
 | Picos na placa (filtrado → batimentos e BPM) | Celso / André | feito: `main.c` e `bancada.c`; ver [Picos](../modulos/picos/) |
+| HRV na placa (batimentos → SDNN e RMSSD) | André | feito: `main.c`, linhas `h,`, bate com o Python na placa; ver [HRV](../modulos/hrv/) |
 | Espectral na placa (filtrado → BPM pela FFT) | Celso | **código pronto e compilando, ainda não rodou na placa**: `main.c` e `bancada.c`; ver [Espectral](../modulos/espectral/) e [FFT](../modulos/fft/) |
 | Bancada do HRV na placa (`-DBANCADA_HRV=ON`) | André | feita: `bancada_hrv.c`, passou na placa; ver [HRV](../modulos/hrv/) |
 | Fonte falsa (PhysioNet em flash) | André | a fazer |
@@ -99,6 +100,7 @@ INT ficar baixo, não vem outra borda de descida, e sem isso a leitura travaria.
 # filtro 100 Hz, atraso 100: f,n,ir,vermelho
 # picos: p,n_pico,fracao,rr_valido,rr_ms,bpm_valido,bpm
 # espectral: e,n,bpm_valido,bpm
+# hrv: h,n_pico,valido,sdnn,rmssd
 0,112034,98765
 1,112040,98771
 ...
@@ -106,6 +108,7 @@ b,0,112036.41,98768.02
 f,0,0.00,0.00
 ...
 p,1234,0.2500,1,812.50,1,73.85
+h,1234,1,48.27,33.10
 ...
 e,799,1,73.85
 ...
@@ -113,6 +116,7 @@ e,799,1,73.85
 # filtro: ciclos med ... max ... (orcamento 19200)
 # picos: ciclos med ... max ... (orcamento 9600)
 # espectral: ciclos med ... (orcamento 9600) max ... (orcamento 960000)
+# hrv: ciclos med ... max ... (orcamento 20000)
 ```
 
 - `n` é o índice da amostra a 400 Hz desde o boot. Se o sensor descartar
@@ -134,6 +138,9 @@ e,799,1,73.85
   (`picos_bpm()`, 2 casas). Cada uma sai 300 ms depois do pico no `n` do
   filtrado (o candidato pendente), ou seja, ~1,3 s depois do pulso de verdade
   (mais 1 s do atraso do filtro).
+- Logo depois de cada `p,`, uma linha `h,` com a saída do HRV
+  (`hrv_processa()` sobre o mesmo batimento): `n_pico`, `valido` (0/1, só
+  com 45 s de RR aceitos na janela e 20 diferenças), SDNN e RMSSD em ms com 2 casas.
 - Linhas que começam com `e,` são o **BPM do espectral** (`espectral_processa()` sobre o
   filtrado), uma por segundo, a partir de 8 s de sinal (a janela da FFT): `n` (o do
   filtrado em que a janela terminou), `bpm_valido` (0/1) e `bpm` (2 casas, 0 quando
@@ -145,7 +152,8 @@ e,799,1,73.85
   por amostra a 100 Hz) e 1% pro picos (9 600); `# picos: ...` mede o
   `picos_processa()`. O espectral tem dois orçamentos: **média** de 9 600 ciclos por
   amostra (1%) e **pior caso** de 960 000 (a amostra em que sai a FFT, uma por segundo,
-  tem que caber num período de amostra: 96 MHz / 100 Hz).
+  tem que caber num período de amostra: 96 MHz / 100 Hz). `# hrv: ...` mede o
+  `hrv_processa()` por batimento (orçamento de 20 000 ciclos, o da bancada do HRV).
 - Linhas que começam com `#` são comentário. Se o sensor não responder no
   boot, sai `# erro: MAX30102 nao respondeu na I2C1` e a placa para. Se a
   taxa do sensor não tiver filtro de decimação, sai
@@ -313,6 +321,14 @@ Se o clock mudar, **o baud rate da USART1 e o TIM2 mudam junto**: recalcular.
 | Mode | External Interrupt, **Falling edge** | o INT do sensor é ativo em nível baixo |
 | Pull | **Pull-up** | o INT é dreno aberto |
 | NVIC | EXTI line[9:5] interrupts | |
+
+### I2C3: display OLED (Connectivity)
+
+| Campo | Valor | Por quê |
+|---|---|---|
+| I2C Speed Mode | **Fast Mode**, 400000 | um quadro inteiro do SSD1306 (1024 bytes) leva ~23 ms a 400 kHz e ~92 ms a 100 kHz. Depois do INT do sensor só cabem 37,5 ms de bloqueio do laço; 30 ms foram medidos na placa sem perda |
+| Fast Mode Duty Cycle | Tlow/Thigh = 2 | padrão |
+| Pinos | PA8 = SCL, PB4 = SDA | |
 
 ### TIM2: processamento a 100 Hz (Timers)
 

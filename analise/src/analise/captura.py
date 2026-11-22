@@ -7,7 +7,9 @@ filtrado que a placa calculou a 100 Hz: vão pra <nome>_bruto.csv e
 <nome>_filtrado.csv, ao lado do primeiro. Linhas
 "p,n_pico,fracao,rr_valido,rr_ms,bpm_valido,bpm" são os batimentos do picos
 na placa: vão pra <nome>_picos.csv. Linhas "e,n,bpm_valido,bpm" são o BPM do
-espectral (um por segundo): vão pra <nome>_espectral.csv.
+espectral (um por segundo): vão pra <nome>_espectral.csv. Linhas
+"h,n_pico,valido,sdnn,rmssd" são a saída do HRV a cada batimento: vão pra
+<nome>_hrv.csv.
 
 Uso:
     uv run python -m analise.captura COM3 --segundos 30
@@ -35,6 +37,7 @@ COLUNAS = ("n", "ir", "vermelho")
 PONTOS = {"b": "bruto", "f": "filtrado"}  # prefixo da linha -> ponto da cadeia na placa
 COLUNAS_PICOS = ("n_pico", "fracao", "rr_valido", "rr_ms", "bpm_valido", "bpm")
 COLUNAS_ESPECTRAL = ("n", "bpm_valido", "bpm")
+COLUNAS_HRV = ("n_pico", "valido", "sdnn_ms", "rmssd_ms")
 
 
 class Fonte(Protocol):
@@ -111,6 +114,25 @@ def le_batimento(linha: str) -> tuple[int, float, int, float, int, float] | None
         return None
 
 
+def le_hrv(linha: str) -> tuple[int, int, float, float] | None:
+    """Converte "h,n_pico,valido,sdnn,rmssd". None se não for."""
+    partes = linha.strip().split(",")
+    if len(partes) != 5 or partes[0] != "h":
+        return None
+    try:
+        return int(partes[1]), int(partes[2]), float(partes[3]), float(partes[4])
+    except ValueError:
+        return None
+
+
+# Prefixo da linha -> (ponto, leitor, colunas do CSV) das saídas que não são amostra.
+LEITORES = {
+    "p,": ("picos", le_batimento, COLUNAS_PICOS),
+    "h,": ("hrv", le_hrv, COLUNAS_HRV),
+    "e,": ("espectral", le_espectral, COLUNAS_ESPECTRAL),
+}
+
+
 def destino_ponto(destino: Path, ponto: str) -> Path:
     return destino.with_name(f"{destino.stem}_{ponto}.csv")
 
@@ -133,33 +155,18 @@ def grava(fonte: Fonte, destino: Path, segundos: float | None = None) -> Resumo:
                 if linha.startswith("#"):
                     resumo.comentarios.append(linha)
                     continue
-                if linha.startswith("p,"):
-                    batimento = le_batimento(linha)
-                    if batimento is None:
+                if linha[:2] in LEITORES:
+                    ponto, ler, colunas = LEITORES[linha[:2]]
+                    valores = ler(linha)
+                    if valores is None:
                         resumo.invalidas += 1
                         continue
-                    if "picos" not in abertos:
-                        arq = destino_ponto(destino, "picos").open(
-                            "w", newline="", encoding="utf-8"
-                        )
-                        abertos["picos"] = (arq, csv.writer(arq))
-                        abertos["picos"][1].writerow(COLUNAS_PICOS)
-                    abertos["picos"][1].writerow(batimento)
-                    resumo.por_ponto["picos"] = resumo.por_ponto.get("picos", 0) + 1
-                    continue
-                if linha.startswith("e,"):
-                    bpm = le_espectral(linha)
-                    if bpm is None:
-                        resumo.invalidas += 1
-                        continue
-                    if "espectral" not in abertos:
-                        arq = destino_ponto(destino, "espectral").open(
-                            "w", newline="", encoding="utf-8"
-                        )
-                        abertos["espectral"] = (arq, csv.writer(arq))
-                        abertos["espectral"][1].writerow(COLUNAS_ESPECTRAL)
-                    abertos["espectral"][1].writerow(bpm)
-                    resumo.por_ponto["espectral"] = resumo.por_ponto.get("espectral", 0) + 1
+                    if ponto not in abertos:
+                        arq = destino_ponto(destino, ponto).open("w", newline="", encoding="utf-8")
+                        abertos[ponto] = (arq, csv.writer(arq))
+                        abertos[ponto][1].writerow(colunas)
+                    abertos[ponto][1].writerow(valores)
+                    resumo.por_ponto[ponto] = resumo.por_ponto.get(ponto, 0) + 1
                     continue
                 if linha[:2] in {f"{p}," for p in PONTOS}:
                     lido = le_ponto(linha)
