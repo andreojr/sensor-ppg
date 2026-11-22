@@ -24,7 +24,7 @@ sidebar:
 | 2. C sem HAL | feito: `qualidade.h`, `qualidade.c` |
 | 3. Teste no PC contra os vetores | feito: `testes/qualidade/`, no CI |
 | 4. Placa com a fonte falsa | feito: a bancada passou na placa |
-| 5. Sensor real | feito: a placa decide igual ao Python; mas com este módulo de sensor ela aceita trechos sem pulso de verdade (abaixo) |
+| 5. Sensor real | feito: com o ritmo, barra o sinal sem pulso desse sensor e libera o pulso bom (BPM de 59 a 64 contra 58 a 62 do relógio), piscando (abaixo) |
 
 ## Método
 
@@ -389,7 +389,7 @@ essas linhas em `<nome>_qualidade.csv`, ao lado do cru e do bruto. Roteiro,
 A referência é o roteiro anotado. Conferir também com o bruto: nos trechos
 marcados usáveis, o pulso tem que estar visível no `_bruto.csv`.
 
-**Resultado com o sensor** (21/11/2026, 80 s, roteiro curto com cronômetro:
+**1ª captura, antes do ritmo** (21/11/2026, 80 s, roteiro curto com cronômetro:
 0–10 s sem dedo, 10–40 s parado, 40–50 s mexendo, 50–65 s parado, 65–75 s
 sem dedo; nenhuma amostra perdida):
 
@@ -418,4 +418,42 @@ mede **regularidade**: um sinal irregular com altura e aspereza de pulso
 passa. Duas saídas possíveis: um critério de periodicidade (autocorrelação,
 custa CPU no fim do bloco) ou refazer esta captura com o suporte de dedo
 antes de mexer nos critérios. Também apareceu pi de 5 a 6% com o dedo parado,
-perto do limite de 5% calibrado no PhysioNet.
+perto do limite de 5% calibrado no PhysioNet. Foi daí que veio o ritmo.
+
+**Com o ritmo, a mesma captura:** rodando o Python de agora no `_bruto.csv`
+dela, os 31 s "parados" que tinham 17 usáveis passam a ter 0 (com qualquer
+limiar de 0,4 a 0,6).
+
+**2ª captura, com o ritmo** (21/11/2026, 125 s: sem dedo, dedo leve, dedo
+apertado, mexendo, sem dedo; algumas linhas perdidas na serial, nenhuma na
+placa): **nenhuma** janela usável, sempre por `SEM_RITMO` com dedo. O
+filtrado mostrava o mesmo sinal irregular de ~0,1 a 0,4% do nível, sem pulso
+visível, nos dois jeitos de apoiar. Placa = Python em 89 de 89 saídas.
+Sem dedo, apareceu uma oscilação regular de ±5 contagens que acelera de ~80
+a ~180 por minuto (luz do ambiente ou a mão perto do sensor): a qualidade
+barra por `SEM_DEDO`, mas o picos sozinho acha "batimentos" nela, que é o
+caso da decisão final (qualidade + picos) do
+[desenho do BPM confiável](https://github.com/andreojr/sensor-ppg/blob/pds/19-qualidade-sinal/docs/superpowers/specs/2026-11-21-bpm-confiavel-design.md).
+
+**3ª captura, com o ritmo e o relógio** (21/11/2026, 85 s: 10 s sem dedo,
+~55 s com o dedo firme, parado e coberto com a outra mão pra tirar a luz do
+ambiente, depois sem dedo; nenhuma amostra perdida). Pela primeira vez, um
+pulso de verdade: de 25 a 68 s, RR estável de 920 a 1 050 ms e `ritmo` entre
+0,5 e 0,7, mas fraco (pi 0,2 a 0,3%).
+
+| | |
+|---|---|
+| usável com o dedo (25 a 68 s) | 15 de 44 s, em trechos de 1 a 5 s |
+| BPM do picos nos trechos usáveis | 59 a 64 |
+| BPM do relógio no mesmo período | 58 a 62 |
+| placa = Python | 71 de 71 saídas |
+
+O número que a placa liberaria estava certo. O que incomoda é ele
+**piscar**: com o pulso fraco, o `ritmo` fica em volta de 0,5, e cada janela
+abaixo tira o sinal do ar por 3 s. A mesma captura com outros limiares:
+
+| ritmo ≥ | usável (de 44 s) | limpo ruim (PhysioNet) | sem ritmo usável |
+|---|---|---|---|
+| 0,40 | 29 | 2,5% | 11,2% |
+| 0,45 | 23 | 3,4% | 8,1% |
+| **0,50** | **15** | **5,0%** | **5,5%** |
