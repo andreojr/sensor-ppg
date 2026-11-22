@@ -23,8 +23,8 @@ sidebar:
 | 1. Python, validado no PhysioNet | feito, contra a respiração derivada do ECG |
 | 2. C sem HAL | feito: `respiracao.h`, `respiracao.c`, `respiracao_coef.h` (gerado) |
 | 3. Teste no PC contra os vetores | feito: `testes/respiracao/`, no CI |
-| 4. Placa com a fonte falsa | código pronto (`-DBANCADA_RESPIRACAO=ON`); falta rodar na placa |
-| 5. Sensor real e metrônomo (6, 10, 15 rpm) | código pronto (linhas `r,` na serial e `--metronomo`); falta respirar no metrônomo |
+| 4. Placa com a fonte falsa | feito: a bancada passou na STM32 (299/299, 6486 ciclos por amostra) |
+| 5. Sensor real e metrônomo (6, 10, 15 rpm) | feito: os três ritmos a menos de 2 rpm; a placa bate com o Python |
 
 ## Método
 
@@ -155,7 +155,17 @@ amostra em média: a margem contra os 9600 é pequena, e o número de verdade
 sai da bancada (passo 4). O máximo fica bem acima do orçamento, mas cabe nos
 37 ms que a FIFO do sensor aguenta.
 
-**Resultado na placa:** *(preencher com a saída da bancada)*
+**Resultado na placa** (STM32F411, Debug `-O0`, 22/11/2026):
+
+```text
+# bancada respiracao: 299 estimativas (esperado 299), 0 diferentes, erro max 0 milesimos de rpm
+# bancada respiracao: ciclos por amostra med 6486 max 799083 (orcamento 9600): OK
+```
+
+As 299 estimativas saem iguais às do Python. O custo médio, 6 486 ciclos por
+amostra (68% do orçamento), ficou abaixo da estimativa de ~8 000; o máximo,
+~0,8 milhão de ciclos (~8 ms), é a amostra do espectro, uma vez por segundo,
+e cabe nos 37 ms que a FIFO do sensor aguenta.
 
 ### 4. Sensor real e metrônomo
 
@@ -184,8 +194,20 @@ estimativas iguais às do Python (erro de 0,005 rpm) e 119 de 119 válidas a
 
 **Resultado com o sensor:**
 
-| Metrônomo | Válidas | Mediana | Erro médio |
-|---|---|---|---|
-| 6 rpm | *(preencher)* | | |
-| 10 rpm | *(preencher)* | | |
-| 15 rpm | *(preencher)* | | |
+(dedo preso no sensor, capturas desde o boot, 22/11/2026)
+
+| Metrônomo | Válidas (depois do 1º minuto) | Mediana | Erro médio | Placa = Python |
+|---|---|---|---|---|
+| 6 rpm (3 min) | 105 de 119 | 6,1 rpm | 0,29 rpm | sim (34 comparadas, 0,004 rpm) |
+| 10 rpm (2 min) | 60 de 60 | 8,5 rpm | 1,47 rpm | sim (120 comparadas, 0,005 rpm) |
+| 15 rpm (2 min) | 34 de 60 | 14,3 rpm | 0,64 rpm | não deu pra comparar (linhas perdidas na serial) |
+
+Os três ritmos ficam a menos de 2 rpm. A 10 rpm, o pico do espectro está em
+8,8 rpm: o algoritmo segue o sinal, e o mais provável é a respiração ter saído
+um pouco mais lenta que o metrônomo (as ondas de Mayer aparecem mais fracas,
+em 5,5 rpm). Duas capturas foram descartadas: a 1ª de 10 rpm (mediana de 6,6
+rpm, com o pico em 7,3 rpm dominando) e a 1ª de 15 rpm (o pico em 5,9 rpm,
+e 57 de 60 estimativas inválidas: o `valido` funcionou). Nas duas, o problema
+foi a respiração ou o dedo na captura, e a repetição deu certo. A serial
+perdeu linhas em todas as capturas longas (o `--confere` compara o maior
+trecho contínuo); a causa provável é mau contato nos fios do conversor.
