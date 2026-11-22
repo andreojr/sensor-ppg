@@ -80,6 +80,10 @@ BPM quando acha um batimento; se os batimentos param, o último BPM ficaria
 do último batimento, e diz não se o último batimento tem mais de 2 s
 (abaixo de 30 bpm, impossível em repouso). Assim:
 `bool bpm_confiavel(const ppg_qualidade_t *q, const ppg_bpm_t *b, uint32_t n, uint32_t n_ultimo_pico)`.
+
+> **Como ficou no código** (ver `modulos/qualidade.md`): o limite é de 3 s
+> (`QUALIDADE_BATIMENTO_VALE`), a função recebe também `tem_batimento`, e um
+> `n_pico` à frente de `n` bloqueia.
 O picos não é reiniciado pela qualidade: os módulos continuam sem
 depender um do outro.
 
