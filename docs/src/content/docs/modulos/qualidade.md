@@ -607,13 +607,17 @@ libera (até ~1 s depois) e ganha `rr_usado`: 1 se o RR entrou no HRV, 0 se fico
 `_filtrado.csv` (qualidade, picos e fila, na ordem do laço) e compara com o `rr_usado`
 da placa. Linha perdida na serial: o Python preenche o buraco por interpolação (senão a
 qualidade dele recomeçaria e julgaria fora de fase com a placa até o fim) e deixa de fora
-da comparação os batimentos de 1 s antes a 3 s depois dele. Uma `p,` ou `h,` perdida faz o
-HRV ser comparado só até ali (o `rr_usado` continua, por `n_pico`). Isso roda mesmo quando não
+da comparação os batimentos de 1 s antes a 3 s depois dele (perder só as primeiras
+linhas conta como buraco no começo). Uma `p,` ou `h,` perdida faz o HRV pular uma janela
+(60 s) depois dela e voltar a comparar; o `rr_usado` casa por `n_pico`. O comando termina
+com uma linha `ACEITE: sim/não, porque …`, e o código de saída segue ela. Isso roda mesmo quando não
 sai nenhum HRV válido.
 
-**Ciclos.** Depois de um reinício da qualidade, a fila pode soltar até ~7 batimentos
-numa amostra só: ~7 chamadas do `hrv_processa()` (20 000 ciclos de orçamento cada),
-~1,5 ms a 96 MHz, bem abaixo do pico do espectral.
+**Ciclos.** O `hrv_processa()` agora roda na amostra em que a qualidade julga (uma por
+segundo), não na que o picos solta o batimento: normalmente 1 ou 2 chamadas (20 000
+ciclos de orçamento cada) somadas ao pico dessa amostra. Depois de um reinício da
+qualidade (na placa, só com NaN), até ~7 chamadas numa amostra, ~1,5 ms a 96 MHz, bem
+abaixo do pico do espectral.
 
 **O que muda no HRV.** Com este módulo de sensor, o trecho usável é curto (o número da
 tela aparece em ~50% do tempo bom), e o HRV precisa de 45 s de RR aceitos na janela de

@@ -645,7 +645,8 @@ static void envia_respiracao(uint32_t n, const ppg_respiracao_t *r)
 
 /* Um batimento que saiu da fila da qualidade vai pro HRV. rr_valido falso = o RR
    fica de fora (trecho não usável, ou o picos já tinha recusado); a linha "h," leva
-   isso em rr_usado. */
+   isso em rr_usado. O hrv.c ainda recusa RR fora de HRV_RR_MIN_MS..HRV_RR_MAX_MS, a
+   mesma faixa do picos (300 a 2000 ms): rr_valido verdadeiro aqui = o RR entra. */
 static void processa_hrv(const ppg_batimento_t *b)
 {
   ppg_hrv_t h;

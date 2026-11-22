@@ -299,13 +299,27 @@ def test_confere_nao_compara_captura_que_nao_comeca_no_boot():
     assert not r["ok"] and r["inicio"] == 50 and "comparados" not in r
 
 
-def test_confere_placa_para_na_linha_perdida_em_vez_de_abortar():
-    """Uma p, ou h, perdida no meio: o HRV é comparado só até ali."""
+def test_confere_placa_retoma_depois_de_uma_linha_perdida():
+    """Uma p, ou h, perdida no meio (ou a primeira): pula uma janela e volta a comparar."""
     from analise.hrv import confere_placa
 
     p, h = _placa_hrv()
-    r = confere_placa(np.delete(p, 150, axis=0), h)  # perdeu uma p,
-    assert r["parou_em"] == int(p[151, 0]) and r["batimentos"] == 150 and r["ok"], r
-    r = confere_placa(p, np.delete(h, 150, axis=0))  # perdeu uma h,
-    assert r["parou_em"] == int(p[150, 0]) and r["batimentos"] == 150 and r["ok"], r
-    assert confere_placa(p, h)["parou_em"] is None
+    inteiro = confere_placa(p, h)
+    assert inteiro["linhas_perdidas"] == 0 and inteiro["pulados"] == 0
+    for pp, hh in ((np.delete(p, 150, axis=0), h), (p, np.delete(h, 150, axis=0)),
+                   (p[1:], h), (p, h[1:])):
+        r = confere_placa(pp, hh)
+        # A primeira p, perdida não aparece como perda: a captura vira "no meio".
+        assert r["ok"] and r["linhas_perdidas"] <= 1, r
+        assert 0 < r["batimentos"] < inteiro["batimentos"], r
+    errado = h.copy()
+    errado[-5, 2] += 0.2  # um SDNN errado depois da linha perdida ainda é pego
+    assert not confere_placa(np.delete(p, 150, axis=0), errado)["ok"]
+
+
+def test_confere_rr_usado_tolera_perder_as_primeiras_linhas():
+    from analise.hrv import confere_rr_usado
+
+    bruto, filtrado, h = _captura_com_qualidade()
+    r = confere_rr_usado(bruto[3:], filtrado, h)
+    assert r["ok"] and r["inicio"] == 3, r
