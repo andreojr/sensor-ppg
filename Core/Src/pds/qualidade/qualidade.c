@@ -238,6 +238,6 @@ bool qualidade_processa(qualidade_t *q, const ppg_amostra_t *bruto, ppg_qualidad
 bool qualidade_bpm_confiavel(const ppg_qualidade_t *q, const ppg_bpm_t *b, bool tem_batimento,
                              uint32_t n, uint32_t n_ultimo_pico)
 {
-    uint32_t idade = n >= n_ultimo_pico ? n - n_ultimo_pico : 0u;
+    uint32_t idade = n - n_ultimo_pico; /* certo na volta do uint32; n_pico > n vira enorme e bloqueia */
     return q->usavel && b->valido && tem_batimento && idade <= QUALIDADE_BATIMENTO_VALE;
 }

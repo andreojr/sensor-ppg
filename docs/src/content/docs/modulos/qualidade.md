@@ -464,7 +464,7 @@ Sem dedo, apareceu uma oscilação regular de ±5 contagens que acelera de ~80
 a ~180 por minuto (luz do ambiente ou a mão perto do sensor): a qualidade
 barra por `SEM_DEDO`, mas o picos sozinho acha "batimentos" nela, que é o
 caso da decisão final (qualidade + picos) do
-[desenho do BPM confiável](https://github.com/andreojr/sensor-ppg/blob/pds/19-qualidade-sinal/docs/superpowers/specs/2026-11-21-bpm-confiavel-design.md).
+[desenho do BPM confiável](https://github.com/andreojr/sensor-ppg/blob/main/docs/superpowers/specs/2026-11-21-bpm-confiavel-design.md).
 
 **3ª captura, com o ritmo e o relógio** (21/11/2026, 85 s: 10 s sem dedo,
 ~55 s com o dedo firme, parado e coberto com a outra mão pra tirar a luz do
@@ -493,7 +493,7 @@ abaixo tira o sinal do ar por 3 s. A mesma captura com outros limiares:
 
 A tela só mostra o BPM do picos quando **dois testes independentes**
 concordam (etapa 3 do
-[desenho do BPM confiável](https://github.com/andreojr/sensor-ppg/blob/pds/19-bpm-confiavel/docs/superpowers/specs/2026-11-21-bpm-confiavel-design.md)):
+[desenho do BPM confiável](https://github.com/andreojr/sensor-ppg/blob/main/docs/superpowers/specs/2026-11-21-bpm-confiavel-design.md)):
 
 | qualidade `usavel` | picos `bpm.valido` (ritmo regular, #123) | último batimento ≤ 3 s | tela |
 |---|---|---|---|

@@ -218,7 +218,8 @@ def test_filtro_do_ritmo_e_o_butterworth():
     (True, True, False, 1000, 0, False),     # nenhum batimento ainda
     (True, True, True, 1000, 700, True),     # idade = BATIMENTO_VALE: ainda vale
     (True, True, True, 1001, 700, False),    # idade = BATIMENTO_VALE + 1: velho
-    (True, True, True, 1000, 1080, True),    # batimento "à frente" do n (atrasos)
+    (True, True, True, 1000, 1080, False),   # n_pico > n: anomalia (n reiniciado), bloqueia
+    (True, True, True, 50, 2**32 - 50, True),  # o n deu a volta no uint32: idade 100
 ])
 def test_bpm_confiavel(usavel, valido, tem, n, n_pico, mostra):
     assert qualidade.BATIMENTO_VALE == 3 * FS_HZ

@@ -270,8 +270,9 @@ BATIMENTO_VALE = 3 * FS_HZ
 def bpm_confiavel(usavel: bool, bpm_valido: bool, tem_batimento: bool, n: int,
                   n_pico: int) -> bool:
     """A tela mostra o BPM do picos só se a qualidade e o picos concordam e o último
-    batimento é recente (um batimento "à frente" de n, pelos atrasos, conta como recente)."""
-    idade = n - n_pico if n >= n_pico else 0
+    batimento é recente. Idade em uint32, como no C: certa na volta do contador, e um
+    n_pico à frente de n (anomalia) dá idade enorme e bloqueia."""
+    idade = (n - n_pico) % 2**32
     return usavel and bpm_valido and tem_batimento and idade <= BATIMENTO_VALE
 
 

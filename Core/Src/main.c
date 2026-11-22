@@ -671,7 +671,7 @@ static void decima(const max30102_amostra_t *amostra)
     {
       /* O que a tela mostraria: o BPM do picos só se a qualidade e o picos concordam. */
       bool mostra = qualidade_bpm_confiavel(&q, &bpm_picos, tem_batimento, bruto.n, n_ultimo_pico);
-      char linha[96]; /* "q,..." até ~76 B com os campos no máximo */
+      char linha[96]; /* "t,..." ~25 B; "q,..." (bancada) até ~76 B */
       int tam = snprintf(linha, sizeof linha, "t,%lu,%d,%lu\n", (unsigned long)bruto.n,
                          mostra ? 1 : 0,
                          mostra ? (unsigned long)(bpm_picos.bpm * 100.0f + 0.5f) : 0ul);

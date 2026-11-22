@@ -62,7 +62,7 @@
 #define QUALIDADE_JANELAS_ACEITA 3u        /* janelas boas seguidas pra ser usável */
 #define QUALIDADE_RUINS_ESQUECE 10u        /* janelas ruins seguidas pra esquecer a referência */
 #define QUALIDADE_LIMIAR 1.0f              /* indice >= limiar: usável */
-#define QUALIDADE_RITMO_MIN 0.45f          /* com o picos como 2º teste; ver a doc */
+#define QUALIDADE_RITMO_MIN 0.45f          /* PhysioNet limpo: 3,4% de janelas ruins; com o picos como 2º teste */
 #define QUALIDADE_RITMO_DECIMA 4u          /* 100 -> 25 Hz (média de 4) */
 #define QUALIDADE_RITMO_N 100u             /* 4 s a 25 Hz */
 #define QUALIDADE_RITMO_ATRASO_MIN 10u     /* 0,4 s: 150 bpm */
@@ -148,7 +148,9 @@ bool qualidade_processa(qualidade_t *q, const ppg_amostra_t *bruto, ppg_qualidad
  * diz que dá pra usar (q->usavel), o picos diz que o ritmo é regular
  * (b->valido) e o último batimento (n_ultimo_pico) tem no máximo
  * QUALIDADE_BATIMENTO_VALE amostras em relação a n (o n da última saída da
- * qualidade). Um batimento "à frente" de n (pelos atrasos) conta como recente.
+ * qualidade). O picos solta o batimento depois do fato (n_pico <= n - ~131); a
+ * idade é n - n_ultimo_pico em uint32 (certa na volta do contador), e um n_pico
+ * à frente de n (n reiniciado sem reiniciar o picos) dá idade enorme: bloqueia.
  */
 #define QUALIDADE_BATIMENTO_VALE (3u * PPG_FS_HZ) /* p, sai ~1,3 s depois; RR até 1,5 s */
 bool qualidade_bpm_confiavel(const ppg_qualidade_t *q, const ppg_bpm_t *b, bool tem_batimento,
