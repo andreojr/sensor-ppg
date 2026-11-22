@@ -374,7 +374,7 @@ sem o MAX30102), a placa toca as 5 800 amostras do vetor `bordas` no
 ciclos de cada chamada. Esperado:
 
 ```text
-# bancada qualidade: 55 saidas (esperado 55), 3 usaveis, 0 fora da tolerancia, erro rel max ... milionesimos
+# bancada qualidade: 55 saidas (esperado 55), 4 usaveis, 0 fora da tolerancia, erro rel max ... milionesimos
 # bancada qualidade: ciclos por amostra med ... max ... (orcamento 3000): OK
 ```
 
@@ -389,17 +389,20 @@ Arm GNU com e sem a opção (e com todas as bancadas juntas), sem warnings
 os ciclos da qualidade no sensor real saem a cada 10 s, junto dos da
 decimação e do filtro (`# qualidade: ciclos med ... max ...`).
 
-**Resultado na placa, com o ritmo** (21/11/2026):
+**Resultado na placa, com o ritmo e o limiar de 0,45** (22/11/2026), build Debug:
 
 ```text
-# bancada qualidade: 55 saidas (esperado 55), 3 usaveis, 0 fora da tolerancia, erro rel max 123 milionesimos
-# bancada qualidade: ciclos por amostra med 1660 max 2177 (orcamento 3000): OK
+# bancada qualidade: 55 saidas (esperado 55), 4 usaveis, 0 fora da tolerancia, erro rel max 123 milionesimos
+# bancada qualidade: ciclos por amostra med 1647 max 2149 (orcamento 3000): OK
 ```
+
+No Release, o mesmo vetor dá `med 786 max 1603`. O orçamento é conferido no Debug, o
+pior dos dois.
 
 No laço, com o sensor, `med 1454 max 2225`. Antes do ritmo eram 491/1393 na
 bancada e 532/1163 no laço. No vetor `bordas`, as janelas usáveis caíram de
-13 pra 3: os trechos limpos dele têm 6 s, e com o ritmo só ficam usáveis
-depois de 7 s limpos.
+13 pra 4: os trechos limpos dele têm 6 s, e com o ritmo (4 s de sinal) mais as 3
+janelas boas seguidas, quase todo o trecho passa antes de ficar usável.
 
 ### 4. Sensor real
 
