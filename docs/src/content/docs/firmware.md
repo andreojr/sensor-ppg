@@ -263,6 +263,16 @@ ocupam ~300 KB de flash; as cinco bancadas, ~341 KB.
 # bancada respiracao: ciclos por amostra med ... max ... (orcamento 9600): OK
 ```
 
+### O BPM que a tela mostraria (linha `t,`)
+
+A qualidade roda sempre no laço (não só com a bancada). Uma vez por segundo,
+a cada saída dela, sai `t,n,mostra,bpm x100`: `mostra` = 1 só quando a
+qualidade diz que o sinal dá pra usar, o picos diz que o ritmo é regular e o
+último batimento tem no máximo 3 s (`qualidade_bpm_confiavel()`, ver
+[Qualidade](../modulos/qualidade/)); aí `bpm` é o BPM do picos em
+centésimos, senão 0. É o que o display vai ler. `analise.captura` grava em
+`<nome>_tela.csv`.
+
 ### Bancada da qualidade (`bancada_qualidade.c`)
 
 Com `-DBANCADA_QUALIDADE=ON`, a placa, logo depois de `serial_init()` e antes

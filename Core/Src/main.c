@@ -77,10 +77,11 @@ static ciclos_t ciclos_filtro;
 static ciclos_t ciclos_picos;
 static ciclos_t ciclos_hrv; /* por batimento, não por amostra */
 static ciclos_t ciclos_respiracao;
-#ifdef BANCADA_QUALIDADE
-static qualidade_t qualidade;              /* bruto -> qualidade, linha "q,..." por segundo */
+static qualidade_t qualidade;              /* bruto -> qualidade (1 184 B: static) */
 static ciclos_t ciclos_qualidade;
-#endif
+static ppg_bpm_t bpm_picos;                /* o último BPM do picos */
+static bool tem_batimento;                 /* já houve um batimento desde o boot */
+static uint32_t n_ultimo_pico;             /* n_pico do último batimento */
 
 /* USER CODE END PV */
 
@@ -147,8 +148,8 @@ int main(void)
 #ifdef BANCADA_QUALIDADE
   /* Vetor da qualidade, antes do sensor (roda mesmo sem o MAX30102). */
   (void)bancada_qualidade();
-  qualidade_init(&qualidade);
 #endif
+  qualidade_init(&qualidade);
   destrava_i2c1();
   if (max30102_init(&hi2c1) != HAL_OK)
   {
@@ -162,7 +163,8 @@ int main(void)
                    "# filtro %u Hz, atraso %u: f,n,ir,vermelho\n"
                    "# picos: p,n_pico,fracao,rr_valido,rr_ms,bpm_valido,bpm\n"
                    "# hrv: h,n_pico,valido,sdnn,rmssd\n"
-                   "# respiracao 1 Hz: r,n,rpm,valido\n",
+                   "# respiracao 1 Hz: r,n,rpm,valido\n"
+                   "# tela 1 Hz: t,n,mostra,bpm x100\n",
                    MAX30102_FS_HZ, PPG_FS_HZ, PPG_FS_HZ, (unsigned)PPG_ATRASO_AMOSTRAS);
   serial_escreve(cabecalho, (uint32_t)n);
   ciclos_liga();
@@ -639,6 +641,9 @@ static void decima(const max30102_amostra_t *amostra)
       ppg_bpm_t bpm;
       picos_bpm(&picos, &bpm);
       envia_batimento(&batimento, &bpm);
+      bpm_picos = bpm;
+      tem_batimento = true;
+      n_ultimo_pico = batimento.n_pico;
 
       ppg_hrv_t h;
       t0 = ciclos_agora();
@@ -658,18 +663,24 @@ static void decima(const max30102_amostra_t *amostra)
     {
       envia_respiracao(bruto.n, &resp);
     }
-#ifdef BANCADA_QUALIDADE
     ppg_qualidade_t q;
     t0 = ciclos_agora();
     bool julgou = qualidade_processa(&qualidade, &bruto, &q);
     ciclos_conta(&ciclos_qualidade, ciclos_agora() - t0);
     if (julgou)
     {
-      char linha[96]; /* até ~76 B com os campos no máximo */
-      int tam = qualidade_linha(linha, sizeof linha, bruto.n, &q, &qualidade);
+      /* O que a tela mostraria: o BPM do picos só se a qualidade e o picos concordam. */
+      bool mostra = qualidade_bpm_confiavel(&q, &bpm_picos, tem_batimento, bruto.n, n_ultimo_pico);
+      char linha[96]; /* "q,..." até ~76 B com os campos no máximo */
+      int tam = snprintf(linha, sizeof linha, "t,%lu,%d,%lu\n", (unsigned long)bruto.n,
+                         mostra ? 1 : 0,
+                         mostra ? (unsigned long)(bpm_picos.bpm * 100.0f + 0.5f) : 0ul);
       serial_escreve(linha, (uint32_t)tam);
-    }
+#ifdef BANCADA_QUALIDADE
+      tam = qualidade_linha(linha, sizeof linha, bruto.n, &q, &qualidade);
+      serial_escreve(linha, (uint32_t)tam);
 #endif
+    }
   }
 
   if (ciclos_decimacao.conta == MAX30102_FS_HZ * 10u)
@@ -679,9 +690,7 @@ static void decima(const max30102_amostra_t *amostra)
     ciclos_relata(&ciclos_picos, "picos", BANCADA_ORCAMENTO_PICOS);
     ciclos_relata(&ciclos_hrv, "hrv", BANCADA_ORCAMENTO_HRV);
     ciclos_relata(&ciclos_respiracao, "respiracao", BANCADA_ORCAMENTO_RESPIRACAO);
-#ifdef BANCADA_QUALIDADE
     ciclos_relata(&ciclos_qualidade, "qualidade", BANCADA_ORCAMENTO_QUALIDADE);
-#endif
   }
 }
 

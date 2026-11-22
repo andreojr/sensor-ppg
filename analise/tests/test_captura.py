@@ -136,3 +136,19 @@ def test_plota_gera_png(tmp_path):
     png = tmp_path / "x.png"
     plota.main([str(csv), "--png", str(png)])
     assert png.stat().st_size > 0
+
+
+def test_tela_vai_pro_csv_da_tela(tmp_path):
+    serial_falsa = io.BytesIO(
+        b"0,100,200\n"
+        b"t,1299,1,6050\n"
+        b"t,1399,0,0\n"
+        b"t,1499,1\n"
+    )
+    destino = tmp_path / "x.csv"
+    resumo = captura.grava(serial_falsa, destino, segundos=0.1)
+    assert resumo.por_ponto == {"tela": 2} and resumo.invalidas == 1
+    t = pd.read_csv(tmp_path / "x_tela.csv")
+    assert list(t.columns) == list(captura.COLUNAS_TELA)
+    assert t["mostra"].tolist() == [1, 0]
+    assert t["bpm"].tolist() == [60.5, 0.0]
