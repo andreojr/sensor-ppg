@@ -12,7 +12,7 @@ Código que usa HAL, em `Core/Inc` e `Core/Src` (fora de `pds/`).
 | Decimação na placa (400 → 100 Hz) e ciclos (DWT) | João | feita: `main.c` e `bancada.c`; ver [Decimação](../modulos/decimacao/) |
 | Filtro na placa (bruto → filtrado) | João | feito: `main.c` e `bancada.c`; ver [Filtro](../modulos/filtro/) |
 | Picos na placa (filtrado → batimentos e BPM) | Celso / André | feito: `main.c` e `bancada.c`; ver [Picos](../modulos/picos/) |
-| HRV na placa (batimentos → SDNN e RMSSD) | André | código pronto: `main.c`, linhas `h,`; falta capturar; ver [HRV](../modulos/hrv/) |
+| HRV na placa (batimentos → SDNN e RMSSD) | André | feito: `main.c`, linhas `h,`, bate com o Python na placa; ver [HRV](../modulos/hrv/) |
 | Bancada do HRV na placa (`-DBANCADA_HRV=ON`) | André | feita: `bancada_hrv.c`, passou na placa; ver [HRV](../modulos/hrv/) |
 | Fonte falsa (PhysioNet em flash) | André | a fazer |
 | Timer, filas e laço principal (TIM2 a 100 Hz já configurado) | André | a fazer |
