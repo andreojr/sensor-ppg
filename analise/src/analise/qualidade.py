@@ -343,6 +343,7 @@ def rr_entrou_no_hrv(bruto: np.ndarray, filtrado: np.ndarray, com_rr_valido: boo
             if b is not None:
                 antes = julg is not None and batimento_usavel(julg[1], True, julg[0], n)
                 velho = fila.poe(b, antes)
+                # Fila cheia: não acontece numa captura desde o boot com o n contínuo (sem teste).
                 if velho is not None:
                     entrou[velho.n_pico] = ((False, velho.rr_valido, None, None) if com_rr_valido
                                             else False)

@@ -539,21 +539,43 @@ def confere_rr_usado(bruto: np.ndarray, filtrado: np.ndarray, hrv_placa: np.ndar
 
     todos = [(int(k), bool(u)) for k, u in placa[:, [0, 4]] if int(k) <= fim and u >= 0]
     longe = [(k, u) for k, u in todos if not perto(k)]
-    sem_par = sum(k not in python for k, _ in longe)  # a placa achou, o Python não
-    comuns = [(k, u) for k, u in longe if k in python]
-    difs = sum(python[k][0] != u for k, u in comuns)
+
+    # O picos do Python roda no filtrado com 2 casas: o mesmo pulso pode cair uma amostra
+    # ao lado (fração perto de 0 ou 1). Casa com ±1 amostra.
+    def par(k: int) -> int | None:
+        return next((k + d for d in (0, -1, 1) if k + d in python), None)
+
+    # O rr_valido vem da p, da placa (o picos é conferido à parte, e um RR na borda da
+    # faixa pode sair diferente no Python); do Python vêm só os julgamentos.
+    rr_placa = ({int(b[0]): bool(b[2]) for b in picos_placa} if picos_placa is not None
+                else {k: python[par(k)][1] for k, _ in longe if par(k) is not None})
+    # A placa achou e o Python não: só importa se o RR entrou (um "batimento" no ruído
+    # sem dedo, barrado de qualquer jeito, não diz nada da regra).
+    sem_par = sum(1 for k, u in longe if par(k) is None and u)
+    comuns = [(k, u, python[par(k)]) for k, u in longe if par(k) is not None]
+
+    def esperado(k: int, py: tuple) -> bool:
+        return bool(rr_placa.get(k, py[1]) and py[2] and py[3])
+
+    difs = sum(esperado(k, py) != u for k, u, py in comuns)
     # O Python achou o batimento, a placa mandou a p, mas não a h,: uma h, perdida na serial
     # (rara) ou o laço deixou de mandar o batimento ao HRV (erro). Mais que 3 é erro.
     h_ns = {k for k, _ in todos}
     p_ns = {int(x) for x in picos_placa[:, 0]} if picos_placa is not None else h_ns
     primeiro = min(h_ns) if h_ns else 0
-    sem_h = sum(1 for k in python if primeiro <= k <= fim and k in p_ns and k not in h_ns
+
+    def em(k: int, ns: set) -> bool:
+        return any(k + d in ns for d in (0, -1, 1))
+
+    sem_h = sum(1 for k in python if primeiro <= k <= fim and em(k, p_ns) and not em(k, h_ns)
                 and not perto(k))
     # Os casos que distinguem a regra (o picos aceitou o RR e os dois julgamentos
-    # discordam): "sai" = usável antes e não depois (o sinal piorou logo depois do pulso);
-    # "volta" = não antes e usável depois. Barrado nos dois não distingue nada.
-    sai = sum(1 for k, _ in comuns if python[k][1] and python[k][2] and python[k][3] is False)
-    volta = sum(1 for k, _ in comuns if python[k][1] and not python[k][2] and python[k][3])
+    # discordam): "sai" = usável antes e não depois (o sinal piorou logo depois do pulso,
+    # é o movimento); "volta" = não antes e usável depois (acontece já quando o dedo
+    # assenta no começo). Barrado nos dois não distingue nada.
+    rr_ok = [(k, py) for k, _, py in comuns if rr_placa.get(k, py[1])]
+    sai = sum(1 for _, py in rr_ok if py[2] and py[3] is False)
+    volta = sum(1 for _, py in rr_ok if not py[2] and py[3])
     return {
         "inicio": inicio,
         "sai": sai,
@@ -564,7 +586,7 @@ def confere_rr_usado(bruto: np.ndarray, filtrado: np.ndarray, hrv_placa: np.ndar
         "perto_de_buraco": len(todos) - len(longe),
         "sem_par": sem_par,
         # RR que o picos aceitou e a qualidade barrou: o que esta regra decide.
-        "barrados": sum(python[k][1] and not python[k][0] for k, _ in comuns),
+        "barrados": sum(1 for k, py in rr_ok if not (py[2] and py[3])),
         "diferentes": difs,
         # Bate: nenhuma diferença e nenhum batimento sem par (a quantidade e os casos que
         # distinguem a regra entram no ACEITE).
@@ -639,8 +661,14 @@ def main() -> None:
                       else hrv_nada if not r["validos"] else "o HRV da placa não bateu com o Python")
         elif rr is None or "comparados" not in rr:
             aceite, motivo = False, f"o rr_usado não foi conferido ({porque})"
-        elif rr["diferentes"] or rr["sem_par"] or rr["sem_h"] > 3:
-            aceite, motivo = False, "o rr_usado da placa não bateu com o Python"
+        elif rr["diferentes"]:
+            aceite, motivo = False, "o rr_usado da placa não bateu com o Python (firmware errado?)"
+        elif rr["sem_par"]:
+            aceite, motivo = False, ("a placa mandou RR que entraram no HRV em batimentos que o "
+                                     "Python não achou (confira o picos com analise.picos --confere)")
+        elif rr["sem_h"] > 3:
+            aceite, motivo = False, ("muitas linhas h, faltando pra batimentos com p,: linhas "
+                                     "perdidas na serial ou o laço sem mandar o batimento ao HRV")
         elif rr["pouco"]:
             aceite, motivo = False, ("o rr_usado comparou menos da metade dos batimentos (muitas "
                                      "linhas perdidas na serial): repita a captura")

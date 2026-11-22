@@ -225,7 +225,8 @@ def test_confere_placa_com_rr_fora_por_qualidade():
     assert confere_placa(*_placa_hrv()[:1], _placa_hrv()[1][:, :4])["ok"]  # firmware antigo
 
 
-def _captura_com_qualidade(segundos: int = 120, so_antes: bool = False, ruido: bool = True):
+def _captura_com_qualidade(segundos: int = 120, so_antes: bool = False, ruido: bool = True,
+                           com_picos: bool = False):
     """Captura desde o boot como a placa mandaria, com a qualidade escolhendo o RR:
     bruto, filtrado (2 casas) e o _hrv.csv com rr_usado. Ruído de 10 s no meio.
     so_antes: uma placa com erro, que ignora o julgamento de depois."""
@@ -244,7 +245,7 @@ def _captura_com_qualidade(segundos: int = 120, so_antes: bool = False, ruido: b
     n = np.arange(len(t))
     fi, fv = np.round(filtro.filtra(ir), 2), np.round(filtro.filtra(vm), 2)
     q, p, fila, h = Qualidade(), Picos(), Fila(), Hrv()
-    julg, linhas = None, []
+    julg, linhas, ps = None, [], []
 
     def hrv(b, entra):
         s = h.processa(Batimento(True, b.n_pico, b.fracao, entra, b.rr_ms))
@@ -253,6 +254,7 @@ def _captura_com_qualidade(segundos: int = 120, so_antes: bool = False, ruido: b
     for k in n.tolist():
         b = p.processa(float(fi[k]), k)
         if b is not None:
+            ps.append((b.n_pico, b.fracao, int(b.rr_valido), round(b.rr_ms, 2), 0, 0.0))
             velho = fila.poe(b, julg is not None and batimento_usavel(julg[1], True, julg[0], k))
             if velho is not None:
                 hrv(velho, False)
@@ -261,7 +263,8 @@ def _captura_com_qualidade(segundos: int = 120, so_antes: bool = False, ruido: b
             julg = (k, s.usavel)
             for bb, e in fila.tira(True if so_antes else s.usavel):
                 hrv(bb, e)
-    return (np.column_stack([n, ir, vm]), np.column_stack([n, fi, fv]), np.array(linhas, float))
+    saida = (np.column_stack([n, ir, vm]), np.column_stack([n, fi, fv]), np.array(linhas, float))
+    return (*saida, np.array(ps, float)) if com_picos else saida
 
 
 def test_confere_rr_usado_refaz_a_decisao_da_placa():
@@ -343,3 +346,22 @@ def test_confere_rr_usado_exige_os_casos_que_distinguem_a_regra():
     limpa = _captura_com_qualidade(40, ruido=False)  # só o começo: barrados, mas nenhum "sai"
     r = confere_rr_usado(*limpa)
     assert r["barrados"] > 0 and r["sai"] == 0, r
+
+
+def test_confere_rr_usado_casa_com_uma_amostra_de_folga_e_usa_o_rr_da_placa():
+    """O Python acha o pico no filtrado com 2 casas: o mesmo pulso pode cair uma amostra
+    ao lado, e um RR na borda da faixa pode sair diferente. Nada disso é erro da placa."""
+    from analise.hrv import confere_rr_usado
+
+    bruto, filtrado, h, p = _captura_com_qualidade(com_picos=True)
+    k = int(np.flatnonzero((h[:, 4] == 1) & (h[:, 0] < 100 * FS_HZ))[-1])
+    h2, p2 = h.copy(), p.copy()
+    h2[k, 0] += 1  # a placa achou o pico uma amostra depois
+    p2[p2[:, 0] == h[k, 0], 0] += 1
+    assert confere_rr_usado(bruto, filtrado, h2, p2)["ok"]
+
+    h3, p3 = h.copy(), p.copy()
+    p3[p3[:, 0] == h[k, 0], 2] = 0  # a placa recusou o RR (borda); o rr_usado sai 0
+    h3[k, 4] = 0
+    assert confere_rr_usado(bruto, filtrado, h3, p3)["ok"]
+    assert not confere_rr_usado(bruto, filtrado, h3)["ok"]  # sem a p, da placa, diverge
