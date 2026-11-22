@@ -3,11 +3,14 @@
 O firmware manda, a SENSOR_FS_HZ, uma linha "n,ir,vermelho" por amostra
 (ver docs/src/content/docs/firmware.md). Linhas com "#" são comentário.
 Linhas "b,n,ir,vermelho" e "f,n,ir,vermelho" são o bruto (decimado) e o
-filtrado que a placa calculou a 100 Hz: vão pra <nome>_bruto.csv e
-<nome>_filtrado.csv, ao lado do primeiro. Linhas
+filtrado que a placa calculou a 100 Hz, e "r,n,rpm,valido" é a respiração (uma
+por segundo): vão pra <nome>_bruto.csv, <nome>_filtrado.csv e
+<nome>_respiracao.csv, ao lado do primeiro. Linhas
 "p,n_pico,fracao,rr_valido,rr_ms,bpm_valido,bpm" são os batimentos do picos
-na placa: vão pra <nome>_picos.csv. Linhas "h,n_pico,valido,sdnn,rmssd" são a
-saída do HRV a cada batimento: vão pra <nome>_hrv.csv.
+na placa: vão pra <nome>_picos.csv. Linhas "e,n,bpm_valido,bpm" são o BPM do
+espectral (um por segundo): vão pra <nome>_espectral.csv. Linhas
+"h,n_pico,valido,sdnn,rmssd" são a saída do HRV a cada batimento: vão pra
+<nome>_hrv.csv.
 Linhas "q,..." (com -DBANCADA_QUALIDADE=ON) são a qualidade do bruto, uma
 por segundo: vão pra <nome>_qualidade.csv.
 
@@ -34,8 +37,14 @@ SENSOR_FS_HZ = 400  # igual a MAX30102_FS_HZ em Core/Inc/max30102.h
 BAUD = 921600
 DADOS = Path(__file__).resolve().parents[2] / "dados"
 COLUNAS = ("n", "ir", "vermelho")
-PONTOS = {"b": "bruto", "f": "filtrado"}  # prefixo da linha -> ponto da cadeia na placa
+# prefixo da linha -> (ponto da cadeia na placa, colunas do CSV)
+PONTOS = {
+    "b": ("bruto", COLUNAS),
+    "f": ("filtrado", COLUNAS),
+    "r": ("respiracao", ("n", "rpm", "valido")),
+}
 COLUNAS_PICOS = ("n_pico", "fracao", "rr_valido", "rr_ms", "bpm_valido", "bpm")
+COLUNAS_ESPECTRAL = ("n", "bpm_valido", "bpm")
 COLUNAS_HRV = ("n_pico", "valido", "sdnn_ms", "rmssd_ms")
 COLUNAS_QUALIDADE = ("n", "dedo", "usavel", "indice", "motivo", "dc", "pi", "aspereza", "razao")
 
@@ -48,7 +57,7 @@ class Fonte(Protocol):
 class Resumo:
     amostras: int = 0
     invalidas: int = 0
-    por_ponto: dict[str, int] = field(default_factory=dict)  # "bruto"/"filtrado" -> linhas
+    por_ponto: dict[str, int] = field(default_factory=dict)  # "bruto", "filtrado"... -> linhas
     saltos: list[tuple[int, int]] = field(default_factory=list)  # (n antes, n depois)
     comentarios: list[str] = field(default_factory=list)
     segundos: float = 0.0
@@ -75,12 +84,23 @@ def le_linha(linha: str) -> tuple[int, int, int] | None:
 
 
 def le_ponto(linha: str) -> tuple[str, tuple[int, float, float]] | None:
-    """Converte "b,n,ir,vermelho" ou "f,..." em (ponto, (n, ir, vermelho)). None se não for."""
+    """Converte "b,n,ir,vermelho", "f,..." ou "r,n,rpm,valido" em (ponto, valores)."""
     partes = linha.strip().split(",")
     if len(partes) != 4 or partes[0] not in PONTOS:
         return None
     try:
-        return PONTOS[partes[0]], (int(partes[1]), float(partes[2]), float(partes[3]))
+        return PONTOS[partes[0]][0], (int(partes[1]), float(partes[2]), float(partes[3]))
+    except ValueError:
+        return None
+
+
+def le_espectral(linha: str) -> tuple[int, int, float] | None:
+    """Converte "e,n,bpm_valido,bpm". None se não for."""
+    partes = linha.strip().split(",")
+    if len(partes) != 4 or partes[0] != "e":
+        return None
+    try:
+        return int(partes[1]), int(partes[2]), float(partes[3])
     except ValueError:
         return None
 
@@ -127,10 +147,11 @@ def le_qualidade(linha: str) -> tuple[int, int, int, float, int, int, float, flo
     return n, dedo, usavel, indice / 1000, motivo, dc, pi / 1e5, aspereza / 100, razao / 100
 
 
-# prefixo -> (csv, leitor, colunas) das linhas de saída dos módulos
-LINHAS = {
+# Prefixo da linha -> (ponto, leitor, colunas do CSV) das saídas que não são amostra.
+LEITORES = {
     "p,": ("picos", le_batimento, COLUNAS_PICOS),
     "h,": ("hrv", le_hrv, COLUNAS_HRV),
+    "e,": ("espectral", le_espectral, COLUNAS_ESPECTRAL),
     "q,": ("qualidade", le_qualidade, COLUNAS_QUALIDADE),
 }
 
@@ -157,8 +178,8 @@ def grava(fonte: Fonte, destino: Path, segundos: float | None = None) -> Resumo:
                 if linha.startswith("#"):
                     resumo.comentarios.append(linha)
                     continue
-                if linha[:2] in LINHAS:
-                    ponto, ler, colunas = LINHAS[linha[:2]]
+                if linha[:2] in LEITORES:
+                    ponto, ler, colunas = LEITORES[linha[:2]]
                     valores = ler(linha)
                     if valores is None:
                         resumo.invalidas += 1
@@ -179,7 +200,8 @@ def grava(fonte: Fonte, destino: Path, segundos: float | None = None) -> Resumo:
                     if ponto not in abertos:
                         arq = destino_ponto(destino, ponto).open("w", newline="", encoding="utf-8")
                         abertos[ponto] = (arq, csv.writer(arq))
-                        abertos[ponto][1].writerow(COLUNAS)
+                        colunas = next(c for nome, c in PONTOS.values() if nome == ponto)
+                        abertos[ponto][1].writerow(colunas)
                     abertos[ponto][1].writerow(valores)
                     resumo.por_ponto[ponto] = resumo.por_ponto.get(ponto, 0) + 1
                     continue
@@ -214,10 +236,14 @@ def main(argv: list[str] | None = None) -> None:
         print(f"gravando {args.porta} em {destino} (Ctrl+C pra parar)")
         resumo = grava(porta, destino, args.segundos)
 
-    print(f"{resumo.amostras} amostras em {resumo.segundos:.1f} s "
-          f"({resumo.amostras / max(resumo.segundos, 1e-9):.1f}/s; esperado {SENSOR_FS_HZ}/s)")
-    print(f"saltos no n: {len(resumo.saltos)} ({resumo.perdidas} amostras perdidas); "
-          f"linhas inválidas: {resumo.invalidas}")
+    print(
+        f"{resumo.amostras} amostras em {resumo.segundos:.1f} s "
+        f"({resumo.amostras / max(resumo.segundos, 1e-9):.1f}/s; esperado {SENSOR_FS_HZ}/s)"
+    )
+    print(
+        f"saltos no n: {len(resumo.saltos)} ({resumo.perdidas} amostras perdidas); "
+        f"linhas inválidas: {resumo.invalidas}"
+    )
     for ponto, linhas in resumo.por_ponto.items():
         print(f"{linhas} linhas do {ponto} da placa em {destino_ponto(destino, ponto)}")
     for c in resumo.comentarios:

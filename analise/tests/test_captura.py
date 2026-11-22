@@ -56,12 +56,15 @@ def test_bruto_decimado_vai_pro_segundo_csv(tmp_path):
         b"1,101,201\n"
         b"b,1,-0.07,12\n"
         b"f,1,-3.25,0.50\n"
+        b"r,1,14.37,1\n"
         b"b,2,x,1\n"
     )
     destino = tmp_path / "x.csv"
     resumo = captura.grava(serial_falsa, destino, segundos=0.1)
     assert resumo.amostras == 2 and resumo.brutos == 2 and resumo.invalidas == 1
-    assert resumo.por_ponto == {"bruto": 2, "filtrado": 1}
+    assert resumo.por_ponto == {"bruto": 2, "filtrado": 1, "respiracao": 1}
+    resp = pd.read_csv(tmp_path / "x_respiracao.csv")
+    assert list(resp.columns) == ["n", "rpm", "valido"] and resp["rpm"].tolist() == [14.37]
     assert pd.read_csv(tmp_path / "x_filtrado.csv")["ir"].tolist() == [-3.25]
     bruto = pd.read_csv(tmp_path / "x_bruto.csv")
     assert list(bruto.columns) == list(captura.COLUNAS)
@@ -86,6 +89,21 @@ def test_batimentos_vao_pro_csv_do_picos(tmp_path):
     assert picos["n_pico"].tolist() == [1234, 1314]
     assert picos["rr_valido"].tolist() == [0, 1]
     assert picos["rr_ms"].tolist() == [0.0, 803.49]
+
+
+def test_bpm_do_espectral_vai_pro_csv_do_espectral(tmp_path):
+    serial_falsa = io.BytesIO(
+        b"# espectral: e,n,bpm_valido,bpm\n0,100,200\ne,799,1,73.85\ne,899,0,0.00\ne,1,x,0\ne,999\n"
+    )
+    destino = tmp_path / "x.csv"
+    resumo = captura.grava(serial_falsa, destino, segundos=0.1)
+    assert resumo.amostras == 1 and resumo.invalidas == 2
+    assert resumo.por_ponto == {"espectral": 2}
+    esp = pd.read_csv(tmp_path / "x_espectral.csv")
+    assert list(esp.columns) == list(captura.COLUNAS_ESPECTRAL)
+    assert esp["n"].tolist() == [799, 899]
+    assert esp["bpm_valido"].tolist() == [1, 0]
+    assert esp["bpm"].tolist() == [73.85, 0.0]
 
 
 def test_saida_do_hrv_vai_pro_csv_do_hrv(tmp_path):
