@@ -19,6 +19,19 @@ add_library(pds STATIC ${PDS_SOURCES} ${CMAKE_CURRENT_SOURCE_DIR}/vazio.c)
 target_include_directories(pds PUBLIC ${PDS_INC})
 target_link_libraries(pds PUBLIC m)
 
+# CMSIS-DSP (só a FFT real de float32, Drivers/CMSIS/DSP): o mesmo código da
+# placa, rodando no PC. __GNUC_PYTHON__ é o modo "host" do arm_math_types.h (sem
+# o cmsis_compiler.h, que usa instruções do ARM). É código da ARM, então sem
+# avisos (-w); os do nosso fft.c continuam valendo. Só o pds enxerga o CMSIS
+# (PRIVATE): quem usa a FFT inclui "fft/fft.h", nunca um cabeçalho do CMSIS.
+set(DSP_DIR ${RAIZ}/Drivers/CMSIS/DSP)
+file(GLOB_RECURSE DSP_SOURCES CONFIGURE_DEPENDS ${DSP_DIR}/Source/*.c)
+add_library(cmsis_dsp STATIC ${DSP_SOURCES})
+target_include_directories(cmsis_dsp PUBLIC ${DSP_DIR}/Include)
+target_compile_definitions(cmsis_dsp PUBLIC __GNUC_PYTHON__)
+target_compile_options(cmsis_dsp PRIVATE -w)
+target_link_libraries(pds PRIVATE cmsis_dsp)
+
 enable_testing()
 
 # Um executável por arquivo testes/<módulo>/teste_*.c

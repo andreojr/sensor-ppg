@@ -7,8 +7,10 @@ filtrado que a placa calculou a 100 Hz, e "r,n,rpm,valido" é a respiração (um
 por segundo): vão pra <nome>_bruto.csv, <nome>_filtrado.csv e
 <nome>_respiracao.csv, ao lado do primeiro. Linhas
 "p,n_pico,fracao,rr_valido,rr_ms,bpm_valido,bpm" são os batimentos do picos
-na placa: vão pra <nome>_picos.csv. Linhas "h,n_pico,valido,sdnn,rmssd" são a
-saída do HRV a cada batimento: vão pra <nome>_hrv.csv.
+na placa: vão pra <nome>_picos.csv. Linhas "e,n,bpm_valido,bpm" são o BPM do
+espectral (um por segundo): vão pra <nome>_espectral.csv. Linhas
+"h,n_pico,valido,sdnn,rmssd" são a saída do HRV a cada batimento: vão pra
+<nome>_hrv.csv.
 
 Uso:
     uv run python -m analise.captura COM3 --segundos 30
@@ -40,6 +42,7 @@ PONTOS = {
     "r": ("respiracao", ("n", "rpm", "valido")),
 }
 COLUNAS_PICOS = ("n_pico", "fracao", "rr_valido", "rr_ms", "bpm_valido", "bpm")
+COLUNAS_ESPECTRAL = ("n", "bpm_valido", "bpm")
 COLUNAS_HRV = ("n_pico", "valido", "sdnn_ms", "rmssd_ms")
 
 
@@ -88,6 +91,17 @@ def le_ponto(linha: str) -> tuple[str, tuple[int, float, float]] | None:
         return None
 
 
+def le_espectral(linha: str) -> tuple[int, int, float] | None:
+    """Converte "e,n,bpm_valido,bpm". None se não for."""
+    partes = linha.strip().split(",")
+    if len(partes) != 4 or partes[0] != "e":
+        return None
+    try:
+        return int(partes[1]), int(partes[2]), float(partes[3])
+    except ValueError:
+        return None
+
+
 def le_batimento(linha: str) -> tuple[int, float, int, float, int, float] | None:
     """Converte "p,n_pico,fracao,rr_valido,rr_ms,bpm_valido,bpm". None se não for."""
     partes = linha.strip().split(",")
@@ -117,6 +131,14 @@ def le_hrv(linha: str) -> tuple[int, int, float, float] | None:
         return None
 
 
+# Prefixo da linha -> (ponto, leitor, colunas do CSV) das saídas que não são amostra.
+LEITORES = {
+    "p,": ("picos", le_batimento, COLUNAS_PICOS),
+    "h,": ("hrv", le_hrv, COLUNAS_HRV),
+    "e,": ("espectral", le_espectral, COLUNAS_ESPECTRAL),
+}
+
+
 def destino_ponto(destino: Path, ponto: str) -> Path:
     return destino.with_name(f"{destino.stem}_{ponto}.csv")
 
@@ -139,12 +161,8 @@ def grava(fonte: Fonte, destino: Path, segundos: float | None = None) -> Resumo:
                 if linha.startswith("#"):
                     resumo.comentarios.append(linha)
                     continue
-                if linha[:2] in ("p,", "h,"):
-                    ponto, ler, colunas = (
-                        ("picos", le_batimento, COLUNAS_PICOS)
-                        if linha[0] == "p"
-                        else ("hrv", le_hrv, COLUNAS_HRV)
-                    )
+                if linha[:2] in LEITORES:
+                    ponto, ler, colunas = LEITORES[linha[:2]]
                     valores = ler(linha)
                     if valores is None:
                         resumo.invalidas += 1
@@ -201,10 +219,14 @@ def main(argv: list[str] | None = None) -> None:
         print(f"gravando {args.porta} em {destino} (Ctrl+C pra parar)")
         resumo = grava(porta, destino, args.segundos)
 
-    print(f"{resumo.amostras} amostras em {resumo.segundos:.1f} s "
-          f"({resumo.amostras / max(resumo.segundos, 1e-9):.1f}/s; esperado {SENSOR_FS_HZ}/s)")
-    print(f"saltos no n: {len(resumo.saltos)} ({resumo.perdidas} amostras perdidas); "
-          f"linhas inválidas: {resumo.invalidas}")
+    print(
+        f"{resumo.amostras} amostras em {resumo.segundos:.1f} s "
+        f"({resumo.amostras / max(resumo.segundos, 1e-9):.1f}/s; esperado {SENSOR_FS_HZ}/s)"
+    )
+    print(
+        f"saltos no n: {len(resumo.saltos)} ({resumo.perdidas} amostras perdidas); "
+        f"linhas inválidas: {resumo.invalidas}"
+    )
     for ponto, linhas in resumo.por_ponto.items():
         print(f"{linhas} linhas do {ponto} da placa em {destino_ponto(destino, ponto)}")
     for c in resumo.comentarios:

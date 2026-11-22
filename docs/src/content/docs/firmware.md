@@ -8,11 +8,12 @@ Código que usa HAL, em `Core/Inc` e `Core/Src` (fora de `pds/`).
 | Parte | Responsável | Estado |
 |---|---|---|
 | Leitura do MAX30102 (I2C1, FIFO, INT no PB5) | João | feita: `max30102.c` |
-| Serial pro PC (USART1 a 921600 com DMA, adaptador USB-serial) | João | feita: `serial.c`, manda o sinal cru e as saídas da cadeia (bruto, filtrado, batimentos, HRV e respiração) |
+| Serial pro PC (USART1 a 921600 com DMA, adaptador USB-serial) | João | feita: `serial.c`, manda o sinal cru e as saídas da cadeia (bruto, filtrado, batimentos, HRV, BPM do espectral e respiração) |
 | Decimação na placa (400 → 100 Hz) e ciclos (DWT) | João | feita: `main.c` e `bancada.c`; ver [Decimação](../modulos/decimacao/) |
 | Filtro na placa (bruto → filtrado) | João | feito: `main.c` e `bancada.c`; ver [Filtro](../modulos/filtro/) |
 | Picos na placa (filtrado → batimentos e BPM) | Celso / André | feito: `main.c` e `bancada.c`; ver [Picos](../modulos/picos/) |
 | HRV na placa (batimentos → SDNN e RMSSD) | André | feito: `main.c`, linhas `h,`, bate com o Python na placa; ver [HRV](../modulos/hrv/) |
+| Espectral na placa (filtrado → BPM pela FFT) | Celso | feito: `main.c`, linhas `e,`, bate com o Python na placa; ver [Espectral](../modulos/espectral/) e [FFT](../modulos/fft/) |
 | Respiração na placa (bruto → rpm, 1 por segundo) | João | feita: `main.c` e `bancada.c`; ver [Respiração](../modulos/respiracao/) |
 | Bancada do HRV na placa (`-DBANCADA_HRV=ON`) | André | feita: `bancada_hrv.c`, passou na placa; ver [HRV](../modulos/hrv/) |
 | Fonte falsa (PhysioNet em flash) | André | a fazer |
@@ -99,6 +100,7 @@ INT ficar baixo, não vem outra borda de descida, e sem isso a leitura travaria.
 # decimacao 100 Hz: b,n,ir,vermelho
 # filtro 100 Hz, atraso 100: f,n,ir,vermelho
 # picos: p,n_pico,fracao,rr_valido,rr_ms,bpm_valido,bpm
+# espectral: e,n,bpm_valido,bpm
 # hrv: h,n_pico,valido,sdnn,rmssd
 # respiracao 1 Hz: r,n,rpm,valido
 0,112034,98765
@@ -111,9 +113,12 @@ p,1234,0.2500,1,812.50,1,73.85
 h,1234,1,48.27,33.10
 r,99,0.00,0
 ...
+e,799,1,73.85
+...
 # decimacao: ciclos med ... max ... (orcamento 2400)
 # filtro: ciclos med ... max ... (orcamento 19200)
 # picos: ciclos med ... max ... (orcamento 9600)
+# espectral: ciclos med ... (orcamento 9600) max ... (orcamento 960000)
 # hrv: ciclos med ... max ... (orcamento 20000)
 # respiracao: ciclos med ... max ... (orcamento 9600)
 ```
@@ -140,17 +145,25 @@ r,99,0.00,0
 - Logo depois de cada `p,`, uma linha `h,` com a saída do HRV
   (`hrv_processa()` sobre o mesmo batimento): `n_pico`, `valido` (0/1, só
   com 45 s de RR aceitos na janela e 20 diferenças), SDNN e RMSSD em ms com 2 casas.
+- Linhas que começam com `e,` são o **BPM do espectral** (`espectral_processa()` sobre o
+  filtrado), uma por segundo, a partir de 8 s de sinal (a janela da FFT): `n` (o do
+  filtrado em que a janela terminou), `bpm_valido` (0/1) e `bpm` (2 casas, 0 quando
+  inválido). O `n` conta o atraso do filtro, como nas linhas `f,`.
 - Linhas que começam com `r,` são a **respiração** (`respiracao_processa()`):
   uma por segundo, com o `n` do bruto que fechou a estimativa, as respirações
   por minuto e `valido` (0 ou 1). Nos primeiros 60 s (a janela enchendo), sai
   `valido` 0.
 - A cada 10 s, `# decimacao: ...`, `# filtro: ...`, `# picos: ...`,
-  `# hrv: ...` e `# respiracao: ciclos med X max Y` medem cada `_processa()`
+  `# espectral: ...`, `# hrv: ...` e
+  `# respiracao: ciclos med X max Y` medem cada `_processa()`
   com o contador de ciclos do núcleo (DWT). Os orçamentos são 1% da CPU pra
   decimação (96 MHz / 400 Hz / 100 = 2400 ciclos por amostra do sensor), 2%
   pro filtro (19 200 ciclos por amostra a 100 Hz), 1% pro picos (9 600), 1%
   pra respiração (9 600, em média; o espectro roda numa amostra por segundo)
-  e 20 000 ciclos por batimento pro HRV (o da bancada do HRV).
+  e 20 000 ciclos por batimento pro HRV (o da bancada do HRV). O espectral tem
+  dois orçamentos: **média** de 9 600 ciclos por amostra (1%) e **pior caso** de
+  960 000 (a amostra em que sai a FFT, uma por segundo, tem que caber num período de
+  amostra: 96 MHz / 100 Hz); `# espectral: ...` mostra os dois.
 - Linhas que começam com `#` são comentário. Se o sensor não responder no
   boot, sai `# erro: MAX30102 nao respondeu na I2C1` e a placa para. Se a
   taxa do sensor não tiver filtro de decimação, sai
@@ -197,8 +210,9 @@ passam de 100 000 e oscilam ~1% com o pulso.
 
 Pra gravar em CSV e plotar, dentro de `analise/` (o CSV vai pra
 `analise/dados/`, que não entra no git). No fim, a captura mostra a taxa medida
-e quantas amostras se perderam. As linhas `b,`, `f,` e `r,` vão pra
-`<nome>_bruto.csv`, `<nome>_filtrado.csv` e `<nome>_respiracao.csv`, e cada
+e quantas amostras se perderam. As linhas `b,`, `f,`, `p,`, `h,`, `e,` e `r,` vão pra
+`<nome>_bruto.csv`, `<nome>_filtrado.csv`, `<nome>_picos.csv`, `<nome>_hrv.csv`,
+`<nome>_espectral.csv` e `<nome>_respiracao.csv`, e cada
 `--confere` compara o módulo da placa com o do Python no mesmo sinal:
 
 ```bash
@@ -249,6 +263,23 @@ Python. Pode ser ligada junto com as outras.
 # bancada picos: 47 batimentos (esperado 47), 0 fora da tolerancia, erro max ... milesimos
 # bancada picos: ciclos por amostra med ... max ... (orcamento 9600): OK
 ```
+
+### Bancada do espectral (fonte falsa)
+
+Com `-DBANCADA_ESPECTRAL=ON`: os 60 s do filtrado do `s2_walk` (o vetor de
+`testes/espectral/vetores/s2_walk.h`, ~24 KB na flash, com saídas válidas e inválidas)
+passam pelo espectral e são conferidos com o Python (`valido` exato; `bpm` e prominência
+com tolerância de 0,001). Confere também os dois orçamentos de ciclos. Pode ser ligada
+junto com as outras.
+
+```text
+# bancada espectral: 53 saidas (esperado 53), 0 fora da tolerancia, erro max ... milesimos
+# bancada espectral: ciclos por amostra med ... (orcamento 9600), max ... (orcamento 960000): OK
+```
+
+**Na placa** (22/11/2026, Release): 53 saídas, 0 fora da tolerância, e o DWT mediu
+**951 ciclos por amostra em média e 101 323 no pior caso** (a amostra da FFT, 1,06 ms).
+A emulação (`uv run testes/fft/ciclos/ciclos.py espectral`) estimava ~1 060 e ~107 400.
 
 ### Bancada da respiração
 
