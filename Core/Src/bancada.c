@@ -272,3 +272,58 @@ bool bancada_espectral(void)
 }
 
 #endif /* BANCADA_ESPECTRAL */
+
+#ifdef BANCADA_RESPIRACAO
+
+#include <math.h>
+
+#include "respiracao/respiracao.h"
+/* O mesmo vetor do teste no PC: 5 min do bruto (IR) do s1_sit, decimado. */
+#include "respiracao/vetores/s1_sit.h"
+
+bool bancada_respiracao(void)
+{
+    static respiracao_t r; /* ~2,3 KiB: fora da pilha */
+    respiracao_init(&r);
+
+    ciclos_t c = {0};
+    uint32_t saidas = 0, fora = 0;
+    float pior = 0.0f;
+    for (uint32_t i = 0; i < S1_SIT_IR_N; i++) {
+        ppg_amostra_t e = {i, s1_sit_ir[i], 0.0f};
+        ppg_respiracao_t s;
+        uint32_t t0 = ciclos_agora();
+        bool saiu = respiracao_processa(&r, &e, &s);
+        ciclos_conta(&c, ciclos_agora() - t0);
+        if (!saiu)
+            continue;
+        if (saidas < S1_SIT_AMOSTRA_N && (int32_t)i == s1_sit_amostra[saidas]) {
+            float erro = fabsf(s.rpm - s1_sit_rpm[saidas]);
+            if (erro > pior)
+                pior = erro;
+            fora += !(erro <= S1_SIT_TOL) || (int32_t)s.valido != s1_sit_valido[saidas];
+        } else {
+            fora++;
+        }
+        saidas++;
+    }
+
+    uint32_t media = (uint32_t)(c.soma / c.conta);
+    bool ok = saidas == S1_SIT_AMOSTRA_N && fora == 0 && media <= BANCADA_ORCAMENTO_RESPIRACAO;
+    char linha[160];
+    int n = snprintf(linha, sizeof linha,
+                     "# bancada respiracao: %lu estimativas (esperado %lu), %lu diferentes, "
+                     "erro max %lu milesimos de rpm\n",
+                     (unsigned long)saidas, (unsigned long)S1_SIT_AMOSTRA_N, (unsigned long)fora,
+                     (unsigned long)(pior * 1000.0f + 0.5f));
+    serial_escreve(linha, (uint32_t)n);
+    n = snprintf(linha, sizeof linha,
+                 "# bancada respiracao: ciclos por amostra med %lu max %lu (orcamento %lu): %s\n",
+                 (unsigned long)media, (unsigned long)c.max,
+                 (unsigned long)BANCADA_ORCAMENTO_RESPIRACAO, ok ? "OK" : "FALHOU");
+    serial_escreve(linha, (uint32_t)n);
+    serial_envia();
+    return ok;
+}
+
+#endif /* BANCADA_RESPIRACAO */

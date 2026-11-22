@@ -8,12 +8,13 @@ Código que usa HAL, em `Core/Inc` e `Core/Src` (fora de `pds/`).
 | Parte | Responsável | Estado |
 |---|---|---|
 | Leitura do MAX30102 (I2C1, FIFO, INT no PB5) | João | feita: `max30102.c` |
-| Serial pro PC (USART1 a 921600 com DMA, adaptador USB-serial) | João | feita: `serial.c`, manda o sinal cru, o bruto decimado e o filtrado |
+| Serial pro PC (USART1 a 921600 com DMA, adaptador USB-serial) | João | feita: `serial.c`, manda o sinal cru e as saídas da cadeia (bruto, filtrado, batimentos, HRV e respiração) |
 | Decimação na placa (400 → 100 Hz) e ciclos (DWT) | João | feita: `main.c` e `bancada.c`; ver [Decimação](../modulos/decimacao/) |
 | Filtro na placa (bruto → filtrado) | João | feito: `main.c` e `bancada.c`; ver [Filtro](../modulos/filtro/) |
 | Picos na placa (filtrado → batimentos e BPM) | Celso / André | feito: `main.c` e `bancada.c`; ver [Picos](../modulos/picos/) |
 | HRV na placa (batimentos → SDNN e RMSSD) | André | feito: `main.c`, linhas `h,`, bate com o Python na placa; ver [HRV](../modulos/hrv/) |
 | Espectral na placa (filtrado → BPM pela FFT) | Celso | **código pronto e compilando, ainda não rodou na placa**: `main.c` e `bancada.c`; ver [Espectral](../modulos/espectral/) e [FFT](../modulos/fft/) |
+| Respiração na placa (bruto → rpm, 1 por segundo) | João | feita: `main.c` e `bancada.c`; ver [Respiração](../modulos/respiracao/) |
 | Bancada do HRV na placa (`-DBANCADA_HRV=ON`) | André | feita: `bancada_hrv.c`, passou na placa; ver [HRV](../modulos/hrv/) |
 | Fonte falsa (PhysioNet em flash) | André | a fazer |
 | Timer, filas e laço principal (TIM2 a 100 Hz já configurado) | André | a fazer |
@@ -101,6 +102,7 @@ INT ficar baixo, não vem outra borda de descida, e sem isso a leitura travaria.
 # picos: p,n_pico,fracao,rr_valido,rr_ms,bpm_valido,bpm
 # espectral: e,n,bpm_valido,bpm
 # hrv: h,n_pico,valido,sdnn,rmssd
+# respiracao 1 Hz: r,n,rpm,valido
 0,112034,98765
 1,112040,98771
 ...
@@ -109,6 +111,7 @@ f,0,0.00,0.00
 ...
 p,1234,0.2500,1,812.50,1,73.85
 h,1234,1,48.27,33.10
+r,99,0.00,0
 ...
 e,799,1,73.85
 ...
@@ -117,6 +120,7 @@ e,799,1,73.85
 # picos: ciclos med ... max ... (orcamento 9600)
 # espectral: ciclos med ... (orcamento 9600) max ... (orcamento 960000)
 # hrv: ciclos med ... max ... (orcamento 20000)
+# respiracao: ciclos med ... max ... (orcamento 9600)
 ```
 
 - `n` é o índice da amostra a 400 Hz desde o boot. Se o sensor descartar
@@ -145,15 +149,21 @@ e,799,1,73.85
   filtrado), uma por segundo, a partir de 8 s de sinal (a janela da FFT): `n` (o do
   filtrado em que a janela terminou), `bpm_valido` (0/1) e `bpm` (2 casas, 0 quando
   inválido). O `n` conta o atraso do filtro, como nas linhas `f,`.
-- A cada 10 s, `# decimacao: ...` e `# filtro: ciclos med X max Y` medem o
-  `decimacao_processa()` e o `filtro_processa()` com o contador de ciclos do
-  núcleo (DWT). Os orçamentos são 1% da CPU pra decimação (96 MHz / 400 Hz /
-  100 = 2400 ciclos por amostra do sensor), 2% pro filtro (19 200 ciclos
-  por amostra a 100 Hz) e 1% pro picos (9 600); `# picos: ...` mede o
-  `picos_processa()`. O espectral tem dois orçamentos: **média** de 9 600 ciclos por
-  amostra (1%) e **pior caso** de 960 000 (a amostra em que sai a FFT, uma por segundo,
-  tem que caber num período de amostra: 96 MHz / 100 Hz). `# hrv: ...` mede o
-  `hrv_processa()` por batimento (orçamento de 20 000 ciclos, o da bancada do HRV).
+- Linhas que começam com `r,` são a **respiração** (`respiracao_processa()`):
+  uma por segundo, com o `n` do bruto que fechou a estimativa, as respirações
+  por minuto e `valido` (0 ou 1). Nos primeiros 60 s (a janela enchendo), sai
+  `valido` 0.
+- A cada 10 s, `# decimacao: ...`, `# filtro: ...`, `# picos: ...`,
+  `# espectral: ...`, `# hrv: ...` e
+  `# respiracao: ciclos med X max Y` medem cada `_processa()`
+  com o contador de ciclos do núcleo (DWT). Os orçamentos são 1% da CPU pra
+  decimação (96 MHz / 400 Hz / 100 = 2400 ciclos por amostra do sensor), 2%
+  pro filtro (19 200 ciclos por amostra a 100 Hz), 1% pro picos (9 600), 1%
+  pra respiração (9 600, em média; o espectro roda numa amostra por segundo)
+  e 20 000 ciclos por batimento pro HRV (o da bancada do HRV). O espectral tem
+  dois orçamentos: **média** de 9 600 ciclos por amostra (1%) e **pior caso** de
+  960 000 (a amostra em que sai a FFT, uma por segundo, tem que caber num período de
+  amostra: 96 MHz / 100 Hz); `# espectral: ...` mostra os dois.
 - Linhas que começam com `#` são comentário. Se o sensor não responder no
   boot, sai `# erro: MAX30102 nao respondeu na I2C1` e a placa para. Se a
   taxa do sensor não tiver filtro de decimação, sai
@@ -200,15 +210,16 @@ passam de 100 000 e oscilam ~1% com o pulso.
 
 Pra gravar em CSV e plotar, dentro de `analise/` (o CSV vai pra
 `analise/dados/`, que não entra no git). No fim, a captura mostra a taxa medida
-e quantas amostras se perderam. As linhas `b,` e `f,` vão pra
-`<nome>_bruto.csv` e `<nome>_filtrado.csv`, e cada `--confere` compara o
-módulo da placa com o do Python no mesmo sinal:
+e quantas amostras se perderam. As linhas `b,`, `f,` e `r,` vão pra
+`<nome>_bruto.csv`, `<nome>_filtrado.csv` e `<nome>_respiracao.csv`, e cada
+`--confere` compara o módulo da placa com o do Python no mesmo sinal:
 
 ```bash
 uv run python -m analise.captura COM3 --segundos 30
 uv run python -m analise.plota dados/sensor_<data>_<hora>.csv
 uv run python -m analise.decimacao --confere dados/sensor_<data>_<hora>.csv
 uv run python -m analise.filtro --confere dados/sensor_<data>_<hora>.csv
+uv run python -m analise.respiracao --confere dados/sensor_<data>_<hora>.csv
 ```
 
 ### Bancada da decimação (fonte falsa)
@@ -234,8 +245,7 @@ A opção fica guardada no cache do CMake: volte com `-DBANCADA_DECIMACAO=OFF`.
 
 Igual, com `-DBANCADA_FILTRO=ON`: os 60 s do bruto da fonte falsa (o vetor de
 `testes/filtro/vetores/bruto_100hz.h`, ~96 KB na flash) passam pelo filtro e
-são conferidos com o Python. As duas bancadas podem ser ligadas juntas
-(~167 KB de flash).
+são conferidos com o Python. As bancadas podem ser ligadas juntas.
 
 ```text
 # bancada filtro: 6000 saidas, 0 fora da tolerancia, erro max 0 milesimos
@@ -271,6 +281,18 @@ mesmo código ARM foi emulado (`uv run testes/fft/ciclos/ciclos.py espectral`): 
 iguais às do Python, média de ~1 060 ciclos por amostra e pior caso de ~107 400 (modelo
 do Cortex-M4F, sem a espera da flash). Falta rodar na placa pra trocar a estimativa
 pela medida do contador de ciclos (DWT) e ver as linhas `# bancada espectral` acima.
+
+### Bancada da respiração
+
+Com `-DBANCADA_RESPIRACAO=ON`: 5 min do bruto do `s1_sit` (o vetor de
+`testes/respiracao/vetores/s1_sit.h`, ~120 KB na flash), porque os 60 s da
+fonte falsa só enchem uma janela. Decimação, filtro e respiração juntas
+ocupam ~300 KB de flash; as cinco bancadas, ~341 KB.
+
+```text
+# bancada respiracao: 299 estimativas (esperado 299), 0 diferentes, erro max 0 milesimos de rpm
+# bancada respiracao: ciclos por amostra med ... max ... (orcamento 9600): OK
+```
 
 | Sintoma | Causa provável |
 |---|---|
