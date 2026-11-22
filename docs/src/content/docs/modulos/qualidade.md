@@ -534,3 +534,21 @@ sem dedo, dedo firme coberto, dedo leve, sem dedo):
 Todo número que a tela mostrou estava na faixa do relógio. O que falta é
 tempo de tela: com este módulo de sensor, o pulso bom é curto e fraco (pi
 0,2%), e a regra prefere `--` a um número duvidoso.
+
+**Com movimento de vez em quando** (22/11/2026, 115 s: sem dedo, parado,
+mexendo 5 s, parado, mexendo 5 s, parado, sem dedo; relógio aos 35 s e aos
+95 s):
+
+| trecho | tela |
+|---|---|
+| sem dedo (início e fim) | `--` em todos; no fim, o picos sozinho voltou a ver "batimentos" na oscilação sem dedo (~150 por minuto, `valido` ligado), e a qualidade barrou por `SEM_DEDO` |
+| mexendo (~41 a 52 s e ~66 a 72 s, contando o dedo assentar) | `--` desde o 1º segundo do movimento |
+| tirando o dedo | `--` na hora |
+| parado com pulso bom | BPM em 13 s: 58,6 a 67,3 |
+| **relógio** | **63 (aos 35 s) e 61 (aos 95 s)** |
+
+Nenhum número apareceu durante o movimento, o caso em que o limiar 0,45
+deixa mais janelas passarem na qualidade sozinha. Dos 13 números, 12 ficaram
+a até 5 bpm da leitura do relógio mais próxima; o 13º (67,3, no 1º segundo
+depois de voltar do `--`) ficou 4 acima de 63 e 6 acima de 61. Depois de
+cada movimento, o número levou 10 a 20 s pra voltar.
