@@ -80,20 +80,3 @@ def test_perto_da_borda_ainda_vale(bpm):
 def test_silencio_nao_e_valido():
     saidas = estima(np.zeros(1000, dtype=np.float32))
     assert saidas and not any(s.valido or s.bpm for s in saidas)
-
-
-def test_confere_placa_bate_com_ele_mesmo():
-    """O --confere do passo 5: saída do próprio Python, filtrado com 2 casas."""
-    from analise.espectral import confere_placa
-
-    x = senoide(1.1, 20, amp=300.0)
-    x = np.round(x, 2).astype(np.float32)
-    saidas = estima(x)
-    filtrado = np.column_stack([np.arange(len(x)), x, np.zeros(len(x))])
-    placa = np.array([[s.n, s.valido, round(s.bpm, 2)] for s in saidas])
-    r = confere_placa(filtrado, placa)
-    assert r["janelas"] == len(saidas) and r["valido_diferente"] == 0
-    assert r["bpm_dif_max"] < 0.01
-    # Uma amostra perdida tira as janelas que a contêm.
-    r = confere_placa(np.delete(filtrado, 1500, axis=0), placa)
-    assert 0 < r["janelas"] < len(saidas)

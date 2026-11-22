@@ -23,7 +23,7 @@ sidebar:
 | 2. C (`Core/*/pds/espectral/`) | feito, bate com o Python (erro máx. de 7,6e-5 bpm) |
 | 3. Teste no PC (`testes/espectral/`) | feito, 3 casos contra os vetores do Python |
 | 4. Placa com a fonte falsa | feito: `-DBANCADA_ESPECTRAL=ON`, 53 de 53 saídas iguais ao Python, ciclos medidos (DWT) |
-| 5. Sensor real | feito: dedo no MAX30102, placa × Python iguais, ~1 bpm do picos (`--confere`) |
+| 5. Sensor real | feito: dedo no MAX30102, placa × Python iguais, ~1 bpm do picos |
 
 Esta página é atualizada em todo PR que mexe no módulo.
 
@@ -102,8 +102,7 @@ sem mudar nada.
 
 **Com o sensor real (passo 5,** dedo do André parado, 60 s, 22/11/2026): o
 `main.c` passa o filtrado pelo espectral e manda `e,n,bpm_valido,bpm` a cada segundo.
-Com `uv run python -m analise.espectral --confere dados/<captura>.csv`, o Python roda no
-mesmo filtrado que a placa mandou:
+O Python rodou no mesmo filtrado que a placa mandou (linhas `f,`), janela a janela:
 
 | O quê | Resultado |
 |---|---|
