@@ -113,6 +113,7 @@ def test_reinicio_apaga_o_ritmo():
     ("saturado", 1, qualidade.SATURADO_BIT),
     ("ruido", 1, qualidade.RUIDO_BIT),
     ("movimento", 4, qualidade.MOVIMENTO_BIT),
+    ("sem_ritmo", 1, qualidade.SEM_RITMO_BIT),
 ])
 def test_defeito_depois_do_limpo(tipo, forca, bit):
     ir, vm = pulso(20)
@@ -192,3 +193,19 @@ def test_vetor_em_dia(caso):
     esperado = qualidade._arrays(saidas, {})
     for nome, valores in esperado.items():
         assert np.allclose(a[nome], np.asarray(valores, dtype=np.float32), rtol=1e-6), nome
+
+
+def test_filtro_do_ritmo_e_o_butterworth():
+    """O ritmo usa um passa-faixa 0,5-4 Hz (Butterworth 2ª ordem, passa-altas primeiro)."""
+    from scipy.signal import butter, sosfilt
+
+    sos = butter(2, [0.5, 4], "bandpass", fs=FS_HZ, output="sos")
+    assert np.allclose(np.array(qualidade.RITMO_SOS), sos[::-1], rtol=1e-12, atol=1e-15)
+    ir, vm = pulso(5)
+    q = qualidade.Qualidade()
+    for k, (a, b) in enumerate(zip(ir, vm)):
+        q.processa(k, a, b)
+    y = sosfilt(np.ascontiguousarray(sos[::-1]), ir - ir[0])
+    esperado = y[: len(y) // 4 * 4].reshape(-1, 4).mean(1)[-qualidade.RITMO_N:]
+    anel = np.array(q.anel[q.pos:] + q.anel[: q.pos])
+    assert np.allclose(anel, esperado, rtol=1e-9, atol=1e-9)

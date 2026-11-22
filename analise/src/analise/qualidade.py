@@ -63,7 +63,16 @@ MOVIMENTO_BIT = 8
 RUIDO_BIT = 16
 SEM_RITMO_BIT = 32
 
-# Ritmo: o y do passa-altas reduzido a 25 Hz, autocorrelação em 4 s.
+# Ritmo: o IR num passa-faixa de 0,5 a 4 Hz (o passa-altas de 1ª ordem deixa
+# respiração e deriva demais: no PhysioNet limpo, 8,5% das janelas ficavam abaixo
+# de 0,5 contra 4,3% com este), reduzido a 25 Hz, autocorrelação em 4 s.
+# Butterworth de 2ª ordem (scipy butter(2, [0.5, 4], "bandpass", fs=100)) em duas
+# seções b0 b1 b2 a0 a1 a2, a do passa-altas primeiro (tira o DC antes).
+RITMO_SOS = (
+    (1.0, -2.0, 1.0, 1.0, -1.9585309426687274, 0.9597079331261205),
+    (0.01043241337109341, 0.02086482674218683, 0.01043241337109341,
+     1.0, -1.717844586580564, 0.7634885625932664),
+)
 RITMO_DECIMA = 4           # 100 -> 25 Hz (média de 4)
 RITMO_N = 100              # 4 s a 25 Hz
 RITMO_ATRASO_MIN = 10      # 0,4 s: 150 bpm
@@ -135,6 +144,8 @@ class Qualidade:
     ruins: int = 0             # janelas ruins seguidas
     tem_ref: bool = False
     ref: float = 0.0           # altura de referência
+    x0: float = 0.0            # 1ª amostra desde o reinício (o filtro parte do zero)
+    z: list[float] = field(default_factory=lambda: [0.0] * 4)  # estados das 2 seções
     anel: list[float] = field(default_factory=lambda: [0.0] * RITMO_N)  # y a 25 Hz
     pos: int = 0
     cheio: int = 0
@@ -154,6 +165,7 @@ class Qualidade:
             self.reinicia()
         if not self.tem_n:
             self.media = ir
+            self.x0 = ir
         self.media += self.lim.alfa * (ir - self.media)
         y = ir - self.media
         b = self.atual
@@ -165,7 +177,7 @@ class Qualidade:
         b.maior = max(b.maior, ir, vm)
         b.min_y = min(b.min_y, y)
         b.max_y = max(b.max_y, y)
-        self.soma4 += y
+        self.soma4 += self._passa_faixa(ir - self.x0)
         self.conta4 += 1
         if self.conta4 == RITMO_DECIMA:
             self.anel[self.pos] = self.soma4 / RITMO_DECIMA
@@ -184,6 +196,16 @@ class Qualidade:
         if anterior is None:  # janela ainda não encheu
             return None
         return self._janela(n, anterior, b, ritmo)
+
+    def _passa_faixa(self, x: float) -> float:
+        """As duas seções do RITMO_SOS em forma direta II transposta."""
+        for i, (b0, b1, b2, _, a1, a2) in enumerate(RITMO_SOS):
+            z1, z2 = self.z[2 * i], self.z[2 * i + 1]
+            y = b0 * x + z1
+            self.z[2 * i] = b1 * x - a1 * y + z2
+            self.z[2 * i + 1] = b2 * x - a2 * y
+            x = y
+        return x
 
     def _janela(self, n: int, a: _Bloco, b: _Bloco, ritmo: float | None) -> Saida:
         lim = self.lim
@@ -269,6 +291,8 @@ def degrada(tipo: str, ir: np.ndarray, vm: np.ndarray, rng: np.random.Generator,
     sem_pulso    só a tendência lenta, sem o pulso (dedo apertado demais, objeto).
     ruido        ruído branco de desvio = forca x desvio do pulso.
     saturado     ganho que leva o DC pra perto do topo; corta em 262143.
+    sem_ritmo    tendência + ruído filtrado de 0,7 a 3,5 Hz com o desvio do pulso
+                 (x forca): altura e aspereza de pulso, sem se repetir.
     movimento    solavancos (meio seno de 0,2 a 0,8 s) de altura forca x altura do
                  pulso, um a cada ~1,5 s, para cima ou para baixo.
     """
@@ -285,6 +309,14 @@ def degrada(tipo: str, ir: np.ndarray, vm: np.ndarray, rng: np.random.Generator,
     if tipo == "saturado":
         g = 0.99 * ADC_TOPO / t_ir.mean()
         return np.minimum(ir * g, ADC_TOPO), np.minimum(vm * g, ADC_TOPO)
+    if tipo == "sem_ritmo":
+        from scipy.signal import butter, sosfiltfilt
+
+        sos = butter(4, [0.7, 3.5], "bandpass", fs=FS_HZ, output="sos")
+        z_ir = sosfiltfilt(sos, rng.normal(size=m))
+        z_vm = sosfiltfilt(sos, rng.normal(size=m))
+        return (t_ir + forca * ac_ir.std() * z_ir / z_ir.std(),
+                t_vm + forca * ac_vm.std() * z_vm / z_vm.std())
     if tipo == "movimento":
         art = np.zeros(m)
         i = int(rng.integers(0, FS_HZ))
@@ -308,7 +340,7 @@ def no_sensor(ir: np.ndarray, vm: np.ndarray, dc_ir: float = 130_000.0,
 
 # ---- Validação no PhysioNet ------------------------------------------------------
 
-TIPOS = ("ausente", "sem_pulso", "ruido", "saturado", "movimento")
+TIPOS = ("ausente", "sem_pulso", "ruido", "saturado", "movimento", "sem_ritmo")
 
 
 def registro_100hz(nome: str) -> tuple[np.ndarray, np.ndarray]:
@@ -341,7 +373,7 @@ class Taxas:
 
 DEFEITOS = (("ausente", 1.0), ("sem_pulso", 1.0), ("saturado", 1.0), ("ruido", 0.5),
             ("ruido", 1.0), ("ruido", 2.0), ("movimento", 1.0), ("movimento", 2.0),
-            ("movimento", 4.0))
+            ("movimento", 4.0), ("sem_ritmo", 1.0))
 
 
 def rotulo(tipo: str, forca: float) -> str:
