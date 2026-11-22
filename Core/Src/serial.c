@@ -7,7 +7,8 @@
 
 /* Pior leitura: FIFO cheia (32 linhas cruas × ~22 B), ~16 linhas b, e ~16 f,
    (× ~30 B, contando as repetidas no lugar das perdidas), # perdidas e os
-   resumos dos ciclos: ~1,8 KB. 3 KiB cabem com folga. */
+   resumos dos ciclos: ~1,8 KB (as linhas p, do picos são uma por batimento,
+   ~40 B, no máximo uma por leitura). 3 KiB cabem com folga. */
 #define BUF_TAM 3072u
 
 static UART_HandleTypeDef *uart;

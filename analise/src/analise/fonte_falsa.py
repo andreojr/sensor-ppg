@@ -71,8 +71,10 @@ class FonteFalsa:
 def gera(
     r: physionet.Registro, inicio_s: float = INICIO_S, duracao_s: float = DURACAO_S
 ) -> FonteFalsa:
-    # Recorta com margem; os filtros de fase zero (filtfilt) têm transiente nas
-    # bordas, e a margem é descartada no fim.
+    # Recorta com margem: a reamostragem tem transiente nas bordas e o FIR do
+    # filtrado precisa de FILTRO_N amostras antes do trecho; a margem é
+    # descartada no fim. Com inicio_s < MARGEM_S a margem encolhe e o começo
+    # do filtrado ainda tem a janela do FIR incompleta.
     margem = min(MARGEM_S, inicio_s)
     largo = r.recorta(inicio_s - margem, inicio_s + duracao_s + margem)
     trecho = r.recorta(inicio_s, inicio_s + duracao_s)

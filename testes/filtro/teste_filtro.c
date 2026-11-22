@@ -48,6 +48,25 @@ static int dc_zero(void)
     return falhas;
 }
 
+/* DC que muda depois da primeira amostra (0, depois o fundo de escala): o
+   histórico guarda desvios de ~2,6e5 e a soma em float tem que zerar quase
+   exato quando a janela enche. */
+static int dc_degrau(void)
+{
+    static filtro_t f;
+    filtro_init(&f);
+    float pior = 0.0f;
+    for (uint32_t i = 0; i < 1000u; i++) {
+        ppg_amostra_t e = {i, i ? 262143.0f : 0.0f, i ? 262143.0f : 0.0f}, s;
+        filtro_processa(&f, &e, &s);
+        if (i >= 2u * (uint32_t)PPG_ATRASO_AMOSTRAS + 1u) {
+            pior = fmaxf(pior, fmaxf(fabsf(s.ir), fabsf(s.vermelho)));
+        }
+    }
+    printf("DC em degrau: pior saída depois da janela %g\n", (double)pior);
+    return !(pior < 0.5f);
+}
+
 /* Senoide de 1,5 Hz no meio da banda: sai com o mesmo tamanho, atrasada de
    exatamente PPG_ATRASO_AMOSTRAS. A 0,05 Hz (deriva), quase some. */
 static int senoide(float f_hz, float ganho_min, float ganho_max, int confere_atraso)
@@ -92,7 +111,7 @@ static int reinicia(void)
 
 int main(void)
 {
-    int falhas = fonte_falsa() + dc_zero() + reinicia();
+    int falhas = fonte_falsa() + dc_zero() + dc_degrau() + reinicia();
     falhas += senoide(1.5f, 0.99f, 1.01f, 1);
     falhas += senoide(0.05f, 0.0f, 0.01f, 0); /* -43 dB */
     falhas += senoide(6.0f, 0.0f, 0.001f, 0); /* -73 dB */

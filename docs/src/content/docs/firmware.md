@@ -8,10 +8,13 @@ Código que usa HAL, em `Core/Inc` e `Core/Src` (fora de `pds/`).
 | Parte | Responsável | Estado |
 |---|---|---|
 | Leitura do MAX30102 (I2C1, FIFO, INT no PB5) | João | feita: `max30102.c` |
-| Serial pro PC (USART1 a 921600 com DMA, adaptador USB-serial) | João | feita: `serial.c`, manda o sinal cru e as saídas da cadeia (bruto, filtrado, respiração) |
+| Serial pro PC (USART1 a 921600 com DMA, adaptador USB-serial) | João | feita: `serial.c`, manda o sinal cru e as saídas da cadeia (bruto, filtrado, batimentos, HRV e respiração) |
 | Decimação na placa (400 → 100 Hz) e ciclos (DWT) | João | feita: `main.c` e `bancada.c`; ver [Decimação](../modulos/decimacao/) |
 | Filtro na placa (bruto → filtrado) | João | feito: `main.c` e `bancada.c`; ver [Filtro](../modulos/filtro/) |
+| Picos na placa (filtrado → batimentos e BPM) | Celso / André | feito: `main.c` e `bancada.c`; ver [Picos](../modulos/picos/) |
+| HRV na placa (batimentos → SDNN e RMSSD) | André | feito: `main.c`, linhas `h,`, bate com o Python na placa; ver [HRV](../modulos/hrv/) |
 | Respiração na placa (bruto → rpm, 1 por segundo) | João | feita: `main.c` e `bancada.c`; ver [Respiração](../modulos/respiracao/) |
+| Bancada do HRV na placa (`-DBANCADA_HRV=ON`) | André | feita: `bancada_hrv.c`, passou na placa; ver [HRV](../modulos/hrv/) |
 | Fonte falsa (PhysioNet em flash) | André | a fazer |
 | Timer, filas e laço principal (TIM2 a 100 Hz já configurado) | André | a fazer |
 | Display OLED (I2C3) | Celso | a fazer |
@@ -59,6 +62,23 @@ segurando o SDA em 0 esperando o resto do byte. A I2C1 vê o barramento ocupado
 e o init falha. Até 9 pulsos no SCL, feitos por GPIO, terminam o byte, e um
 STOP libera o barramento.
 
+Resistores (pull-up). O módulo do MAX30102 puxa SDA, SCL e INT para **1,8 V**,
+bem no limite do que o STM32 a 3,3 V lê como 1 (~1,8 V). No INT isso dava
+interrupção falsa: o clock do I2C acoplava no fio e a EXTI disparava a cada
+pulso do SCL (~80 mil por segundo, medido na placa), e o laço lia a FIFO a cada
+~2 ms em vez de esperar as 17 amostras. Por isso:
+
+| Pino | Ligação | Por quê |
+|---|---|---|
+| SDA (B7) | 2 kΩ pro 3V3 | dreno aberto: STM32 e sensor puxam o SDA, o resistor sobe |
+| INT (B5) | 2 kΩ pro 3V3 | leva o nível alto pra ~2,8 V, longe do limite: acabam as interrupções falsas |
+| SCL (B6) | sem resistor | **push-pull**: só o STM32 dirige o clock (o sensor não estica o SCL), então o próprio pino sobe e desce |
+
+O CubeMX só deixa os pinos do I2C em dreno aberto; o push-pull do SCL fica no
+`USER CODE` do `I2C1_MspInit` (`stm32f4xx_hal_msp.c`) e no `destrava_i2c1()`.
+O SDA continua em dreno aberto: se os dois lados pudessem empurrar o SDA, um
+pra 1 e outro pra 0, seria curto.
+
 Sem rollover, se a FIFO encher o sensor descarta as amostras **novas** e conta
 no OVF_COUNTER. Assim dá pra saber quantas se perderam.
 
@@ -78,6 +98,8 @@ INT ficar baixo, não vem outra borda de descida, e sem isso a leitura travaria.
 # MAX30102 400 Hz: n,ir,vermelho
 # decimacao 100 Hz: b,n,ir,vermelho
 # filtro 100 Hz, atraso 100: f,n,ir,vermelho
+# picos: p,n_pico,fracao,rr_valido,rr_ms,bpm_valido,bpm
+# hrv: h,n_pico,valido,sdnn,rmssd
 # respiracao 1 Hz: r,n,rpm,valido
 0,112034,98765
 1,112040,98771
@@ -85,10 +107,14 @@ INT ficar baixo, não vem outra borda de descida, e sem isso a leitura travaria.
 b,0,112036.41,98768.02
 f,0,0.00,0.00
 ...
+p,1234,0.2500,1,812.50,1,73.85
+h,1234,1,48.27,33.10
 r,99,0.00,0
 ...
 # decimacao: ciclos med ... max ... (orcamento 2400)
 # filtro: ciclos med ... max ... (orcamento 19200)
+# picos: ciclos med ... max ... (orcamento 9600)
+# hrv: ciclos med ... max ... (orcamento 20000)
 # respiracao: ciclos med ... max ... (orcamento 9600)
 ```
 
@@ -105,16 +131,26 @@ r,99,0.00,0
   a 4 Hz, média zero), uma por linha `b,`, com o mesmo `n`. O sinal está
   atrasado de `PPG_ATRASO_AMOSTRAS` (100 amostras = 1 s) e vale depois dos
   primeiros 2 s.
+- Linhas que começam com `p,` são os **batimentos** (`picos_processa()` sobre
+  o filtrado), uma por batimento: `n_pico` (já sem o atraso do filtro),
+  `fracao` (4 casas), `rr_valido` (0/1), `rr_ms`, `bpm_valido` (0/1) e `bpm`
+  (`picos_bpm()`, 2 casas). Cada uma sai 300 ms depois do pico no `n` do
+  filtrado (o candidato pendente), ou seja, ~1,3 s depois do pulso de verdade
+  (mais 1 s do atraso do filtro).
+- Logo depois de cada `p,`, uma linha `h,` com a saída do HRV
+  (`hrv_processa()` sobre o mesmo batimento): `n_pico`, `valido` (0/1, só
+  com 45 s de RR aceitos na janela e 20 diferenças), SDNN e RMSSD em ms com 2 casas.
 - Linhas que começam com `r,` são a **respiração** (`respiracao_processa()`):
   uma por segundo, com o `n` do bruto que fechou a estimativa, as respirações
   por minuto e `valido` (0 ou 1). Nos primeiros 60 s (a janela enchendo), sai
   `valido` 0.
-- A cada 10 s, `# decimacao: ...`, `# filtro: ...` e
-  `# respiracao: ciclos med X max Y` medem cada `_processa()` com o contador
-  de ciclos do núcleo (DWT). Os orçamentos são 1% da CPU pra decimação
-  (96 MHz / 400 Hz / 100 = 2400 ciclos por amostra do sensor), 2% pro filtro
-  (19 200 ciclos por amostra a 100 Hz) e 1% pra respiração (9600, em média;
-  o espectro roda numa amostra por segundo).
+- A cada 10 s, `# decimacao: ...`, `# filtro: ...`, `# picos: ...`,
+  `# hrv: ...` e `# respiracao: ciclos med X max Y` medem cada `_processa()`
+  com o contador de ciclos do núcleo (DWT). Os orçamentos são 1% da CPU pra
+  decimação (96 MHz / 400 Hz / 100 = 2400 ciclos por amostra do sensor), 2%
+  pro filtro (19 200 ciclos por amostra a 100 Hz), 1% pro picos (9 600), 1%
+  pra respiração (9 600, em média; o espectro roda numa amostra por segundo)
+  e 20 000 ciclos por batimento pro HRV (o da bancada do HRV).
 - Linhas que começam com `#` são comentário. Se o sensor não responder no
   boot, sai `# erro: MAX30102 nao respondeu na I2C1` e a placa para. Se a
   taxa do sensor não tiver filtro de decimação, sai
@@ -141,6 +177,7 @@ Ligações, com tudo desligado do USB:
 |---|---|
 | MAX30102 VIN / GND | 3V3 / G |
 | MAX30102 SCL / SDA / INT | B6 / B7 / B5 |
+| 2 kΩ, um em cada | B7 (SDA) → 3V3 e B5 (INT) → 3V3; o SCL fica sem resistor |
 | ST-LINK SWDIO / SWCLK / GND / 3.3V | DIO / SCK / G / 3V3 |
 | Adaptador RX / GND | A9 / G (o VCC do adaptador fica solto) |
 
@@ -200,6 +237,17 @@ são conferidos com o Python. As bancadas podem ser ligadas juntas.
 ```text
 # bancada filtro: 6000 saidas, 0 fora da tolerancia, erro max 0 milesimos
 # bancada filtro: ciclos por amostra med ... max ... (orcamento 19200): OK
+```
+
+### Bancada do picos (fonte falsa)
+
+Com `-DBANCADA_PICOS=ON`: os 40 s do filtrado do `s3_sit` (o vetor de
+`testes/picos/vetores/s3_sit.h`) passam pelo picos e são conferidos com o
+Python. Pode ser ligada junto com as outras.
+
+```text
+# bancada picos: 47 batimentos (esperado 47), 0 fora da tolerancia, erro max ... milesimos
+# bancada picos: ciclos por amostra med ... max ... (orcamento 9600): OK
 ```
 
 ### Bancada da respiração
@@ -264,6 +312,14 @@ Se o clock mudar, **o baud rate da USART1 e o TIM2 mudam junto**: recalcular.
 | Pull | **Pull-up** | o INT é dreno aberto |
 | NVIC | EXTI line[9:5] interrupts | |
 
+### I2C3: display OLED (Connectivity)
+
+| Campo | Valor | Por quê |
+|---|---|---|
+| I2C Speed Mode | **Fast Mode**, 400000 | um quadro inteiro do SSD1306 (1024 bytes) leva ~23 ms a 400 kHz e ~92 ms a 100 kHz. Depois do INT do sensor só cabem 37,5 ms de bloqueio do laço; 30 ms foram medidos na placa sem perda |
+| Fast Mode Duty Cycle | Tlow/Thigh = 2 | padrão |
+| Pinos | PA8 = SCL, PB4 = SDA | |
+
 ### TIM2: processamento a 100 Hz (Timers)
 
 | Campo | Valor | Por quê |
@@ -284,6 +340,15 @@ periférico em uso mudar sozinho.
 
 Toolchain **CMake**. O código nosso fica fora de `Core/*/pds/` ou dentro dos
 blocos `USER CODE`, que o CubeMX preserva.
+
+## Bancada do HRV (`bancada_hrv.c`)
+
+Com `-DBANCADA_HRV=ON` no CMake, a placa, logo depois de `serial_init()` e
+antes do sensor, toca as marcas de batimento da fonte falsa (`s1_sit`, o
+mesmo vetor de `testes/hrv/vetores/`) no `hrv_processa()`, confere com a
+saída do Python e mede os ciclos por batimento com o contador do núcleo
+(DWT). O resultado sai em duas linhas `# bancada hrv: ...`. Sem a opção, nada
+disso entra no firmware. Procedimento e orçamento em [HRV](../modulos/hrv/).
 
 ## Regras
 

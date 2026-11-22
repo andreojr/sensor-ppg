@@ -40,7 +40,9 @@ typedef struct {
 /* Zera o estado. Chamar de novo reinicia. */
 void filtro_init(filtro_t *f);
 
-/* Filtra uma amostra do bruto. Sempre devolve true e escreve *filtrado (n igual ao da entrada). */
+/* Filtra uma amostra do bruto. Sempre devolve true e escreve *filtrado (n igual ao da entrada).
+   A primeira amostra vira a referência do DC: se ela for NaN, a saída fica NaN
+   até o próximo init (NaN depois dela some em FILTRO_N amostras). */
 bool filtro_processa(filtro_t *f, const ppg_amostra_t *bruto, ppg_amostra_t *filtrado);
 
 #endif /* PDS_FILTRO_H */

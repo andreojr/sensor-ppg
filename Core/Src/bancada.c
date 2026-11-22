@@ -136,6 +136,66 @@ bool bancada_filtro(void)
 
 #endif /* BANCADA_FILTRO */
 
+#ifdef BANCADA_PICOS
+
+#include <math.h>
+
+#include "picos/picos.h"
+/* O mesmo vetor do teste no PC: o s3_sit tem a corcova do FIR e exercita o
+   candidato pendente. */
+#include "picos/vetores/s3_sit.h"
+
+bool bancada_picos(void)
+{
+    static picos_t p;
+    picos_init(&p);
+
+    ciclos_t c = {0};
+    uint32_t k = 0, fora = 0;
+    float pior = 0.0f;
+    for (uint32_t i = 0; i < S3_SIT_ENTRADA_N; i++) {
+        ppg_amostra_t e = {i, s3_sit_entrada[i], 0.0f};
+        ppg_batimento_t b;
+        uint32_t t0 = ciclos_agora();
+        bool saiu = picos_processa(&p, &e, &b);
+        ciclos_conta(&c, ciclos_agora() - t0);
+        if (!saiu)
+            continue;
+        if (k < S3_SIT_N_PICO_N) {
+            ppg_bpm_t v;
+            picos_bpm(&p, &v);
+            float bpm = v.valido ? v.bpm : 0.0f;
+            float erro = fmaxf(fabsf(b.fracao - s3_sit_fracao[k]),
+                               fmaxf(fabsf(b.rr_ms - s3_sit_rr_ms[k]), fabsf(bpm - s3_sit_bpm[k])));
+            if (erro > pior)
+                pior = erro;
+            fora += !b.valido || (int32_t)b.n_pico != s3_sit_n_pico[k] ||
+                    (int32_t)b.rr_valido != s3_sit_rr_valido[k] ||
+                    (int32_t)v.valido != s3_sit_bpm_valido[k] || !(erro <= S3_SIT_TOL);
+        }
+        k++;
+    }
+
+    uint32_t media = (uint32_t)(c.soma / c.conta);
+    bool ok = k == S3_SIT_N_PICO_N && fora == 0 && media <= BANCADA_ORCAMENTO_PICOS;
+    char linha[160];
+    int n = snprintf(linha, sizeof linha,
+                     "# bancada picos: %lu batimentos (esperado %lu), %lu fora da tolerancia, "
+                     "erro max %lu milesimos\n",
+                     (unsigned long)k, (unsigned long)S3_SIT_N_PICO_N, (unsigned long)fora,
+                     (unsigned long)(pior * 1000.0f + 0.5f));
+    serial_escreve(linha, (uint32_t)n);
+    n = snprintf(linha, sizeof linha,
+                 "# bancada picos: ciclos por amostra med %lu max %lu (orcamento %lu): %s\n",
+                 (unsigned long)media, (unsigned long)c.max,
+                 (unsigned long)BANCADA_ORCAMENTO_PICOS, ok ? "OK" : "FALHOU");
+    serial_escreve(linha, (uint32_t)n);
+    serial_envia();
+    return ok;
+}
+
+#endif /* BANCADA_PICOS */
+
 #ifdef BANCADA_RESPIRACAO
 
 #include <math.h>
