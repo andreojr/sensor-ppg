@@ -9,7 +9,7 @@ por segundo): vão pra <nome>_bruto.csv, <nome>_filtrado.csv e
 "p,n_pico,fracao,rr_valido,rr_ms,bpm_valido,bpm" são os batimentos do picos
 na placa: vão pra <nome>_picos.csv. Linhas "e,n,bpm_valido,bpm" são o BPM do
 espectral (um por segundo): vão pra <nome>_espectral.csv. Linhas
-"h,n_pico,valido,sdnn,rmssd" são a saída do HRV a cada batimento: vão pra
+"h,n_pico,valido,sdnn,rmssd,rr_usado" são a saída do HRV a cada batimento: vão pra
 <nome>_hrv.csv.
 Linhas "q,..." (com -DBANCADA_QUALIDADE=ON) são a qualidade do bruto, uma
 por segundo: vão pra <nome>_qualidade.csv. Linhas "t,n,mostra,bpm" são o BPM

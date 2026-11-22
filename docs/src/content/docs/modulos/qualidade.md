@@ -610,7 +610,11 @@ qualidade dele recomeçaria e julgaria fora de fase com a placa até o fim) e de
 da comparação os batimentos de 1 s antes a 3 s depois dele (perder só as primeiras
 linhas conta como buraco no começo). Uma `p,` ou `h,` perdida faz o HRV pular uma janela
 (60 s) depois dela e voltar a comparar; o `rr_usado` casa por `n_pico`. O comando termina
-com uma linha `ACEITE: sim/não, porque …`, e o código de saída segue ela. Isso roda mesmo quando não
+com uma linha `ACEITE: sim/não, porque …`, e o código de saída segue ela. Pra "sim", além
+de placa = Python, a captura tem que ter exercitado a regra: pelo menos um batimento com o
+sinal piorando logo depois do pulso (usável antes, não depois) e um com ele melhorando (o
+contrário); barrado nos dois julgamentos, como no começo da captura, não distingue nada. E
+o HRV tem que ter ficado válido e batido com o Python. Isso roda mesmo quando não
 sai nenhum HRV válido.
 
 **Ciclos.** O `hrv_processa()` agora roda na amostra em que a qualidade julga (uma por

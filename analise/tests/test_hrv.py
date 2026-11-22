@@ -225,9 +225,10 @@ def test_confere_placa_com_rr_fora_por_qualidade():
     assert confere_placa(*_placa_hrv()[:1], _placa_hrv()[1][:, :4])["ok"]  # firmware antigo
 
 
-def _captura_com_qualidade(segundos: int = 120):
+def _captura_com_qualidade(segundos: int = 120, so_antes: bool = False, ruido: bool = True):
     """Captura desde o boot como a placa mandaria, com a qualidade escolhendo o RR:
-    bruto, filtrado (2 casas) e o _hrv.csv com rr_usado. Ruído de 10 s no meio."""
+    bruto, filtrado (2 casas) e o _hrv.csv com rr_usado. Ruído de 10 s no meio.
+    so_antes: uma placa com erro, que ignora o julgamento de depois."""
     from analise import filtro
     from analise.hrv import Batimento, Hrv
     from analise.picos import Picos
@@ -237,7 +238,8 @@ def _captura_com_qualidade(segundos: int = 120):
     t = np.arange(segundos * FS_HZ) / FS_HZ
     ac = np.sin(2 * np.pi * 1.15 * t) + 0.3 * np.sin(4 * np.pi * 1.15 * t + 1)
     ir = 100_000.0 * (1 + 0.008 / 2.6 * ac) + rng.normal(0, 2, len(t))
-    ir[60 * FS_HZ:70 * FS_HZ] += rng.normal(0, 600, 10 * FS_HZ)
+    if ruido:
+        ir[60 * FS_HZ:70 * FS_HZ] += rng.normal(0, 600, 10 * FS_HZ)
     vm = 1.05 * ir
     n = np.arange(len(t))
     fi, fv = np.round(filtro.filtra(ir), 2), np.round(filtro.filtra(vm), 2)
@@ -257,7 +259,7 @@ def _captura_com_qualidade(segundos: int = 120):
         s = q.processa(k, float(ir[k]), float(vm[k]))
         if s is not None:
             julg = (k, s.usavel)
-            for bb, e in fila.tira(s.usavel):
+            for bb, e in fila.tira(True if so_antes else s.usavel):
                 hrv(bb, e)
     return (np.column_stack([n, ir, vm]), np.column_stack([n, fi, fv]), np.array(linhas, float))
 
@@ -323,3 +325,21 @@ def test_confere_rr_usado_tolera_perder_as_primeiras_linhas():
     bruto, filtrado, h = _captura_com_qualidade()
     r = confere_rr_usado(bruto[3:], filtrado, h)
     assert r["ok"] and r["inicio"] == 3, r
+
+
+def test_confere_rr_usado_exige_os_casos_que_distinguem_a_regra():
+    """Barrado nos dois julgamentos (o começo da captura) não distingue nada: o aceite
+    pede o sinal piorando e melhorando perto de um pulso, e pega a placa que só olha o
+    julgamento de antes."""
+    from analise.hrv import confere_rr_usado
+
+    bruto, filtrado, h = _captura_com_qualidade()
+    r = confere_rr_usado(bruto, filtrado, h)
+    assert r["ok"] and r["sai"] > 0 and r["volta"] > 0, r
+
+    so_antes = _captura_com_qualidade(so_antes=True)
+    assert not confere_rr_usado(*so_antes)["ok"]
+
+    limpa = _captura_com_qualidade(40, ruido=False)  # só o começo: barrados, mas nenhum "sai"
+    r = confere_rr_usado(*limpa)
+    assert r["barrados"] > 0 and r["sai"] == 0, r

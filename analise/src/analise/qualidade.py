@@ -326,7 +326,8 @@ def rr_entrou_no_hrv(bruto: np.ndarray, filtrado: np.ndarray, com_rr_valido: boo
     """Refaz a decisão do laço da placa a partir de uma captura desde o boot: o picos
     do Python no filtrado, a qualidade no bruto e a fila, na mesma ordem do main.c
     (em cada amostra, o picos antes da qualidade). Devolve n_pico -> o RR entrou (com
-    com_rr_valido, n_pico -> (o RR entrou, o picos tinha aceitado o RR)).
+    com_rr_valido, n_pico -> (o RR entrou, o picos tinha aceitado o RR, o julgamento de
+    antes, o de depois); depois = None se o batimento saiu pela fila cheia).
 
     bruto e filtrado: colunas n, ir, vermelho (o _bruto.csv e o _filtrado.csv)."""
     from analise.picos import Picos
@@ -343,12 +344,15 @@ def rr_entrou_no_hrv(bruto: np.ndarray, filtrado: np.ndarray, com_rr_valido: boo
                 antes = julg is not None and batimento_usavel(julg[1], True, julg[0], n)
                 velho = fila.poe(b, antes)
                 if velho is not None:
-                    entrou[velho.n_pico] = (False, velho.rr_valido) if com_rr_valido else False
+                    entrou[velho.n_pico] = ((False, velho.rr_valido, None, None) if com_rr_valido
+                                            else False)
         s = q.processa(n, float(ir), float(vm))
         if s is not None:
             julg = (n, s.usavel)
-            for b, entra in fila.tira(s.usavel):
-                entrou[b.n_pico] = (entra, b.rr_valido) if com_rr_valido else entra
+            antes_de = [a for _, a in fila.itens]
+            for (b, entra), antes in zip(fila.tira(s.usavel), antes_de, strict=True):
+                entrou[b.n_pico] = ((entra, b.rr_valido, antes, s.usavel) if com_rr_valido
+                                    else entra)
     return entrou
 
 

@@ -416,6 +416,9 @@ def confere_placa(picos_placa: np.ndarray, hrv_placa: np.ndarray) -> dict:
     # As linhas casam por n_pico. Uma p, ou h, perdida na serial no meio: o HRV do Python
     # pode não ver o mesmo batimento que a placa (p, perdida: falta o RR; h, perdida: não
     # se sabe se o RR entrou). A comparação recomeça uma janela depois, como "no meio".
+    # Firmware novo: uma h, com rr_usado -1 foi cortada na serial; conta como perdida.
+    if hrv_placa.shape[1] >= 5 and np.any(hrv_placa[:, 4] >= 0):
+        hrv_placa = hrv_placa[hrv_placa[:, 4] >= 0]
     h_de = {int(o[0]): o for o in hrv_placa}
     p_ns = {int(b[0]) for b in picos_placa}
     ultimo_h = int(hrv_placa[-1, 0])
@@ -534,7 +537,7 @@ def confere_rr_usado(bruto: np.ndarray, filtrado: np.ndarray, hrv_placa: np.ndar
     def perto(n: int) -> bool:
         return any(b - BURACO_ANTES <= n <= b + BURACO_DEPOIS for b in buracos)
 
-    todos = [(int(k), bool(u)) for k, u in placa[:, [0, 4]] if int(k) <= fim]
+    todos = [(int(k), bool(u)) for k, u in placa[:, [0, 4]] if int(k) <= fim and u >= 0]
     longe = [(k, u) for k, u in todos if not perto(k)]
     sem_par = sum(k not in python for k, _ in longe)  # a placa achou, o Python não
     comuns = [(k, u) for k, u in longe if k in python]
@@ -546,8 +549,16 @@ def confere_rr_usado(bruto: np.ndarray, filtrado: np.ndarray, hrv_placa: np.ndar
     primeiro = min(h_ns) if h_ns else 0
     sem_h = sum(1 for k in python if primeiro <= k <= fim and k in p_ns and k not in h_ns
                 and not perto(k))
+    # Os casos que distinguem a regra (o picos aceitou o RR e os dois julgamentos
+    # discordam): "sai" = usável antes e não depois (o sinal piorou logo depois do pulso);
+    # "volta" = não antes e usável depois. Barrado nos dois não distingue nada.
+    sai = sum(1 for k, _ in comuns if python[k][1] and python[k][2] and python[k][3] is False)
+    volta = sum(1 for k, _ in comuns if python[k][1] and not python[k][2] and python[k][3])
     return {
         "inicio": inicio,
+        "sai": sai,
+        "volta": volta,
+        "pouco": len(comuns) < len(todos) // 2,
         "sem_h": sem_h,
         "comparados": len(comuns),
         "perto_de_buraco": len(todos) - len(longe),
@@ -555,9 +566,9 @@ def confere_rr_usado(bruto: np.ndarray, filtrado: np.ndarray, hrv_placa: np.ndar
         # RR que o picos aceitou e a qualidade barrou: o que esta regra decide.
         "barrados": sum(python[k][1] and not python[k][0] for k, _ in comuns),
         "diferentes": difs,
-        # Aceite: nenhuma diferença, e a maior parte dos batimentos comparada.
-        "ok": bool(comuns) and difs == 0 and sem_par == 0 and sem_h <= 3
-        and len(comuns) >= len(todos) // 2,
+        # Bate: nenhuma diferença e nenhum batimento sem par (a quantidade e os casos que
+        # distinguem a regra entram no ACEITE).
+        "ok": bool(comuns) and difs == 0 and sem_par == 0 and sem_h <= 3,
     }
 
 
@@ -612,28 +623,35 @@ def main() -> None:
             print(f"rr_usado: não conferido: {porque}")
         else:
             print(f"rr_usado: {rr['comparados']} batimentos refeitos no Python (qualidade + picos + "
-                  f"fila), {rr['barrados']} barrados pela qualidade; {rr['perto_de_buraco']} "
-                  f"ignorados perto de linhas perdidas, {rr['sem_par']} que o Python não achou, "
-                  f"{rr['sem_h']} sem a h,; diferente em {rr['diferentes']}: "
+                  f"fila), {rr['barrados']} barrados pela qualidade ({rr['sai']} com o sinal "
+                  f"piorando logo depois do pulso, {rr['volta']} com ele melhorando); "
+                  f"{rr['perto_de_buraco']} ignorados perto de linhas perdidas, {rr['sem_par']} que "
+                  f"o Python não achou, {rr['sem_h']} sem a h,; diferente em {rr['diferentes']}: "
                   f"{'OK' if rr['ok'] else 'DIVERGE'}")
 
         # O veredito do passo 5 da #128, numa linha, com o exit code igual a ela.
+        hrv_nada = ("o HRV não comparou nenhum batimento (captura curta, ou a primeira p,/h, "
+                    "perdida virou a captura em \"no meio\")" if r["batimentos"] == 0 else
+                    "o HRV não ficou válido nesta captura: repita com mais tempo parado")
         if not tem_coluna:
             aceite = r["ok"]
             motivo = ("firmware antigo: só o HRV foi conferido" if aceite
-                      else "o HRV da placa não bateu com o Python")
+                      else hrv_nada if not r["validos"] else "o HRV da placa não bateu com o Python")
         elif rr is None or "comparados" not in rr:
             aceite, motivo = False, f"o rr_usado não foi conferido ({porque})"
-        elif not rr["ok"]:
-            aceite, motivo = False, "o rr_usado da placa não bateu com o Python (ou comparou pouco)"
-        elif rr["barrados"] == 0:
-            aceite, motivo = False, ("nenhum RR barrado pela qualidade: a captura não exercitou "
-                                     "a regra (mexa o dedo e repita)")
-        elif r["validos"] and not r["ok"]:
-            aceite, motivo = False, "o HRV da placa não bateu com o Python"
+        elif rr["diferentes"] or rr["sem_par"] or rr["sem_h"] > 3:
+            aceite, motivo = False, "o rr_usado da placa não bateu com o Python"
+        elif rr["pouco"]:
+            aceite, motivo = False, ("o rr_usado comparou menos da metade dos batimentos (muitas "
+                                     "linhas perdidas na serial): repita a captura")
+        elif rr["sai"] == 0 or rr["volta"] == 0:
+            aceite, motivo = False, ("a captura não exercitou a regra: faltou batimento com o "
+                                     "sinal piorando ou melhorando logo depois do pulso (mexa o "
+                                     "dedo algumas vezes e repita)")
         elif not r["validos"]:
-            aceite, motivo = True, ("rr_usado OK; o HRV não ficou válido nesta captura, então não "
-                                    "foi conferido (vale repetir com mais tempo parado)")
+            aceite, motivo = False, f"rr_usado OK, mas {hrv_nada}"
+        elif not r["ok"]:
+            aceite, motivo = False, "o HRV da placa não bateu com o Python"
         else:
             aceite, motivo = True, "rr_usado e HRV batem com o Python"
         print(f"ACEITE: {'sim' if aceite else 'não'}, {motivo}")
