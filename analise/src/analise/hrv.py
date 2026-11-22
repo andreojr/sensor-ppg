@@ -407,8 +407,10 @@ def confere_placa(picos_placa: np.ndarray, hrv_placa: np.ndarray) -> dict:
     picos_placa = depois_do_reset(picos_placa)
     hrv_placa = depois_do_reset(hrv_placa)
     # A captura pode cortar o par p,/h, nas pontas (começou ou parou entre as duas).
-    if len(hrv_placa) and len(picos_placa) and hrv_placa[0, 0] < picos_placa[0, 0]:
-        hrv_placa = hrv_placa[1:]
+    # A h, sai até ~1 s depois da p, (espera a qualidade): no começo podem sobrar
+    # algumas h, sem a p,, e no fim algumas p, sem a h,.
+    if len(picos_placa):
+        hrv_placa = hrv_placa[hrv_placa[:, 0] >= picos_placa[0, 0]]
     picos_placa = picos_placa[: len(hrv_placa)]
     if len(picos_placa) != len(hrv_placa) or np.any(picos_placa[:, 0] != hrv_placa[:, 0]):
         raise ValueError("as linhas p, e h, não casam batimento a batimento")
@@ -487,7 +489,28 @@ def main() -> None:
             f"SDNN mediano {r['sdnn_ms']:.1f} ms, RMSSD mediano {r['rmssd_ms']:.1f} ms: "
             f"{'OK' if r['ok'] else 'DIVERGE'}"
         )
-        if not r["ok"]:
+        rr_ok = True
+        bruto, filtrado = (base.with_name(f"{base.stem}_{x}.csv") for x in ("bruto", "filtrado"))
+        hrv_placa = np.loadtxt(arqs[1], delimiter=",", skiprows=1, ndmin=2)
+        if hrv_placa.shape[1] >= 5 and bruto.exists() and filtrado.exists() and r["desde_boot"]:
+            from analise.picos import depois_do_reset
+            from analise.qualidade import rr_entrou_no_hrv
+
+            b, f = (depois_do_reset(np.loadtxt(x, delimiter=",", skiprows=1, ndmin=2))
+                    for x in (bruto, filtrado))
+            python = rr_entrou_no_hrv(b, f)
+            placa = depois_do_reset(hrv_placa)
+            comuns = [(int(k), bool(u)) for k, u in placa[:, [0, 4]] if int(k) in python]
+            difs = sum(python[k] != u for k, u in comuns)
+            fora = sum(not u for _, u in comuns)
+            rr_ok = len(comuns) > 0 and difs == 0
+            print(f"rr_usado: {len(comuns)} batimentos refeitos no Python (qualidade + picos + "
+                  f"fila), {fora} com o RR de fora; diferente em {difs}: "
+                  f"{'OK' if rr_ok else 'DIVERGE'}")
+        else:
+            print("rr_usado: não conferido (precisa de captura desde o boot, com _bruto e "
+                  "_filtrado, e firmware com a coluna rr_usado)")
+        if not (r["ok"] and rr_ok):
             raise SystemExit(1)
         return
     if a.vetores:

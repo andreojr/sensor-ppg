@@ -147,11 +147,11 @@ t,1199,1,6420
   (`picos_bpm()`, 2 casas). Cada uma sai 300 ms depois do pico no `n` do
   filtrado (o candidato pendente), ou seja, ~1,3 s depois do pulso de verdade
   (mais 1 s do atraso do filtro).
-- Logo depois de cada `p,`, uma linha `h,` com a saída do HRV
+- Até ~1 s depois de cada `p,` (o batimento espera o julgamento da qualidade), uma linha `h,` com a saída do HRV
   (`hrv_processa()` sobre o mesmo batimento): `n_pico`, `valido` (0/1, só
   com 45 s de RR aceitos na janela e 20 diferenças), SDNN e RMSSD em ms com 2 casas,
-  e `rr_usado` (0/1): 0 quando a qualidade disse que o trecho não dá pra usar e o RR
-  desse batimento ficou de fora do HRV (ver [HRV](../modulos/hrv/)).
+  e `rr_usado` (0/1): 1 se o RR entrou no HRV, 0 se ficou de fora (trecho que a qualidade
+  disse não usável, ou RR recusado pelo picos; ver [Qualidade](../modulos/qualidade/)).
 - Linhas que começam com `e,` são o **BPM do espectral** (`espectral_processa()` sobre o
   filtrado), uma por segundo, a partir de 8 s de sinal (a janela da FFT): `n` (o do
   filtrado em que a janela terminou), `bpm_valido` (0/1) e `bpm` (2 casas, 0 quando

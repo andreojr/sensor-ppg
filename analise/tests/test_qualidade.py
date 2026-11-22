@@ -232,14 +232,57 @@ def test_bpm_confiavel(usavel, valido, tem, n, n_pico, mostra):
 
 
 @pytest.mark.parametrize("usavel, tem, n_julg, n, entra", [
-    (True, True, 900, 1000, True),       # julgou usável há 1 s
+    (True, True, 950, 1000, True),       # julgou usável há 0,5 s
     (False, True, 900, 1000, False),     # julgou não usável
     (True, False, 0, 100, False),        # ainda não julgou (idade de 100 aceitaria)
-    (True, True, 800, 1000, True),       # idade = JULGAMENTO_VALE: ainda vale
-    (True, True, 799, 1000, False),      # idade = JULGAMENTO_VALE + 1: velho
+    (True, True, 900, 1000, True),       # idade = JULGAMENTO_VALE: ainda vale
+    (True, True, 899, 1000, False),      # idade = JULGAMENTO_VALE + 1: velho
     (True, True, 1080, 1000, False),     # julgamento "no futuro": anomalia, bloqueia
     (True, True, 2**32 - 50, 50, True),  # o n deu a volta no uint32: idade 100
 ])
 def test_batimento_usavel(usavel, tem, n_julg, n, entra):
-    assert qualidade.JULGAMENTO_VALE == 2 * FS_HZ
+    assert qualidade.JULGAMENTO_VALE == FS_HZ
     assert qualidade.batimento_usavel(usavel, tem, n_julg, n) is entra
+
+
+class _B:
+    def __init__(self, n_pico, rr_valido=True):
+        self.n_pico, self.rr_valido = n_pico, rr_valido
+
+
+def test_fila_precisa_do_julgamento_de_antes_e_de_depois():
+    """Mesma sequência do batimentos_fila() do teste em C."""
+    f = qualidade.Fila()
+    f.poe(_B(1), True)
+    f.poe(_B(2), False)
+    f.poe(_B(3, rr_valido=False), True)
+    assert [(b.n_pico, e) for b, e in f.tira(True)] == [(1, True), (2, False), (3, False)]
+    f.poe(_B(4), True)
+    assert [(b.n_pico, e) for b, e in f.tira(False)] == [(4, False)]  # o de depois disse não
+    assert f.tira(True) == []
+    for k in range(qualidade.FILA):
+        assert f.poe(_B(10 + k), True) is None
+    velho = f.poe(_B(99), True)  # cheia: o mais antigo sai com o RR de fora
+    assert velho.n_pico == 10
+    assert [b.n_pico for b, _ in f.tira(True)] == [*range(11, 10 + qualidade.FILA), 99]
+
+
+def test_rr_entrou_no_hrv_segura_o_batimento_ate_o_julgamento_de_depois():
+    """Pulso limpo, depois ruído: os batimentos do fim do trecho limpo, cuja janela
+    seguinte já pega o ruído, ficam de fora, mesmo com o julgamento de antes usável."""
+    from analise import filtro
+
+    ir, vm = pulso(40)
+    rng = np.random.default_rng(3)
+    ir[30 * FS_HZ:] += rng.normal(0, 400, len(ir) - 30 * FS_HZ)
+    vm[30 * FS_HZ:] += rng.normal(0, 400, len(vm) - 30 * FS_HZ)
+    n = np.arange(len(ir))
+    bruto = np.column_stack([n, ir, vm])
+    filtrado = np.column_stack([n, filtro.filtra(ir), filtro.filtra(vm)])
+    entrou = qualidade.rr_entrou_no_hrv(bruto, filtrado)
+    assert any(entrou.values())
+    limpo_fim = 30 * FS_HZ
+    # Pulso a menos de 1 s do ruído: a janela de depois já tem ruído, o RR fica de fora.
+    assert not any(e for k, e in entrou.items() if limpo_fim - FS_HZ <= k < limpo_fim + 10 * FS_HZ)
+    # No meio do trecho limpo (depois de a qualidade aceitar), entram.
+    assert all(entrou[k] for k in entrou if 15 * FS_HZ <= k < 25 * FS_HZ)

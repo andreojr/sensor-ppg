@@ -244,9 +244,11 @@ Release (`-O2`) deve cair bastante, mas não foi medido.
 A cadeia na placa é sensor → `decimacao/` → `filtro/` → `picos/` → `hrv/`.
 A cada batimento do `picos/`, a placa manda a linha `p,...` (o batimento) e
 logo depois `h,n_pico,valido,sdnn,rmssd,rr_usado` (a saída do HRV, em ms com 2 casas). O
-`rr_usado` é 0 quando a qualidade disse que o trecho não dá pra usar: o laço deixa o RR
-desse batimento de fora do HRV (ver
-[Qualidade](../qualidade/#o-hrv-só-com-batimentos-usáveis)), e o `--confere` faz o mesmo.
+`rr_usado` é 1 se o RR entrou no HRV e 0 se ficou de fora (trecho não usável, ver
+[Qualidade](../qualidade/#o-hrv-só-com-batimentos-usáveis), ou RR já recusado pelo picos).
+A `h,` sai até ~1 s depois da `p,` (espera o julgamento da qualidade). O `--confere` usa o
+`rr_usado` pra refazer o HRV e, com `_bruto.csv` e `_filtrado.csv` de uma captura desde o
+boot, refaz também a decisão no Python e compara.
 **Ainda não conferido na placa com o `rr_usado`** (#128): a captura de baixo é de antes,
 quando todo RR entrava.
 A captura grava as duas em `_picos.csv` e `_hrv.csv`, e o Python passa os
@@ -265,9 +267,10 @@ quando a janela do Python tem os mesmos batimentos que a da placa. Numa placa
 simulada no PC (o `picos.c` e o `hrv.c` com as linhas do `main.c`), os 42
 registros do PhysioNet deram OK desde o boot e começando no meio.
 
-O HRV só fica válido depois de 45 s de RR aceitos, e o `picos/` ainda não sabe
-quando o sinal está ruim (é o `qualidade/`): com movimento, entram RR errados.
-Por isso a captura é em repouso, com o dedo parado.
+O HRV só fica válido depois de 45 s de RR aceitos. O `picos/` não sabe quando o sinal
+está ruim; desde o #128, o laço deixa de fora os RR dos trechos que o `qualidade/` marca
+como não usáveis (`rr_usado` = 0). Mesmo assim, a captura é em repouso, com o dedo parado:
+com movimento, sobra pouco RR aceito e o HRV não chega a valer.
 
 Isso confere a placa contra o Python. Se o valor faz sentido, sem ECG na placa,
 a referência é fisiológica:

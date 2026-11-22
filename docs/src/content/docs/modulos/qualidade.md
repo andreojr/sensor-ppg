@@ -189,7 +189,7 @@ segundo:
 
 A resposta vale para **os últimos 2 s** (o `ritmo` olha os 4 s que terminaram 1 s antes): o
 laço principal tem que descartar os batimentos desse trecho, não só os que vierem depois.
-Pro HRV, isso é feito com `qualidade_batimento_usavel()` (ver "O HRV só com batimentos
+Pro HRV, o batimento espera o julgamento seguinte (ver "O HRV só com batimentos
 usáveis", abaixo).
 
 ### Casos de borda
@@ -531,35 +531,6 @@ que não forma o ritmo regular que o picos exige.
 **Limitação:** com arritmia de verdade (fibrilação, extrassístoles
 frequentes), o picos desliga o `valido` e a tela fica em `--`.
 
-### O HRV só com batimentos usáveis
-
-O `ppg.h` pede que, com `usavel` falso, o laço descarte os batimentos do trecho. Pro
-HRV, `qualidade_batimento_usavel()` (C) e `batimento_usavel()` (Python) decidem, a cada
-batimento, se o RR entra:
-
-| último julgamento da qualidade | idade do julgamento | o RR entra no HRV |
-|---|---|---|
-| usável | ≤ 2 s | sim |
-| não usável, ou nenhum ainda, ou mais velho que 2 s | | não |
-
-Quando não entra, o laço manda o batimento ao `hrv_processa()` com `rr_valido` falso: o
-RR fica fora da janela e quebra a sequência das diferenças sucessivas (o RMSSD não usa
-um par que atravessa o trecho ruim). O `hrv.c` não muda. A linha `p,` continua com o
-batimento como o picos viu, e a `h,` ganha `rr_usado` (0/1), pra o
-`analise.hrv --confere` repetir a mesma decisão no Python.
-
-**Por que o último julgamento basta.** O picos solta o batimento ~1,3 s depois do pulso,
-e a qualidade julga a cada 1 s os 2 s anteriores: o último julgamento cobre o pulso. Ele
-só diz "usável" depois de 3 janelas boas seguidas (mais os 4 s do ritmo), então cobre
-também o começo do RR (até 1,5 s antes, a 40 bpm). Mais velho que 2 s quer dizer que a
-qualidade recomeçou (`n` pulou, NaN) e ainda não julgou: o RR fica de fora.
-
-**O que muda no HRV.** Com este módulo de sensor, o trecho usável é curto (o número da
-tela aparece em ~50% do tempo bom), e o HRV precisa de 45 s de RR aceitos na janela de
-60 s: na prática, ele vai sair `valido` bem menos vezes. É o comportamento certo, porque
-os RR de trecho ruim (movimento, dedo mal apoiado) eram justamente os que estragavam o
-SDNN e o RMSSD.
-
 **Na placa, com o relógio** (22/11/2026, firmware sem bancada, 100 s:
 sem dedo, dedo firme coberto, dedo leve, sem dedo):
 
@@ -601,3 +572,42 @@ spec (leitura a leitura, não a mediana de 10 s com o dedo parado há 20 s). Ace
 erro que sobrou (6 bpm, no 1º segundo depois de um movimento) é pequeno e o tempo de tela baixo
 vem do sinal fraco deste módulo de sensor, não da regra: ela prefere `--` a um número duvidoso.
 
+## O HRV só com batimentos usáveis
+
+O `ppg.h` pede que, com `usavel` falso, o laço descarte os batimentos do trecho. Pro
+HRV, o RR de um batimento só entra se **dois julgamentos** da qualidade disserem usável:
+o último antes de o picos soltar o batimento e o primeiro depois.
+
+| julgamento de antes (≤ 1 s) | julgamento de depois | RR do picos válido | o RR entra no HRV |
+|---|---|---|---|
+| usável | usável | sim | sim |
+| qualquer outra combinação | | | não |
+
+**Por que os dois.** O picos solta o batimento ~1,3 s depois do pulso, e o pulso
+filtrado depende do sinal até 1 s depois dele (o lado direito do FIR). A janela julgada
+logo depois da soltura cobre o pulso e esse 1 s; só o julgamento de antes deixava passar
+o batimento quando o movimento começava logo depois do pulso (2 de 39 RR numa captura
+real). Cada "usável" já vale por 3 janelas boas seguidas (4 s), e os dois juntos cobrem
+também o começo do RR (até 2 s antes do pulso, o maior RR aceito). O de antes vale por
+um bloco (1 s): mais velho quer dizer que a qualidade recomeçou (`n` pulou, NaN) e ainda
+não julgou.
+
+**Como.** O batimento espera numa fila (`qualidade_fila_t`, 8 lugares: 2 s a 300 ms de
+RR) até o julgamento seguinte, no máximo 1 s. Aí vai ao `hrv_processa()`, com
+`rr_valido` falso se não entra: o RR fica fora da janela e quebra a sequência das
+diferenças (o RMSSD não usa um par que atravessa o trecho ruim). O `hrv.c` não muda.
+`qualidade_batimento_usavel()`, `qualidade_fila_poe()` e `qualidade_fila_tira()` (C) e
+`batimento_usavel()` e `Fila` (Python) têm a mesma tabela de casos nos dois testes.
+
+**Na serial.** A linha `p,` sai na hora, como o picos viu. A `h,` sai quando a fila
+libera (até ~1 s depois) e ganha `rr_usado`: 1 se o RR entrou no HRV, 0 se ficou de fora
+(trecho não usável, ou o picos já tinha recusado o RR). O
+`analise.hrv --confere` refaz a decisão no Python a partir do `_bruto.csv` e do
+`_filtrado.csv` (qualidade, picos e fila, na ordem do laço) e compara com o `rr_usado`
+da placa.
+
+**O que muda no HRV.** Com este módulo de sensor, o trecho usável é curto (o número da
+tela aparece em ~50% do tempo bom), e o HRV precisa de 45 s de RR aceitos na janela de
+60 s: na prática, ele vai sair `valido` bem menos vezes. É o comportamento certo, porque
+os RR de trecho ruim (movimento, dedo mal apoiado) eram justamente os que estragavam o
+SDNN e o RMSSD.
