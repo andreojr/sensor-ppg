@@ -365,3 +365,33 @@ def test_confere_rr_usado_casa_com_uma_amostra_de_folga_e_usa_o_rr_da_placa():
     h3[k, 4] = 0
     assert confere_rr_usado(bruto, filtrado, h3, p3)["ok"]
     assert not confere_rr_usado(bruto, filtrado, h3)["ok"]  # sem a p, da placa, diverge
+
+
+_R_OK = {"batimentos": 200, "validos": 100, "ok": True}
+_RR_OK = {"comparados": 150, "diferentes": 0, "sem_par": 0, "sem_h": 0, "sem_h_barrados": 0,
+          "pouco": False, "sai": 2, "volta": 3}
+
+
+@pytest.mark.parametrize("r, rr, tem_coluna, aceite, trecho", [
+    (_R_OK, _RR_OK, True, True, "batem"),
+    (_R_OK, None, False, True, "firmware antigo"),
+    ({**_R_OK, "ok": False}, None, False, False, "não bateu"),
+    ({"batimentos": 0, "validos": 0, "ok": False}, None, False, False, "nenhum batimento"),
+    (_R_OK, None, True, False, "não foi conferido"),
+    (_R_OK, {"ok": False, "inicio": 50}, True, False, "não foi conferido"),
+    (_R_OK, {**_RR_OK, "diferentes": 1}, True, False, "firmware errado"),
+    (_R_OK, {**_RR_OK, "sem_par": 1}, True, False, "não achou"),
+    (_R_OK, {**_RR_OK, "sem_h": 4, "sem_h_barrados": 4}, True, False, "barrados ao HRV"),
+    (_R_OK, {**_RR_OK, "sem_h": 4, "sem_h_barrados": 1}, True, False, "perdidas na serial"),
+    (_R_OK, {**_RR_OK, "sem_h": 3, "sem_h_barrados": 3}, True, True, "batem"),
+    (_R_OK, {**_RR_OK, "pouco": True}, True, False, "menos da metade"),
+    (_R_OK, {**_RR_OK, "sai": 0}, True, False, "não exercitou"),
+    (_R_OK, {**_RR_OK, "volta": 0}, True, False, "não exercitou"),
+    ({**_R_OK, "validos": 0, "ok": False}, _RR_OK, True, False, "mais tempo parado"),
+    ({**_R_OK, "ok": False}, _RR_OK, True, False, "HRV da placa não bateu"),
+])
+def test_veredito_um_caso_por_ramo(r, rr, tem_coluna, aceite, trecho):
+    from analise.hrv import veredito
+
+    sim, motivo = veredito(r, rr, tem_coluna, "faltam os arquivos")
+    assert sim is aceite and trecho in motivo, motivo

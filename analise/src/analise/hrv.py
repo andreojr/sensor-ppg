@@ -567,8 +567,11 @@ def confere_rr_usado(bruto: np.ndarray, filtrado: np.ndarray, hrv_placa: np.ndar
     def em(k: int, ns: set) -> bool:
         return any(k + d in ns for d in (0, -1, 1))
 
-    sem_h = sum(1 for k in python if primeiro <= k <= fim and em(k, p_ns) and not em(k, h_ns)
-                and not perto(k))
+    faltando = [k for k in python if primeiro <= k <= fim and em(k, p_ns) and not em(k, h_ns)
+                and not perto(k)]
+    sem_h = len(faltando)
+    # Perda na serial cai ao acaso; o laço sem mandar os barrados ao HRV cai só neles.
+    sem_h_barrados = sum(1 for k in faltando if not (python[k][2] and python[k][3]))
     # Os casos que distinguem a regra (o picos aceitou o RR e os dois julgamentos
     # discordam): "sai" = usável antes e não depois (o sinal piorou logo depois do pulso,
     # é o movimento); "volta" = não antes e usável depois (acontece já quando o dedo
@@ -582,6 +585,7 @@ def confere_rr_usado(bruto: np.ndarray, filtrado: np.ndarray, hrv_placa: np.ndar
         "volta": volta,
         "pouco": len(comuns) < len(todos) // 2,
         "sem_h": sem_h,
+        "sem_h_barrados": sem_h_barrados,
         "comparados": len(comuns),
         "perto_de_buraco": len(todos) - len(longe),
         "sem_par": sem_par,
@@ -592,6 +596,43 @@ def confere_rr_usado(bruto: np.ndarray, filtrado: np.ndarray, hrv_placa: np.ndar
         # distinguem a regra entram no ACEITE).
         "ok": bool(comuns) and difs == 0 and sem_par == 0 and sem_h <= 3,
     }
+
+
+def veredito(r: dict, rr: dict | None, tem_coluna: bool, porque: str = "") -> tuple[bool, str]:
+    """O ACEITE do passo 5 da #128 a partir do confere_placa (r) e do confere_rr_usado (rr).
+
+    tem_coluna: o _hrv.csv veio de firmware que manda o rr_usado. porque: por que o
+    rr_usado não foi conferido, quando rr não tem "comparados"."""
+    hrv_nada = ("o HRV não comparou nenhum batimento (captura curta, ou a primeira p,/h, "
+                "perdida virou a captura em \"no meio\")" if r["batimentos"] == 0 else
+                "o HRV não ficou válido nesta captura: repita com mais tempo parado")
+    if not tem_coluna:
+        if r["ok"]:
+            return True, "firmware antigo: só o HRV foi conferido"
+        return False, hrv_nada if not r["validos"] else "o HRV da placa não bateu com o Python"
+    if rr is None or "comparados" not in rr:
+        return False, f"o rr_usado não foi conferido ({porque})"
+    if rr["diferentes"]:
+        return False, "o rr_usado da placa não bateu com o Python (firmware errado?)"
+    if rr["sem_par"]:
+        return False, ("a placa mandou RR que entraram no HRV em batimentos que o Python não "
+                       "achou (confira o picos com analise.picos --confere)")
+    if rr["sem_h"] > 3:
+        if rr.get("sem_h_barrados", 0) * 2 > rr["sem_h"]:
+            return False, ("faltam as h, justamente dos batimentos barrados: o laço não está "
+                           "mandando os barrados ao HRV (firmware errado)")
+        return False, "muitas linhas h, perdidas na serial: repita a captura"
+    if rr["pouco"]:
+        return False, ("o rr_usado comparou menos da metade dos batimentos (muitas linhas "
+                       "perdidas na serial): repita a captura")
+    if rr["sai"] == 0 or rr["volta"] == 0:
+        return False, ("a captura não exercitou a regra: faltou batimento com o sinal piorando "
+                       "ou melhorando logo depois do pulso (mexa o dedo algumas vezes e repita)")
+    if not r["validos"]:
+        return False, f"rr_usado OK, mas {hrv_nada}"
+    if not r["ok"]:
+        return False, "o HRV da placa não bateu com o Python"
+    return True, "rr_usado e HRV batem com o Python"
 
 
 def main() -> None:
@@ -652,36 +693,8 @@ def main() -> None:
                   f"{'OK' if rr['ok'] else 'DIVERGE'}")
 
         # O veredito do passo 5 da #128, numa linha, com o exit code igual a ela.
-        hrv_nada = ("o HRV não comparou nenhum batimento (captura curta, ou a primeira p,/h, "
-                    "perdida virou a captura em \"no meio\")" if r["batimentos"] == 0 else
-                    "o HRV não ficou válido nesta captura: repita com mais tempo parado")
-        if not tem_coluna:
-            aceite = r["ok"]
-            motivo = ("firmware antigo: só o HRV foi conferido" if aceite
-                      else hrv_nada if not r["validos"] else "o HRV da placa não bateu com o Python")
-        elif rr is None or "comparados" not in rr:
-            aceite, motivo = False, f"o rr_usado não foi conferido ({porque})"
-        elif rr["diferentes"]:
-            aceite, motivo = False, "o rr_usado da placa não bateu com o Python (firmware errado?)"
-        elif rr["sem_par"]:
-            aceite, motivo = False, ("a placa mandou RR que entraram no HRV em batimentos que o "
-                                     "Python não achou (confira o picos com analise.picos --confere)")
-        elif rr["sem_h"] > 3:
-            aceite, motivo = False, ("muitas linhas h, faltando pra batimentos com p,: linhas "
-                                     "perdidas na serial ou o laço sem mandar o batimento ao HRV")
-        elif rr["pouco"]:
-            aceite, motivo = False, ("o rr_usado comparou menos da metade dos batimentos (muitas "
-                                     "linhas perdidas na serial): repita a captura")
-        elif rr["sai"] == 0 or rr["volta"] == 0:
-            aceite, motivo = False, ("a captura não exercitou a regra: faltou batimento com o "
-                                     "sinal piorando ou melhorando logo depois do pulso (mexa o "
-                                     "dedo algumas vezes e repita)")
-        elif not r["validos"]:
-            aceite, motivo = False, f"rr_usado OK, mas {hrv_nada}"
-        elif not r["ok"]:
-            aceite, motivo = False, "o HRV da placa não bateu com o Python"
-        else:
-            aceite, motivo = True, "rr_usado e HRV batem com o Python"
+        # O veredito do passo 5 da #128, numa linha, com o exit code igual a ela.
+        aceite, motivo = veredito(r, rr, tem_coluna, porque)
         print(f"ACEITE: {'sim' if aceite else 'não'}, {motivo}")
         if not aceite:
             raise SystemExit(1)

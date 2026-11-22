@@ -694,7 +694,10 @@ static void decima(const max30102_amostra_t *amostra)
       tem_batimento = true;
       n_ultimo_pico = batimento.n_pico;
 
-      /* O ppg.h pede: com a qualidade dizendo que o trecho não dá pra usar, o laço
+      /* A ordem importa: o picos roda antes da qualidade nesta amostra, então o
+         julgamento "de antes" é o anterior e o desta amostra (se houver) é o "de depois",
+         igual ao analise.qualidade.rr_entrou_no_hrv.
+         O ppg.h pede: com a qualidade dizendo que o trecho não dá pra usar, o laço
          descarta o batimento. Pro HRV, o batimento espera o julgamento seguinte da
          qualidade (no máximo 1 s) e o RR só entra se o de antes e o de depois
          disserem usável (ver qualidade.h). A linha "p," acima sai já, como o picos viu. */
