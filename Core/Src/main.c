@@ -151,7 +151,7 @@ int main(void)
                    "# MAX30102 %u Hz: n,ir,vermelho\n# decimacao %u Hz: b,n,ir,vermelho\n"
                    "# filtro %u Hz, atraso %u: f,n,ir,vermelho\n"
                    "# picos: p,n_pico,fracao,rr_valido,rr_ms,bpm_valido,bpm\n"
-                   "# espectral: e,n,bpm_valido,bpm\n",
+                   "# espectral: e,n,bpm_valido,bpm\n"
                    "# hrv: h,n_pico,valido,sdnn,rmssd\n",
                    MAX30102_FS_HZ, PPG_FS_HZ, PPG_FS_HZ, (unsigned)PPG_ATRASO_AMOSTRAS);
   serial_escreve(cabecalho, (uint32_t)n);
