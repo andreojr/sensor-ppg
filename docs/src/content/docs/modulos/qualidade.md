@@ -488,3 +488,49 @@ abaixo tira o sinal do ar por 3 s. A mesma captura com outros limiares:
 | 0,40 | 29 | 2,5% | 11,2% |
 | 0,45 | 23 | 3,4% | 8,1% |
 | **0,50** | **15** | **5,0%** | **5,5%** |
+
+## A decisão do BPM confiável
+
+A tela só mostra o BPM do picos quando **dois testes independentes**
+concordam (etapa 3 do
+[desenho do BPM confiável](https://github.com/andreojr/sensor-ppg/blob/pds/19-bpm-confiavel/docs/superpowers/specs/2026-11-21-bpm-confiavel-design.md)):
+
+| qualidade `usavel` | picos `bpm.valido` (ritmo regular, #123) | último batimento ≤ 3 s | tela |
+|---|---|---|---|
+| sim | sim | sim | BPM |
+| qualquer outra combinação | | | `--` |
+
+`qualidade_bpm_confiavel()` (C) e `bpm_confiavel()` (Python) fazem essa
+conta, uma vez por segundo, a cada saída da qualidade. A qualidade roda sempre
+no laço, e a placa manda `t,n,mostra,bpm x100` pela serial (é o que o display
+vai ler).
+
+**Por que 3 s pro último batimento.** O picos só solta o batimento ~1,3 s
+depois do pulso (atraso do filtro + refratário), e a 40 bpm o intervalo é
+de 1,5 s: no pior caso normal, o último batimento tem 2,8 s quando a
+qualidade julga. Com 2 s, a tela piscaria a cada batimento em ritmo lento.
+Mais que isso, um BPM antigo ficaria na tela depois que os batimentos param.
+
+**Por que os dois.** Cada um sozinho se engana num caso que o outro pega:
+nas capturas do sensor, o picos sozinho acreditou numa oscilação sem dedo
+(22 de 31 s) que a qualidade barra por `SEM_DEDO`; a qualidade sozinha, com
+o limiar 0,45, deixa passar uma janela ou outra de ruído na faixa do pulso,
+que não forma o ritmo regular que o picos exige.
+
+**Limitação:** com arritmia de verdade (fibrilação, extrassístoles
+frequentes), o picos desliga o `valido` e a tela fica em `--`.
+
+**Na placa, com o relógio** (22/11/2026, firmware sem bancada, 100 s:
+sem dedo, dedo firme coberto, dedo leve, sem dedo):
+
+| trecho | tela |
+|---|---|
+| sem dedo (início e fim, ~25 s) | `--` em todos |
+| dedo leve, só apoiado (~12 s) | `--` em todos |
+| dedo firme, pulso bom (24 a 37 s) | BPM em 8 s: **62,5 a 67,4** |
+| dedo firme, sinal piorou (38 a 70 s; RR misturando 300 a 1 000 ms, ritmo 0,1 a 0,3) | `--` em todos |
+| **relógio no mesmo período** | **60 a 68** |
+
+Todo número que a tela mostrou estava na faixa do relógio. O que falta é
+tempo de tela: com este módulo de sensor, o pulso bom é curto e fraco (pi
+0,2%), e a regra prefere `--` a um número duvidoso.
