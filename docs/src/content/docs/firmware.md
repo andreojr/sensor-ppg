@@ -12,6 +12,7 @@ Código que usa HAL, em `Core/Inc` e `Core/Src` (fora de `pds/`).
 | Decimação na placa (400 → 100 Hz) e ciclos (DWT) | João | feita: `main.c` e `bancada.c`; ver [Decimação](../modulos/decimacao/) |
 | Filtro na placa (bruto → filtrado) | João | feito: `main.c` e `bancada.c`; ver [Filtro](../modulos/filtro/) |
 | Picos na placa (filtrado → batimentos e BPM) | Celso / André | feito: `main.c` e `bancada.c`; ver [Picos](../modulos/picos/) |
+| HRV na placa (batimentos → SDNN e RMSSD) | André | feito: `main.c`, linhas `h,`, bate com o Python na placa; ver [HRV](../modulos/hrv/) |
 | Bancada do HRV na placa (`-DBANCADA_HRV=ON`) | André | feita: `bancada_hrv.c`, passou na placa; ver [HRV](../modulos/hrv/) |
 | Fonte falsa (PhysioNet em flash) | André | a fazer |
 | Timer, filas e laço principal (TIM2 a 100 Hz já configurado) | André | a fazer |
@@ -97,6 +98,7 @@ INT ficar baixo, não vem outra borda de descida, e sem isso a leitura travaria.
 # decimacao 100 Hz: b,n,ir,vermelho
 # filtro 100 Hz, atraso 100: f,n,ir,vermelho
 # picos: p,n_pico,fracao,rr_valido,rr_ms,bpm_valido,bpm
+# hrv: h,n_pico,valido,sdnn,rmssd
 0,112034,98765
 1,112040,98771
 ...
@@ -104,10 +106,12 @@ b,0,112036.41,98768.02
 f,0,0.00,0.00
 ...
 p,1234,0.2500,1,812.50,1,73.85
+h,1234,1,48.27,33.10
 ...
 # decimacao: ciclos med ... max ... (orcamento 2400)
 # filtro: ciclos med ... max ... (orcamento 19200)
 # picos: ciclos med ... max ... (orcamento 9600)
+# hrv: ciclos med ... max ... (orcamento 20000)
 ```
 
 - `n` é o índice da amostra a 400 Hz desde o boot. Se o sensor descartar
@@ -129,12 +133,16 @@ p,1234,0.2500,1,812.50,1,73.85
   (`picos_bpm()`, 2 casas). Cada uma sai 300 ms depois do pico no `n` do
   filtrado (o candidato pendente), ou seja, ~1,3 s depois do pulso de verdade
   (mais 1 s do atraso do filtro).
+- Logo depois de cada `p,`, uma linha `h,` com a saída do HRV
+  (`hrv_processa()` sobre o mesmo batimento): `n_pico`, `valido` (0/1, só
+  com 45 s de RR aceitos na janela e 20 diferenças), SDNN e RMSSD em ms com 2 casas.
 - A cada 10 s, `# decimacao: ...` e `# filtro: ciclos med X max Y` medem o
   `decimacao_processa()` e o `filtro_processa()` com o contador de ciclos do
   núcleo (DWT). Os orçamentos são 1% da CPU pra decimação (96 MHz / 400 Hz /
   100 = 2400 ciclos por amostra do sensor), 2% pro filtro (19 200 ciclos
   por amostra a 100 Hz) e 1% pro picos (9 600); `# picos: ...` mede o
-  `picos_processa()`.
+  `picos_processa()`. `# hrv: ...` mede o `hrv_processa()` por batimento
+  (orçamento de 20 000 ciclos, o da bancada do HRV).
 - Linhas que começam com `#` são comentário. Se o sensor não responder no
   boot, sai `# erro: MAX30102 nao respondeu na I2C1` e a placa para. Se a
   taxa do sensor não tiver filtro de decimação, sai

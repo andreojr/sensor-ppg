@@ -27,6 +27,7 @@
 #include "bancada_hrv.h"
 #include "decimacao/decimacao.h"
 #include "filtro/filtro.h"
+#include "hrv/hrv.h"
 #include "max30102.h"
 #include "picos/picos.h"
 #include "serial.h"
@@ -65,11 +66,13 @@ static decimacao_t decimacao;              /* sensor -> bruto a PPG_FS_HZ */
 static max30102_amostra_t anterior;        /* repetida no lugar das perdidas */
 static filtro_t filtro;                    /* bruto -> filtrado (0,5 a 4 Hz) */
 static picos_t picos;                      /* filtrado -> batimentos e BPM */
+static hrv_t hrv;                          /* batimentos -> SDNN e RMSSD */
 
 /* Ciclos de cada módulo, resumidos pela serial a cada 10 s. */
 static ciclos_t ciclos_decimacao;
 static ciclos_t ciclos_filtro;
 static ciclos_t ciclos_picos;
+static ciclos_t ciclos_hrv; /* por batimento, não por amostra */
 
 /* USER CODE END PV */
 
@@ -140,11 +143,12 @@ int main(void)
     HAL_UART_Transmit(&huart1, (const uint8_t *)erro, sizeof erro - 1, 100);
     Error_Handler();
   }
-  char cabecalho[224];
+  char cabecalho[256];
   int n = snprintf(cabecalho, sizeof cabecalho,
                    "# MAX30102 %u Hz: n,ir,vermelho\n# decimacao %u Hz: b,n,ir,vermelho\n"
                    "# filtro %u Hz, atraso %u: f,n,ir,vermelho\n"
-                   "# picos: p,n_pico,fracao,rr_valido,rr_ms,bpm_valido,bpm\n",
+                   "# picos: p,n_pico,fracao,rr_valido,rr_ms,bpm_valido,bpm\n"
+                   "# hrv: h,n_pico,valido,sdnn,rmssd\n",
                    MAX30102_FS_HZ, PPG_FS_HZ, PPG_FS_HZ, (unsigned)PPG_ATRASO_AMOSTRAS);
   serial_escreve(cabecalho, (uint32_t)n);
   ciclos_liga();
@@ -168,6 +172,7 @@ int main(void)
   }
   filtro_init(&filtro);
   picos_init(&picos);
+  hrv_init(&hrv);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -562,9 +567,22 @@ static void envia_batimento(const ppg_batimento_t *b, const ppg_bpm_t *v)
   serial_escreve(linha, (uint32_t)tam);
 }
 
+/* A saída do HRV depois de um batimento: "h,n_pico,valido,sdnn,rmssd" (ms, 2 casas). */
+static void envia_hrv(uint32_t n_pico, const ppg_hrv_t *s)
+{
+  char sdnn[24];
+  char rmssd[24];
+  char linha[80];
+  centesimos(sdnn, sizeof sdnn, s->sdnn_ms);
+  centesimos(rmssd, sizeof rmssd, s->rmssd_ms);
+  int tam = snprintf(linha, sizeof linha, "h,%lu,%d,%s,%s\n", (unsigned long)n_pico,
+                     s->valido ? 1 : 0, sdnn, rmssd);
+  serial_escreve(linha, (uint32_t)tam);
+}
+
 /* Uma amostra do sensor na cadeia. A cada 4, sai o bruto a PPG_FS_HZ (linha
-   "b,..."), ele passa no filtro (linha "f,...") e o filtrado no picos (linha
-   "p,..." a cada batimento); a cada 10 s, os ciclos. */
+   "b,..."), ele passa no filtro (linha "f,...") e o filtrado no picos; a cada
+   batimento, as linhas "p,..." e "h,..." (HRV); a cada 10 s, os ciclos. */
 static void decima(const max30102_amostra_t *amostra)
 {
   decimacao_entrada_t e = {amostra->ir, amostra->vermelho};
@@ -591,6 +609,15 @@ static void decima(const max30102_amostra_t *amostra)
       ppg_bpm_t bpm;
       picos_bpm(&picos, &bpm);
       envia_batimento(&batimento, &bpm);
+
+      ppg_hrv_t h;
+      t0 = ciclos_agora();
+      bool saiu_hrv = hrv_processa(&hrv, &batimento, &h);
+      ciclos_conta(&ciclos_hrv, ciclos_agora() - t0);
+      if (saiu_hrv)
+      {
+        envia_hrv(batimento.n_pico, &h);
+      }
     }
   }
 
@@ -599,6 +626,7 @@ static void decima(const max30102_amostra_t *amostra)
     ciclos_relata(&ciclos_decimacao, "decimacao", BANCADA_ORCAMENTO_DECIMACAO);
     ciclos_relata(&ciclos_filtro, "filtro", BANCADA_ORCAMENTO_FILTRO);
     ciclos_relata(&ciclos_picos, "picos", BANCADA_ORCAMENTO_PICOS);
+    ciclos_relata(&ciclos_hrv, "hrv", BANCADA_ORCAMENTO_HRV);
   }
 }
 
