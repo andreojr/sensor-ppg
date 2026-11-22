@@ -1,4 +1,5 @@
 import numpy as np
+from scipy import signal
 
 from analise import FS_HZ
 from analise.picos import ATRASO_AMOSTRAS, ESPERA, Picos, detecta
@@ -164,7 +165,9 @@ def _placa(x: np.ndarray) -> np.ndarray:
         b = p.processa(float(v), k)
         if b is not None:
             ok, bpm = p.bpm
-            linhas.append((b.n_pico, b.fracao, int(b.rr_valido), b.rr_ms, int(ok), bpm if ok else 0.0))
+            linhas.append(
+                (b.n_pico, b.fracao, int(b.rr_valido), b.rr_ms, int(ok), bpm if ok else 0.0)
+            )
     return np.array(linhas)
 
 
@@ -226,3 +229,83 @@ def test_confere_usa_o_trecho_depois_do_reset():
     picos_antes = picos_antes[picos_antes[:, 0] > 900]
     r = confere_placa(filtrado, np.vstack([picos_antes, placa]))
     assert r["ok"] and r["desde_boot"], r
+
+
+# ---- Regularidade: o BPM só vale se os últimos batimentos formam um ritmo -------------------
+
+
+def trem(intervalos_amostras: list[int], inicio: int = 300) -> np.ndarray:
+    """Pulsos de largura de dedo (gaussianas de 40 ms) a cada intervalo, com 2 s de silêncio antes."""
+    picos_em = inicio + np.concatenate([[0], np.cumsum(intervalos_amostras)])
+    t = np.arange(int(picos_em[-1]) + 300, dtype=float)
+    x = np.zeros_like(t)
+    for t0 in picos_em:
+        x += np.exp(-((t - t0) ** 2) / (2 * 4**2))
+    return x.astype(np.float32)
+
+
+def valido_por_batimento(x: np.ndarray) -> list[bool]:
+    p = Picos()
+    out = []
+    for amostra in x:
+        if p.processa(amostra) is not None:
+            out.append(p.bpm[0])
+    return out
+
+
+def test_ritmo_regular_liga_o_valido_depois_de_8_batimentos():
+    v = valido_por_batimento(trem([80] * 40))  # 75 bpm
+    assert not any(v[:7]) and all(v[8:])  # precisa de 8 batimentos pra olhar, depois fica ligado
+    assert len(v) >= 30
+
+
+def test_um_batimento_fora_do_ritmo_nao_derruba_o_valido():
+    """Uma extrassístole (RR de 1000 ms entre os de 800) é válida pro rr_valido mas fica a 25% da
+    mediana: é 1 batimento ruim em 8, e o ritmo continua valendo."""
+    v = valido_por_batimento(trem([80] * 15 + [100] + [80] * 15))
+    assert all(v[8:])
+
+
+def test_ritmo_irregular_desliga_o_valido_mesmo_com_rr_valido():
+    """RR de 600 e 1000 ms alternados: cada um passa pela faixa de rr_valido, mas nenhum fica perto da
+    mediana (800 ms): sem ritmo, sem BPM. É o que acontece com arritmia de verdade."""
+    x = trem([60, 100] * 20)
+    p = Picos()
+    batimentos = [b for amostra in x if (b := p.processa(amostra)) is not None]
+    assert (
+        sum(b.rr_valido for b in batimentos[8:]) > len(batimentos[8:]) // 2
+    )  # o rr_valido deixa passar
+    assert not any(valido_por_batimento(x)[8:])
+
+
+def test_ruido_sem_pulso_nao_liga_o_valido():
+    """Dedo sem pulso: o detector acha 'batimentos' no ruído, e o valido de antes (4 RR válidos) acreditava neles."""
+    sos = signal.butter(2, [0.5, 4.0], btype="bandpass", fs=FS_HZ, output="sos")
+    rng = np.random.default_rng(0)
+    ligado = total = 0
+    for _ in range(8):
+        x = signal.sosfilt(sos, rng.standard_normal(60 * FS_HZ)).astype(np.float32)
+        v = valido_por_batimento(x)[8:]
+        ligado, total = ligado + sum(v), total + len(v)
+    assert total > 300 and ligado / total < 0.10
+
+
+def test_a_regra_da_varredura_e_a_do_modulo():
+    """picos_validacao.regular(..., 0,15, todos=False) é o Picos.regular(): a varredura mede o que vale."""
+    from analise import picos_validacao
+
+    rng = np.random.default_rng(5)
+    for _ in range(300):
+        hist = [(bool(rng.random() < 0.8), float(rng.uniform(500, 1100))) for _ in range(8)]
+        p = Picos()
+        p.hist = hist
+        assert p.regular() == picos_validacao.regular(hist, 0.15, todos=False)
+
+
+def test_historico_zera_no_reinicia():
+    p = Picos()
+    for amostra in trem([80] * 20):
+        p.processa(amostra)
+    assert p.regular()
+    p.reinicia()
+    assert not p.regular() and p.hist == []

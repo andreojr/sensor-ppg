@@ -6,6 +6,7 @@
 
 #include "confere.h"
 #include "picos/picos.h"
+#include "vetores/ritmo_misto.h"
 #include "vetores/s1_sit.h"
 #include "vetores/s2_walk.h"
 #include "vetores/s3_sit.h"
@@ -112,6 +113,9 @@ int main(void)
         {"s3_sit", s3_sit_entrada, S3_SIT_ENTRADA_N, S3_SIT_N_PICO_N, s3_sit_n_pico,
          s3_sit_fracao, s3_sit_rr_valido, s3_sit_rr_ms, s3_sit_bpm_valido, s3_sit_bpm,
          S3_SIT_TOL},
+        {"ritmo_misto", ritmo_misto_entrada, RITMO_MISTO_ENTRADA_N, RITMO_MISTO_N_PICO_N,
+         ritmo_misto_n_pico, ritmo_misto_fracao, ritmo_misto_rr_valido, ritmo_misto_rr_ms,
+         ritmo_misto_bpm_valido, ritmo_misto_bpm, RITMO_MISTO_TOL},
     };
 
     int falhas = 0;

@@ -16,6 +16,8 @@
 #define RR_FAIXA_MAX 1.4
 #define RR_ALFA 0.125f
 #define BPM_MINIMO 4u
+#define REG_MINIMO 6u  /* dos PICOS_REG_JANELA batimentos, quantos têm que ser bons */
+#define REG_TOL 0.15f  /* "perto da mediana": a menos de 15% dela */
 #define MS_POR_AMOSTRA (1000.0f / (float)PPG_FS_HZ)
 
 void picos_init(picos_t *p)
@@ -37,6 +39,25 @@ void picos_init(picos_t *p)
     for (uint32_t i = 0; i < PICOS_BPM_JANELA; i++)
         p->rrs[i] = 0.0f;
     p->n_rrs = 0;
+    for (uint32_t i = 0; i < PICOS_REG_JANELA; i++) {
+        p->hist_valido[i] = false;
+        p->hist_rr[i] = 0.0f;
+    }
+    p->n_hist = 0;
+}
+
+static void guarda_hist(picos_t *p, bool valido, float rr_ms)
+{
+    if (p->n_hist == PICOS_REG_JANELA) {
+        for (uint32_t i = 1; i < PICOS_REG_JANELA; i++) {
+            p->hist_valido[i - 1] = p->hist_valido[i];
+            p->hist_rr[i - 1] = p->hist_rr[i];
+        }
+        p->n_hist--;
+    }
+    p->hist_valido[p->n_hist] = valido;
+    p->hist_rr[p->n_hist] = rr_ms;
+    p->n_hist++;
 }
 
 static void guarda_rr(picos_t *p, float rr_ms)
@@ -112,6 +133,7 @@ static void emite(picos_t *p, ppg_batimento_t *saida)
             guarda_rr(p, rr_ms);
     }
 
+    guarda_hist(p, rr_valido, rr_ms);
     p->tem_ultimo = true;
     p->ultimo_n = n_pico;
     p->ultimo_base = p->pend_base;
@@ -148,9 +170,38 @@ bool picos_processa(picos_t *p, const ppg_amostra_t *filtrado, ppg_batimento_t *
     return false;
 }
 
+/* Pelo menos REG_MINIMO dos últimos batimentos têm RR válido e perto da mediana dos RR válidos. */
+static bool regular(const picos_t *p)
+{
+    if (p->n_hist < PICOS_REG_JANELA)
+        return false;
+    float val[PICOS_REG_JANELA];
+    uint32_t n = 0;
+    for (uint32_t i = 0; i < PICOS_REG_JANELA; i++)
+        if (p->hist_valido[i])
+            val[n++] = p->hist_rr[i];
+    if (n < REG_MINIMO)
+        return false;
+    for (uint32_t i = 1; i < n; i++) { /* ordena (são só 8) */
+        float v = val[i];
+        uint32_t j = i;
+        while (j > 0 && val[j - 1] > v) {
+            val[j] = val[j - 1];
+            j--;
+        }
+        val[j] = v;
+    }
+    float med = (n & 1u) ? val[n / 2u] : (val[n / 2u - 1u] + val[n / 2u]) * 0.5f;
+    uint32_t bons = 0;
+    for (uint32_t i = 0; i < n; i++)
+        if (fabsf(val[i] - med) < REG_TOL * med)
+            bons++;
+    return bons >= REG_MINIMO;
+}
+
 void picos_bpm(const picos_t *p, ppg_bpm_t *saida)
 {
-    if (p->n_rrs < BPM_MINIMO) {
+    if (p->n_rrs < BPM_MINIMO || !regular(p)) {
         saida->valido = false;
         saida->bpm = 0.0f;
         return;

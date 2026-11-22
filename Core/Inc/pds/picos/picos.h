@@ -17,6 +17,7 @@
 #include "comum/ppg.h"
 
 #define PICOS_BPM_JANELA 8u /* BPM = média dos últimos 8 RR válidos */
+#define PICOS_REG_JANELA 8u /* batimentos que o teste de regularidade olha */
 
 typedef struct {
     uint32_t n;            /* amostras recebidas */
@@ -35,6 +36,9 @@ typedef struct {
     float rr_tipico;       /* 0 = ainda não conhece */
     float rrs[PICOS_BPM_JANELA]; /* últimos RR válidos, do mais antigo ao mais novo */
     uint8_t n_rrs;
+    bool hist_valido[PICOS_REG_JANELA]; /* rr_valido dos últimos batimentos, do mais antigo ao mais novo */
+    float hist_rr[PICOS_REG_JANELA];    /* e o rr_ms de cada um */
+    uint8_t n_hist;                     /* quantos há, até PICOS_REG_JANELA */
 } picos_t;
 
 /* Zera o estado; chamar de novo reinicia. */
@@ -52,7 +56,12 @@ void picos_init(picos_t *p);
  */
 bool picos_processa(picos_t *p, const ppg_amostra_t *filtrado, ppg_batimento_t *saida);
 
-/* BPM sobre os últimos RR válidos; valido = false até haver RR suficientes. */
+/*
+ * BPM sobre os últimos RR válidos. valido = há RR válidos suficientes E o ritmo é regular: nos últimos
+ * 8 batimentos, pelo menos 6 são "bons" (RR válido e a menos de 15% da mediana dos RR válidos). Sinal sem
+ * pulso (dedo mal apoiado) gera "batimentos" com RR de 300 a 1500 ms que passam um a um pelo rr_valido mas
+ * não formam um ritmo: com isso o valido fica false. Com arritmia de verdade o valido também desliga.
+ */
 void picos_bpm(const picos_t *p, ppg_bpm_t *saida);
 
 #endif /* PDS_PICOS_PICOS_H */

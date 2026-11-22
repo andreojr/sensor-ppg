@@ -54,6 +54,9 @@ RR_FAIXA = (0.7, 1.4)  # RR válido em relação ao RR típico
 RR_ALFA = 0.125  # peso de cada RR novo no RR típico
 BPM_JANELA = 8  # BPM = média dos últimos 8 RR válidos
 BPM_MINIMO = 4  # RR válidos pra o BPM valer
+REG_JANELA = 8  # batimentos que o teste de regularidade olha
+REG_MINIMO = 6  # desses, quantos têm que ser "bons": RR válido e perto da mediana dos RR válidos
+REG_TOL = 0.15  # "perto da mediana": a menos de 15% dela
 TOL_VETOR = 1e-2  # tolerância dos floats no teste em C (fracao, rr_ms, bpm)
 
 DECAI = F32(math.exp(-1.0 / (TAU_ENV_S * FS_HZ)))
@@ -94,11 +97,31 @@ class Picos:
         self.pendente: tuple[int, int, float, float] | None = None
         self.rr_tipico = F32(0)  # 0 = ainda não conhece
         self.rrs: list[float] = []  # últimos RR válidos
+        self.hist: list[
+            tuple[bool, float]
+        ] = []  # (rr_valido, rr_ms) dos últimos REG_JANELA batimentos
+
+    def regular(self) -> bool:
+        """Os últimos REG_JANELA batimentos formam um ritmo: pelo menos REG_MINIMO deles são "bons",
+        isto é, têm RR válido e esse RR está a menos de REG_TOL da mediana dos RR válidos.
+
+        Sinal sem pulso (dedo mal apoiado) também gera "batimentos", com RR de 300 a 1500 ms: os RR
+        podem passar um a um pela faixa de rr_valido, mas não ficam juntos perto de uma mediana.
+        """
+        if len(self.hist) < REG_JANELA:
+            return False
+        val = sorted(F32(rr) for ok, rr in self.hist if ok)
+        n = len(val)
+        if n < REG_MINIMO:
+            return False
+        med = val[n // 2] if n % 2 else F32(F32(val[n // 2 - 1] + val[n // 2]) * F32(0.5))
+        bons = sum(1 for rr in val if abs(F32(rr - med)) < F32(F32(REG_TOL) * med))
+        return bons >= REG_MINIMO
 
     @property
     def bpm(self) -> tuple[bool, float]:
-        """ppg_bpm_t: (valido, bpm)."""
-        if len(self.rrs) < BPM_MINIMO:
+        """ppg_bpm_t: (valido, bpm). valido = RR válidos suficientes E ritmo regular (regular())."""
+        if len(self.rrs) < BPM_MINIMO or not self.regular():
             return False, 0.0
         soma = F32(0)
         for rr in self.rrs:
@@ -119,8 +142,13 @@ class Picos:
             n = self.n
         # Máximo local em x[n-1], visto com uma amostra de atraso. self.n só
         # conta o aquecimento desde o init.
-        if (self.n >= ESPERA and n > 0 and self.x1 > self.x2 and self.x1 >= x
-                and self.x1 > F32(LIMIAR) * self.env):
+        if (
+            self.n >= ESPERA
+            and n > 0
+            and self.x1 > self.x2
+            and self.x1 >= x
+            and self.x1 > F32(LIMIAR) * self.env
+        ):
             self._candidato(n - 1, self.x2, self.x1, x)
         self.x2, self.x1 = self.x1, x
         self.n += 1
@@ -174,6 +202,7 @@ class Picos:
             if rr_valido:
                 self.rrs = [*self.rrs, rr_ms][-BPM_JANELA:]
 
+        self.hist = [*self.hist, (rr_valido, rr_ms)][-REG_JANELA:]
         b = Batimento(n_pico, fracao, rr_valido, rr_ms)
         self.ultimo = b
         self.ultimo_base = base
@@ -197,8 +226,25 @@ CASOS = (
     ("s1_sit", "limpo, sentado"),
     ("s2_walk", "artefato de movimento: rr_valido e bpm falsos"),
     ("s3_sit", "corcova do FIR antes do batimento: exercita o candidato pendente"),
+    (
+        "ritmo_misto",
+        "sintético: ritmo, extrassístole, arritmia, ritmo: o valido liga, desliga e volta",
+    ),
 )
 VETOR_DURACAO_S = 40.0
+# ritmo_misto, em amostras entre pulsos: 15 de 800 ms, uma extrassístole (1000 ms), 12 de 800 ms, 10 pares
+# de 600 e 1000 ms (cada um passa pelo rr_valido, nenhum fica perto da mediana) e 20 de 800 ms.
+RITMO_MISTO = [80] * 15 + [100] + [80] * 12 + [60, 100] * 10 + [80] * 20
+
+
+def trem_de_pulsos(intervalos: list[int], inicio: int = 300) -> np.ndarray:
+    """Pulsos de 40 ms de largura (gaussianas) a cada intervalo, com 3 s de silêncio antes e depois."""
+    em = inicio + np.concatenate([[0], np.cumsum(intervalos)])
+    t = np.arange(int(em[-1]) + 300, dtype=float)
+    x = np.zeros_like(t)
+    for t0 in em:
+        x += np.exp(-((t - t0) ** 2) / (2 * 4**2))
+    return x.astype(np.float32)
 
 
 def gera_vetores(testes: Path | None = None) -> list[Path]:
@@ -207,8 +253,11 @@ def gera_vetores(testes: Path | None = None) -> list[Path]:
 
     saidas = []
     for nome, descricao in CASOS:
-        f = fonte_falsa.gera(physionet.carrega(nome), 30.0, VETOR_DURACAO_S)
-        entrada = f.filtrado_ir.astype(np.float32)
+        if nome == "ritmo_misto":
+            entrada = trem_de_pulsos(RITMO_MISTO)
+        else:
+            f = fonte_falsa.gera(physionet.carrega(nome), 30.0, VETOR_DURACAO_S)
+            entrada = f.filtrado_ir.astype(np.float32)
         batimentos, bpm = detecta(entrada)
         arrays = {
             "entrada": entrada,
@@ -225,7 +274,8 @@ def gera_vetores(testes: Path | None = None) -> list[Path]:
                 nome,
                 arrays,
                 tol=TOL_VETOR,
-                descricao=f"{nome} ({descricao}): {VETOR_DURACAO_S:g} s do filtrado_ir.",
+                descricao=f"{nome} ({descricao})"
+                + ("" if nome == "ritmo_misto" else f": {VETOR_DURACAO_S:g} s do filtrado_ir."),
                 **({"testes": testes} if testes else {}),
             )
         )
@@ -382,12 +432,18 @@ def main(argv: list[str] | None = None) -> None:
         lado = args.confere.with_name
         arq_picos = lado(args.confere.stem + "_picos.csv")
         if not arq_picos.exists():
-            raise SystemExit(f"sem {arq_picos.name}: a placa não mandou nenhuma linha p, (dedo no sensor?)")
+            raise SystemExit(
+                f"sem {arq_picos.name}: a placa não mandou nenhuma linha p, (dedo no sensor?)"
+            )
         r = confere_placa(
             np.loadtxt(lado(args.confere.stem + "_filtrado.csv"), delimiter=",", skiprows=1),
             np.loadtxt(arq_picos, delimiter=",", skiprows=1, ndmin=2),
         )
-        modo = "desde o boot" if r["desde_boot"] else f"no meio (depois de {AQUECE_S:g} s; rr_valido e BPM só informativos)"
+        modo = (
+            "desde o boot"
+            if r["desde_boot"]
+            else f"no meio (depois de {AQUECE_S:g} s; rr_valido e BPM só informativos)"
+        )
         print(
             f"captura {modo}: {r['batimentos']} batimentos da placa, "
             f"{r['casados']} casados, {r['so_placa']} só na placa, {r['so_python']} só no Python"
