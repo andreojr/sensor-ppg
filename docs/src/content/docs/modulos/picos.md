@@ -114,6 +114,15 @@ significa ("BPM confiável pelo picos"). O BPM em si continua sendo a média dos
 - No registro com movimento forte, `s2_walk`, o `valido` fica ligado em só 22% dos batimentos, que é o certo: o
   BPM dele erra 8,4 bpm.
 
+**Na placa** (`-DBANCADA_PICOS=ON`, Release, 22/11/2026, com a regra nova):
+
+```text
+# bancada picos: 47 batimentos (esperado 47), 0 fora da tolerancia, erro max 0 milesimos
+# bancada picos: ciclos por amostra med 108 max 1286 (orcamento 9600): OK
+```
+
+A bancada confere também o `bpm_valido` de cada batimento, então a regra de ritmo roda na STM32 igual ao Python.
+
 **Limitações.**
 
 - **Com arritmia de verdade, o `valido` desliga.** Fibrilação atrial, bigeminismo ou extrassístoles frequentes não
