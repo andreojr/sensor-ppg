@@ -607,9 +607,8 @@ def veredito(r: dict, rr: dict | None, tem_coluna: bool, porque: str = "") -> tu
                 "perdida virou a captura em \"no meio\")" if r["batimentos"] == 0 else
                 "o HRV não ficou válido nesta captura: repita com mais tempo parado")
     if not tem_coluna:
-        if r["ok"]:
-            return True, "firmware antigo: só o HRV foi conferido"
-        return False, hrv_nada if not r["validos"] else "o HRV da placa não bateu com o Python"
+        # O passo 5 da #128 é conferir o rr_usado: sem ele, a placa não está com esta branch.
+        return False, "firmware sem a coluna rr_usado: grave o firmware desta branch e repita"
     if rr is None or "comparados" not in rr:
         return False, f"o rr_usado não foi conferido ({porque})"
     if rr["diferentes"]:
@@ -692,7 +691,6 @@ def main() -> None:
                   f"o Python não achou, {rr['sem_h']} sem a h,; diferente em {rr['diferentes']}: "
                   f"{'OK' if rr['ok'] else 'DIVERGE'}")
 
-        # O veredito do passo 5 da #128, numa linha, com o exit code igual a ela.
         # O veredito do passo 5 da #128, numa linha, com o exit code igual a ela.
         aceite, motivo = veredito(r, rr, tem_coluna, porque)
         print(f"ACEITE: {'sim' if aceite else 'não'}, {motivo}")

@@ -374,9 +374,7 @@ _RR_OK = {"comparados": 150, "diferentes": 0, "sem_par": 0, "sem_h": 0, "sem_h_b
 
 @pytest.mark.parametrize("r, rr, tem_coluna, aceite, trecho", [
     (_R_OK, _RR_OK, True, True, "batem"),
-    (_R_OK, None, False, True, "firmware antigo"),
-    ({**_R_OK, "ok": False}, None, False, False, "não bateu"),
-    ({"batimentos": 0, "validos": 0, "ok": False}, None, False, False, "nenhum batimento"),
+    (_R_OK, None, False, False, "firmware sem a coluna"),  # mesmo com o HRV batendo
     (_R_OK, None, True, False, "não foi conferido"),
     (_R_OK, {"ok": False, "inicio": 50}, True, False, "não foi conferido"),
     (_R_OK, {**_RR_OK, "diferentes": 1}, True, False, "firmware errado"),

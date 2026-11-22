@@ -246,7 +246,7 @@ A cada batimento do `picos/`, a placa manda a linha `p,...` (o batimento) e,
 até ~1 s depois, `h,n_pico,valido,sdnn,rmssd,rr_usado` (a saída do HRV, em ms com 2 casas). O
 `rr_usado` é 1 se o RR entrou no HRV e 0 se ficou de fora (trecho não usável, ver
 [Qualidade](../qualidade/#o-hrv-só-com-batimentos-usáveis), ou RR já recusado pelo picos).
-A `h,` sai até ~1 s depois da `p,` (espera o julgamento da qualidade). O `--confere` usa o
+O `--confere` usa o
 `rr_usado` pra refazer o HRV e, com `_bruto.csv` e `_filtrado.csv` de uma captura desde o
 boot, refaz também a decisão no Python e compara.
 **Ainda não conferido na placa com o `rr_usado`** (#128): a captura de baixo é de antes,

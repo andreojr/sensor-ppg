@@ -623,7 +623,7 @@ sai nenhum HRV válido.
 segundo), não na que o picos solta o batimento: normalmente 1 ou 2 chamadas (20 000
 ciclos de orçamento cada) somadas ao pico dessa amostra. Depois de um reinício da
 qualidade (na placa, só com NaN), até ~7 chamadas numa amostra, ~1,5 ms a 96 MHz, bem
-abaixo do pico do espectral.
+abaixo do pico do espectral (estimado pelo orçamento do HRV, não medido).
 
 **O que muda no HRV.** Com este módulo de sensor, o trecho usável é curto (o número da
 tela aparece em ~50% do tempo bom), e o HRV precisa de 45 s de RR aceitos na janela de
