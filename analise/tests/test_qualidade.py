@@ -71,6 +71,11 @@ def test_reinicia_com_n_pulando_e_nan():
               for k, (a, b) in enumerate(zip(ir, vm))]
     primeira = next(k for k, s in enumerate(saidas) if s is not None)
     assert primeira == 121 + 2 * FS_HZ - 1
+    q = qualidade.Qualidade()  # NaN só no vermelho também recomeça
+    saidas = [q.processa(k, a, float("nan") if k == 120 else b)
+              for k, (a, b) in enumerate(zip(ir, vm))]
+    primeira = next(k for k, s in enumerate(saidas) if s is not None)
+    assert primeira == 121 + 2 * FS_HZ - 1
 
 
 def test_referencia_esquecida_e_reaprendida():
