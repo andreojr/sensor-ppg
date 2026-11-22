@@ -223,3 +223,69 @@ def test_confere_placa_com_rr_fora_por_qualidade():
     assert r["ok"] and r["validos"] > 50, r
     assert not confere_placa(p, h[:, :4])["ok"]  # ignorando o rr_usado, não bate
     assert confere_placa(*_placa_hrv()[:1], _placa_hrv()[1][:, :4])["ok"]  # firmware antigo
+
+
+def _captura_com_qualidade(segundos: int = 120):
+    """Captura desde o boot como a placa mandaria, com a qualidade escolhendo o RR:
+    bruto, filtrado (2 casas) e o _hrv.csv com rr_usado. Ruído de 10 s no meio."""
+    from analise import filtro
+    from analise.hrv import Batimento, Hrv
+    from analise.picos import Picos
+    from analise.qualidade import Fila, Qualidade, batimento_usavel
+
+    rng = np.random.default_rng(5)
+    t = np.arange(segundos * FS_HZ) / FS_HZ
+    ac = np.sin(2 * np.pi * 1.15 * t) + 0.3 * np.sin(4 * np.pi * 1.15 * t + 1)
+    ir = 100_000.0 * (1 + 0.008 / 2.6 * ac) + rng.normal(0, 2, len(t))
+    ir[60 * FS_HZ:70 * FS_HZ] += rng.normal(0, 600, 10 * FS_HZ)
+    vm = 1.05 * ir
+    n = np.arange(len(t))
+    fi, fv = np.round(filtro.filtra(ir), 2), np.round(filtro.filtra(vm), 2)
+    q, p, fila, h = Qualidade(), Picos(), Fila(), Hrv()
+    julg, linhas = None, []
+
+    def hrv(b, entra):
+        s = h.processa(Batimento(True, b.n_pico, b.fracao, entra, b.rr_ms))
+        linhas.append((b.n_pico, int(s.valido), round(s.sdnn_ms, 2), round(s.rmssd_ms, 2), int(entra)))
+
+    for k in n.tolist():
+        b = p.processa(float(fi[k]), k)
+        if b is not None:
+            velho = fila.poe(b, julg is not None and batimento_usavel(julg[1], True, julg[0], k))
+            if velho is not None:
+                hrv(velho, False)
+        s = q.processa(k, float(ir[k]), float(vm[k]))
+        if s is not None:
+            julg = (k, s.usavel)
+            for bb, e in fila.tira(s.usavel):
+                hrv(bb, e)
+    return (np.column_stack([n, ir, vm]), np.column_stack([n, fi, fv]), np.array(linhas, float))
+
+
+def test_confere_rr_usado_refaz_a_decisao_da_placa():
+    from analise.hrv import confere_rr_usado
+
+    bruto, filtrado, h = _captura_com_qualidade()
+    r = confere_rr_usado(bruto, filtrado, h)
+    assert r["ok"] and r["fora"] > 3 and r["perto_de_buraco"] == 0, r
+
+    errado = h.copy()
+    k = int(np.flatnonzero(errado[:, 4] == 1)[-1])
+    errado[k, 4] = 0  # a placa teria deixado um RR bom de fora
+    assert not confere_rr_usado(bruto, filtrado, errado)["ok"]
+
+    antigo = h.copy()
+    antigo[:, 4] = -1  # firmware sem a coluna: não confere
+    assert confere_rr_usado(bruto, filtrado, antigo) is None
+
+
+def test_confere_rr_usado_ignora_o_trecho_de_uma_linha_perdida():
+    """Uma linha perdida na serial faz a qualidade do Python recomeçar; a da placa não."""
+    from analise.hrv import confere_rr_usado
+
+    bruto, filtrado, h = _captura_com_qualidade()
+    buraco = 30 * FS_HZ
+    sem = np.ones(len(bruto), bool)
+    sem[buraco:buraco + 2] = False
+    r = confere_rr_usado(bruto[sem], filtrado[sem], h)
+    assert r["ok"] and r["perto_de_buraco"] > 5, r

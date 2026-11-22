@@ -122,7 +122,7 @@ def test_saida_do_hrv_vai_pro_csv_do_hrv(tmp_path):
     assert list(hrv.columns) == list(captura.COLUNAS_HRV)
     assert hrv["valido"].tolist() == [0, 1, 1]
     assert hrv["sdnn_ms"].tolist() == [0.0, 48.27, 48.30]
-    assert hrv["rr_usado"].tolist() == [0, 1, 1]
+    assert hrv["rr_usado"].tolist() == [0, 1, -1]
 
 
 def test_qualidade_vai_pro_terceiro_csv(tmp_path):

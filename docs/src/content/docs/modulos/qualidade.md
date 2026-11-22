@@ -604,7 +604,14 @@ libera (até ~1 s depois) e ganha `rr_usado`: 1 se o RR entrou no HRV, 0 se fico
 (trecho não usável, ou o picos já tinha recusado o RR). O
 `analise.hrv --confere` refaz a decisão no Python a partir do `_bruto.csv` e do
 `_filtrado.csv` (qualidade, picos e fila, na ordem do laço) e compara com o `rr_usado`
-da placa.
+da placa. Linha perdida na serial: o Python preenche o buraco por interpolação (senão a
+qualidade dele recomeçaria e julgaria fora de fase com a placa até o fim) e deixa de fora
+da comparação os batimentos de 3 s antes a 10 s depois dele. Isso roda mesmo quando não
+sai nenhum HRV válido.
+
+**Ciclos.** Depois de um reinício da qualidade, a fila pode soltar até ~7 batimentos
+numa amostra só: ~7 chamadas do `hrv_processa()` (20 000 ciclos de orçamento cada),
+~1,5 ms a 96 MHz, bem abaixo do pico do espectral.
 
 **O que muda no HRV.** Com este módulo de sensor, o trecho usável é curto (o número da
 tela aparece em ~50% do tempo bom), e o HRV precisa de 45 s de RR aceitos na janela de

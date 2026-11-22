@@ -422,7 +422,7 @@ def confere_placa(picos_placa: np.ndarray, hrv_placa: np.ndarray) -> dict:
     erro_sdnn = erro_rmssd = 0.0
     validos = []
     for b, o in zip(picos_placa, hrv_placa, strict=True):
-        usado = len(o) < 5 or bool(o[4])
+        usado = len(o) < 5 or bool(o[4])  # -1: firmware antigo, entrava tudo
         s = h.processa(Batimento(True, int(b[0]), float(b[1]), bool(b[2]) and usado, float(b[3])))
         if b[0] < a_partir:
             continue
@@ -459,6 +459,60 @@ def confere_placa(picos_placa: np.ndarray, hrv_placa: np.ndarray) -> dict:
     return r
 
 
+# Linha perdida na serial: a placa viu a amostra, o Python não. Se o Python pulasse o n,
+# a qualidade dele recomeçaria e julgaria fora de fase com a placa até o fim. Por isso
+# buracos de até BURACO_MAX amostras são preenchidos por interpolação, e os batimentos
+# perto deles (a interpolação não é o sinal de verdade) ficam fora da comparação.
+# Buraco maior: compara só até ele.
+BURACO_ANTES, BURACO_DEPOIS = 3 * FS_HZ, 10 * FS_HZ
+BURACO_MAX = 10
+
+
+def _preenche(x: np.ndarray) -> tuple[np.ndarray, list[int]]:
+    """Preenche buracos pequenos no n por interpolação; corta no primeiro grande.
+    Devolve o sinal contínuo e onde estavam os buracos."""
+    n = x[:, 0].astype(np.int64)
+    saltos = np.flatnonzero(np.diff(n) != 1)
+    grandes = [k for k in saltos if n[k + 1] - n[k] > BURACO_MAX + 1 or n[k + 1] <= n[k]]
+    if grandes:
+        x, n = x[: grandes[0] + 1], n[: grandes[0] + 1]
+        saltos = saltos[saltos < grandes[0]]
+    todo = np.arange(n[0], n[-1] + 1)
+    cheio = np.column_stack([todo] + [np.interp(todo, n, x[:, c]) for c in (1, 2)])
+    return cheio, [int(n[k]) for k in saltos]
+
+
+def confere_rr_usado(bruto: np.ndarray, filtrado: np.ndarray, hrv_placa: np.ndarray) -> dict | None:
+    """Refaz no Python a decisão do laço (qual RR entra no HRV) e compara com o rr_usado.
+
+    bruto e filtrado: colunas n, ir, vermelho de uma captura desde o boot. hrv_placa:
+    o _hrv.csv. None se a placa não mandou o rr_usado (a captura grava -1). Batimentos
+    perto de um buraco no n (linha perdida na serial) ficam de fora da comparação."""
+    from analise.picos import depois_do_reset
+    from analise.qualidade import rr_entrou_no_hrv
+
+    if hrv_placa.shape[1] < 5 or np.all(hrv_placa[:, 4] < 0):
+        return None
+    (bruto, b1), (filtrado, b2) = (_preenche(depois_do_reset(x)) for x in (bruto, filtrado))
+    placa = depois_do_reset(hrv_placa)
+    python = rr_entrou_no_hrv(bruto, filtrado)
+    buracos = b1 + b2
+
+    def perto(n: int) -> bool:
+        return any(b - BURACO_ANTES <= n <= b + BURACO_DEPOIS for b in buracos)
+
+    comuns = [(int(k), bool(u)) for k, u in placa[:, [0, 4]] if int(k) in python]
+    longe = [(k, u) for k, u in comuns if not perto(k)]
+    difs = sum(python[k] != u for k, u in longe)
+    return {
+        "comparados": len(longe),
+        "perto_de_buraco": len(comuns) - len(longe),
+        "fora": sum(not u for _, u in longe),
+        "diferentes": difs,
+        "ok": bool(longe) and difs == 0,
+    }
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--confere", help="CSV da captura (com _picos e _hrv ao lado)")
@@ -475,42 +529,36 @@ def main() -> None:
                 raise SystemExit(f"sem {arq.name}: a placa não mandou linhas de batimento")
         r = confere_placa(*(np.loadtxt(x, delimiter=",", skiprows=1, ndmin=2) for x in arqs))
         modo = "desde o boot" if r["desde_boot"] else f"no meio (depois de {JANELA_S} s)"
-        if r["validos"] == 0:
-            raise SystemExit(
-                f"captura {modo}: {r['batimentos']} batimentos comparados e nenhum com HRV válido; "
-                "capture mais tempo (3 min) em repouso, com o dedo parado"
-            )
         print(f"captura {modo}: {r['batimentos']} batimentos comparados, {r['validos']} com HRV válido")
-        print(
-            f"erro máximo: SDNN {r['erro_sdnn_ms']:.3f} ms, RMSSD {r['erro_rmssd_ms']:.3f} ms; "
-            f"valido diferente em {r['valido_diferente']} (+{r['valido_na_borda']} na borda da cobertura)"
-        )
-        print(
-            f"SDNN mediano {r['sdnn_ms']:.1f} ms, RMSSD mediano {r['rmssd_ms']:.1f} ms: "
-            f"{'OK' if r['ok'] else 'DIVERGE'}"
-        )
-        rr_ok = True
-        bruto, filtrado = (base.with_name(f"{base.stem}_{x}.csv") for x in ("bruto", "filtrado"))
-        hrv_placa = np.loadtxt(arqs[1], delimiter=",", skiprows=1, ndmin=2)
-        if hrv_placa.shape[1] >= 5 and bruto.exists() and filtrado.exists() and r["desde_boot"]:
-            from analise.picos import depois_do_reset
-            from analise.qualidade import rr_entrou_no_hrv
-
-            b, f = (depois_do_reset(np.loadtxt(x, delimiter=",", skiprows=1, ndmin=2))
-                    for x in (bruto, filtrado))
-            python = rr_entrou_no_hrv(b, f)
-            placa = depois_do_reset(hrv_placa)
-            comuns = [(int(k), bool(u)) for k, u in placa[:, [0, 4]] if int(k) in python]
-            difs = sum(python[k] != u for k, u in comuns)
-            fora = sum(not u for _, u in comuns)
-            rr_ok = len(comuns) > 0 and difs == 0
-            print(f"rr_usado: {len(comuns)} batimentos refeitos no Python (qualidade + picos + "
-                  f"fila), {fora} com o RR de fora; diferente em {difs}: "
-                  f"{'OK' if rr_ok else 'DIVERGE'}")
+        if r["validos"]:
+            print(
+                f"erro máximo: SDNN {r['erro_sdnn_ms']:.3f} ms, RMSSD {r['erro_rmssd_ms']:.3f} ms; "
+                f"valido diferente em {r['valido_diferente']} (+{r['valido_na_borda']} na borda da "
+                f"cobertura); SDNN mediano {r['sdnn_ms']:.1f} ms, RMSSD mediano {r['rmssd_ms']:.1f} ms: "
+                f"{'OK' if r['ok'] else 'DIVERGE'}"
+            )
         else:
+            print("HRV: nenhum válido pra comparar; capture mais tempo (3 min) em repouso, com o "
+                  "dedo parado")
+
+        # O rr_usado roda mesmo sem HRV válido: é o que mais muda com a qualidade.
+        bruto, filtrado = (base.with_name(f"{base.stem}_{x}.csv") for x in ("bruto", "filtrado"))
+        rr = None
+        if bruto.exists() and filtrado.exists() and r["desde_boot"]:
+            rr = confere_rr_usado(
+                *(np.loadtxt(x, delimiter=",", skiprows=1, ndmin=2) for x in (bruto, filtrado, arqs[1]))
+            )
+        if rr is None:
             print("rr_usado: não conferido (precisa de captura desde o boot, com _bruto e "
-                  "_filtrado, e firmware com a coluna rr_usado)")
-        if not (r["ok"] and rr_ok):
+                  "_filtrado, de firmware que manda a coluna rr_usado)")
+        else:
+            print(f"rr_usado: {rr['comparados']} batimentos refeitos no Python (qualidade + picos + "
+                  f"fila), {rr['fora']} com o RR de fora, {rr['perto_de_buraco']} ignorados perto de "
+                  f"linhas perdidas; diferente em {rr['diferentes']}: "
+                  f"{'OK' if rr['ok'] else 'DIVERGE'}")
+            if rr["ok"] and rr["fora"] == 0:
+                print("  (nenhum RR de fora: a captura não exercitou a regra; mexa o dedo um pouco)")
+        if not (r["ok"] and (rr is None or rr["ok"])):
             raise SystemExit(1)
         return
     if a.vetores:

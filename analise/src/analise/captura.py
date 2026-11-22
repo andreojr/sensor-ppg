@@ -130,12 +130,13 @@ def le_batimento(linha: str) -> tuple[int, float, int, float, int, float] | None
 def le_hrv(linha: str) -> tuple[int, int, float, float, int] | None:
     """Converte "h,n_pico,valido,sdnn,rmssd,rr_usado". None se não for.
 
-    Firmware antigo (sem o rr_usado): todo RR entrava no HRV, então rr_usado = 1."""
+    Firmware antigo (sem o rr_usado): grava -1 (todo RR entrava no HRV; o hrv --confere
+    trata -1 como "entrou" e não confere a coluna)."""
     partes = linha.strip().split(",")
     if len(partes) not in (5, 6) or partes[0] != "h":
         return None
     try:
-        usado = int(partes[5]) if len(partes) == 6 else 1
+        usado = int(partes[5]) if len(partes) == 6 else -1
         return int(partes[1]), int(partes[2]), float(partes[3]), float(partes[4]), usado
     except ValueError:
         return None
