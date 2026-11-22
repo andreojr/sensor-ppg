@@ -117,7 +117,7 @@ forte de ritmo pode ser marcada `SEM_RITMO`.
 
 **Por que um passa-faixa próprio.** Com o $y$ do passa-altas de 1ª ordem, a
 respiração e a deriva que sobram derrubam o $r$: 8,5% das janelas limpas do
-PhysioNet ficavam abaixo de 0,5. Com o passa-faixa, 4,3%. Custa 10
+PhysioNet ficavam abaixo de 0,5. Com o passa-faixa, 4,1% (`--distribuicao`). Custa 10
 multiplicações por amostra.
 
 **Por que 4 s.** Precisa caber pelo menos 2 batimentos a 40 bpm (3 s) pra
@@ -151,7 +151,7 @@ Uma janela é **boa** quando passa em tudo. Cada falha liga um bit em
 | dc dos dois canais ≥ | 10 000 contagens | `SEM_DEDO` | Sem dedo o sensor lê ~1500; com dedo, 64 mil a 87 mil no PhysioNet e ~130 mil no nosso. 10 mil é a média geométrica de 1500 e 65 mil (folga de ~6× pros dois lados). |
 | maior < | 250 000 | `SATURADO` | ~95% do topo do ADC de 18 bits (262 143). Perto do topo o pulso é cortado. |
 | pi ≥ | 0,05% | `PULSO_FRACO` | Menor pi limpo do PhysioNet: 0,09%. Metade disso. |
-| razao ≥ | 0,4 | `PULSO_FRACO` | Pulso que cai a menos de 40% de repente: dedo apertado demais ou saindo. No limpo, só 1% das janelas fica abaixo de 0,59. |
+| razao ≥ | 0,4 | `PULSO_FRACO` | Pulso que cai a menos de 40% de repente: dedo apertado demais ou saindo. No limpo, só 1% das janelas fica abaixo de 0,58. |
 | pi ≤ | 5% | `MOVIMENTO` | Maior pi limpo do PhysioNet: 5,0%; 99% ficam abaixo de 2,9%. |
 | razao ≤ | 2,0 | `MOVIMENTO` | O pulso não dobra de um segundo pro outro; o movimento, sim. No limpo, 99,9% ficam abaixo de 2,4 contra a referência (média exponencial das alturas das janelas boas). |
 | aspereza ≥ | 1,5 | `MOVIMENTO` | Abaixo disso o sinal só subiu ou só desceu na janela: deriva ou transitório (o dedo acabou de entrar), não pulso. Menor aspereza limpa: 1,97. |
@@ -162,7 +162,8 @@ Os limiares saíram da distribuição dos indicadores nos 22 registros `sit` do
 PhysioNet (10 783 janelas limpas) contra os defeitos fabricados (abaixo):
 os de dedo, saturação, pi mínimo e aspereza ficam com folga do sinal limpo; o pi
 máximo e a razão ficam na cauda do limpo (pi máximo limpo de 5,02%, razão p99,9 de
-2,23) e respondem pelos 0,3% de falso alarme. Os números do sinal limpo
+2,39) e respondiam pelos 0,3% de falso alarme de antes do ritmo (com ele, o falso alarme no
+limpo é de 3,4%). Os números do sinal limpo
 saem de `uv run python -m analise.qualidade --distribuicao`.
 
 ### Histerese: rejeita rápido, aceita devagar
@@ -186,8 +187,9 @@ segundo:
 | `indice` | 0, 1/3, 2/3 ou 1 |
 | `usavel` | `dedo_presente` e `indice` ≥ `QUALIDADE_LIMIAR` (1) |
 
-A resposta vale para **os últimos 2 s**: o laço principal tem que descartar
-os batimentos desse trecho, não só os que vierem depois.
+A resposta vale para **os últimos 2 s** (o `ritmo` olha os 4 s que terminaram 1 s antes): o
+laço principal tem que descartar os batimentos desse trecho, não só os que vierem depois.
+Hoje o laço ainda não descarta: o HRV recebe todos os batimentos (pendência).
 
 ### Casos de borda
 
@@ -345,15 +347,16 @@ volta a ser usável no trecho limpo seguinte. Gerar de novo:
 | `bordas` | sem dedo, dedo entra, saturado, ruído, movimento, sem pulso, dedo sai, e o `n` pulando no meio; começa em n = 1000 | 5 800 | 55 | 1,2 × 10⁻⁴ |
 
 `n`, `valido`, `dedo_presente`, `usavel` e `motivo` têm que bater exatos;
-`indice` com 10⁻⁶; dc, pi, aspereza e razão com 10⁻³ relativo. O teste também
+`indice` com 10⁻⁶; dc, pi, aspereza, razão e ritmo com 10⁻³ relativo. O teste também
 confere, no próprio C: nada sai antes de 2 s e `*s` fica intocado; índice
-1/3, 2/3, 1 e usável só na terceira janela; sem dedo, saturado (IR ou só o
+1/3, 2/3, 1 e usável só depois que o ritmo e as 3 janelas boas fecham; sem dedo, saturado (IR ou só o
 vermelho), sem pulso, pulso de 8% do DC, pulso que triplica de repente
 (`razao` > 2), referência esquecida e reaprendida; `qualidade_init` zera,
 `n` que pula e NaN reiniciam. Errar de propósito pega: sem esquecer a
 referência, sem o critério de razão mínima, sem a aspereza mínima, peso da
 referência trocado, sem reiniciar no `n` que pula, saturação só do IR, sem a
-soma das diferenças.
+soma das diferenças; no ritmo, sem o espelho do anel, atraso trocado, passos a
+menos por amostra; na decisão, sem `usavel`, sem `valido`, sem `tem_batimento`.
 
 No Python (`analise/tests/test_qualidade.py`): os defeitos num PPG sintético,
 os limiares iguais aos `#define` do C, e os vetores em dia (o Python de hoje,
@@ -556,6 +559,15 @@ mexendo 5 s, parado, mexendo 5 s, parado, sem dedo; relógio aos 35 s e aos
 
 Nenhum número apareceu durante o movimento, o caso em que o limiar 0,45
 deixa mais janelas passarem na qualidade sozinha. Dos 13 números, 12 ficaram
-a até 5 bpm da leitura do relógio mais próxima; o 13º (67,3, no 1º segundo
+a até 5 bpm da leitura do relógio mais próxima no tempo; o 13º (67,3, no 1º segundo
 depois de voltar do `--`) ficou 4 acima de 63 e 6 acima de 61. Depois de
 cada movimento, o número levou 10 a 20 s pra voltar.
+
+**Contra os critérios do spec.** O desenho
+([BPM confiável](https://github.com/andreojr/sensor-ppg/blob/main/docs/superpowers/specs/2026-11-21-bpm-confiavel-design.md))
+pedia o número a até 5 bpm do relógio em ≥ 95% das leituras e o número na tela em ~80% do
+trecho bom. Ficou em 12 de 13 (92%) e ~50% do tempo bom, com um método mais simples que o do
+spec (leitura a leitura, não a mediana de 10 s com o dedo parado há 20 s). Aceito assim porque o
+erro que sobrou (6 bpm, no 1º segundo depois de um movimento) é pequeno e o tempo de tela baixo
+vem do sinal fraco deste módulo de sensor, não da regra: ela prefere `--` a um número duvidoso.
+

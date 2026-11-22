@@ -16,7 +16,7 @@ Código que usa HAL, em `Core/Inc` e `Core/Src` (fora de `pds/`).
 | Espectral na placa (filtrado → BPM pela FFT) | Celso | feito: `main.c`, linhas `e,`, bate com o Python na placa; ver [Espectral](../modulos/espectral/) e [FFT](../modulos/fft/) |
 | Respiração na placa (bruto → rpm, 1 por segundo) | João | feita: `main.c` e `bancada.c`; ver [Respiração](../modulos/respiracao/) |
 | Bancada do HRV na placa (`-DBANCADA_HRV=ON`) | André | feita: `bancada_hrv.c`, passou na placa; ver [HRV](../modulos/hrv/) |
-| Bancada da qualidade na placa (`-DBANCADA_QUALIDADE=ON`) | André | feita: `bancada_qualidade.c`, passou na placa (55/55, pior caso 1 393 ciclos); ver [Qualidade](../modulos/qualidade/) |
+| Bancada da qualidade na placa (`-DBANCADA_QUALIDADE=ON`) | André | feita: `bancada_qualidade.c`, passou na placa (55/55, pior caso 2 149 ciclos no Debug); ver [Qualidade](../modulos/qualidade/) |
 | Fonte falsa (PhysioNet em flash) | André | a fazer |
 | Timer, filas e laço principal (TIM2 a 100 Hz já configurado) | André | a fazer |
 | Display OLED (I2C3) | Celso | a fazer |
@@ -104,6 +104,7 @@ INT ficar baixo, não vem outra borda de descida, e sem isso a leitura travaria.
 # espectral: e,n,bpm_valido,bpm
 # hrv: h,n_pico,valido,sdnn,rmssd
 # respiracao 1 Hz: r,n,rpm,valido
+# tela 1 Hz: t,n,mostra,bpm x100
 0,112034,98765
 1,112040,98771
 ...
@@ -116,12 +117,15 @@ r,99,0.00,0
 ...
 e,799,1,73.85
 ...
+t,1199,1,6420
+...
 # decimacao: ciclos med ... max ... (orcamento 2400)
 # filtro: ciclos med ... max ... (orcamento 19200)
 # picos: ciclos med ... max ... (orcamento 9600)
 # espectral: ciclos med ... (orcamento 9600) max ... (orcamento 960000)
 # hrv: ciclos med ... max ... (orcamento 20000)
 # respiracao: ciclos med ... max ... (orcamento 9600)
+# qualidade: ciclos med ... max ... (orcamento 3000)
 ```
 
 - `n` é o índice da amostra a 400 Hz desde o boot. Se o sensor descartar
@@ -155,7 +159,7 @@ e,799,1,73.85
   por minuto e `valido` (0 ou 1). Nos primeiros 60 s (a janela enchendo), sai
   `valido` 0.
 - A cada 10 s, `# decimacao: ...`, `# filtro: ...`, `# picos: ...`,
-  `# espectral: ...`, `# hrv: ...` e
+  `# espectral: ...`, `# hrv: ...`, `# qualidade: ...` e
   `# respiracao: ciclos med X max Y` medem cada `_processa()`
   com o contador de ciclos do núcleo (DWT). Os orçamentos são 1% da CPU pra
   decimação (96 MHz / 400 Hz / 100 = 2400 ciclos por amostra do sensor), 2%
@@ -321,7 +325,8 @@ mede os ciclos por amostra: duas linhas `# bancada qualidade: ...`. Depois,
 no laço, cada amostra do bruto decimado passa pela qualidade e, uma vez por
 segundo, sai uma linha `q,n,dedo,usavel,indice,motivo,dc,pi,aspereza,razao,ritmo`
 (inteiros escalados, ver `bancada_qualidade.h`), que o `analise.captura`
-grava em `<nome>_qualidade.csv`. Sem a opção, nada disso entra no firmware.
+grava em `<nome>_qualidade.csv`. Sem a opção, não entram o vetor nem a linha `q,`
+(a qualidade em si roda sempre no laço, e a linha `t,` também sai sempre).
 Procedimento e orçamento em [Qualidade](../modulos/qualidade/).
 
 ## Configuração do CubeMX

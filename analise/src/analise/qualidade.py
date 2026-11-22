@@ -76,7 +76,7 @@ SEM_RITMO_BIT = 32
 
 # Ritmo: o IR num passa-faixa de 0,5 a 4 Hz (o passa-altas de 1ª ordem deixa
 # respiração e deriva demais: no PhysioNet limpo, 8,5% das janelas ficavam abaixo
-# de 0,5 contra 4,3% com este), reduzido a 25 Hz, autocorrelação em 4 s.
+# de 0,5 contra 4,1% com este), reduzido a 25 Hz, autocorrelação em 4 s.
 # Butterworth de 2ª ordem (scipy butter(2, [0.5, 4], "bandpass", fs=100)) em duas
 # seções b0 b1 b2 a0 a1 a2, a do passa-altas primeiro (tira o DC antes).
 RITMO_SOS = (
@@ -606,8 +606,9 @@ def distribuicao(nomes: list[str]) -> None:
           f"max {100 * pi.max():.2f}%")
     print(f"aspereza: min {asp.min():.2f}, max {asp.max():.2f}")
     print(f"razão: p99,9 {np.percentile(raz, 99.9):.2f}")
-    print(f"ritmo: {np.mean(rit < LIMIARES.ritmo_min):.1%} das janelas abaixo de "
-          f"{LIMIARES.ritmo_min:g}")
+    print(f"razão: p1 {np.percentile(raz, 1):.2f}")
+    for lim in (LIMIARES.ritmo_min, 0.5):
+        print(f"ritmo: {np.mean(rit < lim):.1%} das janelas abaixo de {lim:g}")
 
 
 def limiares_ritmo(nomes: list[str], limiares=(0.40, 0.45, 0.50, 0.55, 0.60)) -> None:

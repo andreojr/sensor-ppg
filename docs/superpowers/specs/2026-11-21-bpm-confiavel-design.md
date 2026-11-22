@@ -83,7 +83,10 @@ do último batimento, e diz não se o último batimento tem mais de 2 s
 
 > **Como ficou no código** (ver `modulos/qualidade.md`): o limite é de 3 s
 > (`QUALIDADE_BATIMENTO_VALE`), a função recebe também `tem_batimento`, e um
-> `n_pico` à frente de `n` bloqueia.
+> `n_pico` à frente de `n` bloqueia. Na etapa 1, o ritmo usa um passa-faixa próprio
+> (não o passa-altas), guarda 250 floats (1 000 B, o anel em dobro), o orçamento
+> subiu pra 3 000 ciclos, e tudo entrou no PR #124, não no #113.
+
 O picos não é reiniciado pela qualidade: os módulos continuam sem
 depender um do outro.
 
