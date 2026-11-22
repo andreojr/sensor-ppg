@@ -389,3 +389,43 @@ def test_veredito_um_caso_por_ramo(r, rr, aceite, trecho):
 
     sim, motivo = veredito(r, rr, "faltam os arquivos")
     assert sim is aceite and trecho in motivo, motivo
+
+
+def _grava_captura(pasta, bruto, filtrado, h, p):
+    """Grava os CSVs como a analise.captura grava; devolve o caminho da captura."""
+    from analise import captura
+
+    def grava(sufixo, x, colunas, fmt):
+        np.savetxt(pasta / f"c{sufixo}.csv", x, delimiter=",", header=",".join(colunas),
+                   comments="", fmt=fmt)
+
+    grava("", bruto, captura.COLUNAS, "%g")
+    grava("_bruto", bruto, captura.COLUNAS, "%g")
+    grava("_filtrado", filtrado, captura.COLUNAS, "%.2f")
+    grava("_picos", p, captura.COLUNAS_PICOS, "%g")
+    grava("_hrv", h, captura.COLUNAS_HRV, "%g")
+    return pasta / "c.csv"
+
+
+def test_confere_de_ponta_a_ponta(tmp_path, monkeypatch, capsys):
+    """O comando inteiro (python -m analise.hrv --confere), como depois da captura na placa:
+    lê os CSVs, imprime o relatório e termina com a linha ACEITE e o exit code dela."""
+    bruto, filtrado, h, p = _captura_com_qualidade(com_picos=True)
+
+    monkeypatch.setattr("sys.argv", ["hrv", "--confere", str(_grava_captura(tmp_path, bruto,
+                                                                             filtrado, h, p))])
+    hrv.main()  # sem SystemExit: exit code 0
+    assert capsys.readouterr().out.splitlines()[-1].startswith("ACEITE: sim")
+
+    errado = h.copy()
+    k = int(np.flatnonzero((errado[:, 4] == 1) & (errado[:, 0] < 100 * FS_HZ))[-1])
+    errado[k, 4] = 0  # a placa teria deixado um RR bom de fora
+    _grava_captura(tmp_path, bruto, filtrado, errado, p)
+    with pytest.raises(SystemExit) as fim:
+        hrv.main()
+    assert fim.value.code == 1
+    assert capsys.readouterr().out.splitlines()[-1].startswith("ACEITE: não")
+
+    (tmp_path / "c_hrv.csv").unlink()
+    with pytest.raises(SystemExit, match="sem c_hrv.csv"):
+        hrv.main()
