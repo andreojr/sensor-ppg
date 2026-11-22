@@ -23,7 +23,7 @@ sidebar:
 | 2. C (`Core/*/pds/picos/picos.c`) | feito, porte linha a linha do Python |
 | 3. Teste no PC (`testes/picos/`) | feito, 3 casos contra os vetores do Python |
 | 4. Placa com a fonte falsa | feito, a bancada passou na placa |
-| 5. Sensor real | feito, 60 s com o dedo, a placa bate com o Python |
+| 5. Sensor real | feito: a placa detecta igual ao Python; a qualidade com o sensor depende do suporte de dedo (abaixo) |
 
 Esta página é atualizada em todo PR que mexe no módulo.
 
@@ -208,3 +208,22 @@ BPM mediano 78.3: OK
 Nenhuma amostra perdida na captura. Todos os batimentos da placa casam com
 os do Python (erro de instante abaixo de 0,04 amostra, 0,4 ms), com o mesmo
 `rr_valido` e o mesmo BPM. Os ciclos com o sensor são os da bancada.
+
+**O que isso valida e o que não valida.** O `--confere` mostra que a placa
+detecta **igual ao Python**: o porte e a cadeia estão certos. Ele não mostra
+que os batimentos são **reais**. Nessa captura, só 49% dos RR saíram válidos,
+com intervalos de 300 ms misturados a outros de 1 600 ms, e o BPM de 78 estava
+inflado por picos falsos. Olhando o sinal cru depois (na validação do HRV), o
+pulso mal aparecia: a autocorrelação ficava em 0,1 a 0,4, quando um PPG bom
+passa de 0,7.
+
+A causa é a montagem: no módulo verde "MAX30100/30102", os capacitores e
+reguladores em volta do sensor são mais altos que a janela dele. Com o dedo
+apoiado de leve, ele não encosta na janela e o pulso some. Pressionando, o
+pulso aparece (autocorrelação de 0,5 a 0,6, ritmo estável a ~70 bpm em 20 s;
+em 2 min, o BPM ficou em 72 a 74 depois do primeiro minuto), mas ninguém
+segura a pressão constante por minutos. Subir a corrente dos LEDs (7,2 → 12,6
+mA) não ajudou, e as tensões do módulo estavam dentro da folha de dados.
+**O projeto precisa de um suporte que segure o dedo sobre o sensor com pressão
+leve e constante** (como um oxímetro de dedo). Com ele, esta captura deve ser
+refeita conferindo o BPM contra uma referência (oxímetro ou relógio).
