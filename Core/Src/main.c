@@ -30,6 +30,7 @@
 #include "hrv/hrv.h"
 #include "max30102.h"
 #include "picos/picos.h"
+#include "respiracao/respiracao.h"
 #include "serial.h"
 
 /* USER CODE END Includes */
@@ -67,12 +68,14 @@ static max30102_amostra_t anterior;        /* repetida no lugar das perdidas */
 static filtro_t filtro;                    /* bruto -> filtrado (0,5 a 4 Hz) */
 static picos_t picos;                      /* filtrado -> batimentos e BPM */
 static hrv_t hrv;                          /* batimentos -> SDNN e RMSSD */
+static respiracao_t respiracao;            /* bruto -> respirações por minuto */
 
 /* Ciclos de cada módulo, resumidos pela serial a cada 10 s. */
 static ciclos_t ciclos_decimacao;
 static ciclos_t ciclos_filtro;
 static ciclos_t ciclos_picos;
 static ciclos_t ciclos_hrv; /* por batimento, não por amostra */
+static ciclos_t ciclos_respiracao;
 
 /* USER CODE END PV */
 
@@ -143,12 +146,13 @@ int main(void)
     HAL_UART_Transmit(&huart1, (const uint8_t *)erro, sizeof erro - 1, 100);
     Error_Handler();
   }
-  char cabecalho[256];
+  char cabecalho[288];
   int n = snprintf(cabecalho, sizeof cabecalho,
                    "# MAX30102 %u Hz: n,ir,vermelho\n# decimacao %u Hz: b,n,ir,vermelho\n"
                    "# filtro %u Hz, atraso %u: f,n,ir,vermelho\n"
                    "# picos: p,n_pico,fracao,rr_valido,rr_ms,bpm_valido,bpm\n"
-                   "# hrv: h,n_pico,valido,sdnn,rmssd\n",
+                   "# hrv: h,n_pico,valido,sdnn,rmssd\n"
+                   "# respiracao 1 Hz: r,n,rpm,valido\n",
                    MAX30102_FS_HZ, PPG_FS_HZ, PPG_FS_HZ, (unsigned)PPG_ATRASO_AMOSTRAS);
   serial_escreve(cabecalho, (uint32_t)n);
   ciclos_liga();
@@ -164,6 +168,9 @@ int main(void)
 #ifdef BANCADA_PICOS
   (void)bancada_picos(); /* só informativo, como as outras */
 #endif
+#ifdef BANCADA_RESPIRACAO
+  (void)bancada_respiracao();
+#endif
   if (!decimacao_init(&decimacao, MAX30102_FS_HZ))
   {
     static const char erro[] = "# erro: decimacao sem filtro para essa taxa do MAX30102\n";
@@ -173,6 +180,7 @@ int main(void)
   filtro_init(&filtro);
   picos_init(&picos);
   hrv_init(&hrv);
+  respiracao_init(&respiracao);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -580,9 +588,21 @@ static void envia_hrv(uint32_t n_pico, const ppg_hrv_t *s)
   serial_escreve(linha, (uint32_t)tam);
 }
 
+/* Uma linha "r,n,rpm,valido": n é o do bruto que fechou a estimativa. */
+static void envia_respiracao(uint32_t n, const ppg_respiracao_t *r)
+{
+  char rpm[24];
+  char linha[48];
+  centesimos(rpm, sizeof rpm, r->rpm);
+  int tam = snprintf(linha, sizeof linha, "r,%lu,%s,%u\n", (unsigned long)n, rpm,
+                     r->valido ? 1u : 0u);
+  serial_escreve(linha, (uint32_t)tam);
+}
+
 /* Uma amostra do sensor na cadeia. A cada 4, sai o bruto a PPG_FS_HZ (linha
-   "b,..."), ele passa no filtro (linha "f,...") e o filtrado no picos; a cada
-   batimento, as linhas "p,..." e "h,..." (HRV); a cada 10 s, os ciclos. */
+   "b,..."), ele passa no filtro (linha "f,...") e na respiração (linha
+   "r,...", uma por segundo), e o filtrado no picos; a cada batimento, as
+   linhas "p,..." e "h,..." (HRV); a cada 10 s, os ciclos. */
 static void decima(const max30102_amostra_t *amostra)
 {
   decimacao_entrada_t e = {amostra->ir, amostra->vermelho};
@@ -619,6 +639,15 @@ static void decima(const max30102_amostra_t *amostra)
         envia_hrv(batimento.n_pico, &h);
       }
     }
+
+    ppg_respiracao_t resp;
+    t0 = ciclos_agora();
+    bool estimou = respiracao_processa(&respiracao, &bruto, &resp);
+    ciclos_conta(&ciclos_respiracao, ciclos_agora() - t0);
+    if (estimou)
+    {
+      envia_respiracao(bruto.n, &resp);
+    }
   }
 
   if (ciclos_decimacao.conta == MAX30102_FS_HZ * 10u)
@@ -627,6 +656,7 @@ static void decima(const max30102_amostra_t *amostra)
     ciclos_relata(&ciclos_filtro, "filtro", BANCADA_ORCAMENTO_FILTRO);
     ciclos_relata(&ciclos_picos, "picos", BANCADA_ORCAMENTO_PICOS);
     ciclos_relata(&ciclos_hrv, "hrv", BANCADA_ORCAMENTO_HRV);
+    ciclos_relata(&ciclos_respiracao, "respiracao", BANCADA_ORCAMENTO_RESPIRACAO);
   }
 }
 

@@ -3,8 +3,9 @@
 O firmware manda, a SENSOR_FS_HZ, uma linha "n,ir,vermelho" por amostra
 (ver docs/src/content/docs/firmware.md). Linhas com "#" são comentário.
 Linhas "b,n,ir,vermelho" e "f,n,ir,vermelho" são o bruto (decimado) e o
-filtrado que a placa calculou a 100 Hz: vão pra <nome>_bruto.csv e
-<nome>_filtrado.csv, ao lado do primeiro. Linhas
+filtrado que a placa calculou a 100 Hz, e "r,n,rpm,valido" é a respiração (uma
+por segundo): vão pra <nome>_bruto.csv, <nome>_filtrado.csv e
+<nome>_respiracao.csv, ao lado do primeiro. Linhas
 "p,n_pico,fracao,rr_valido,rr_ms,bpm_valido,bpm" são os batimentos do picos
 na placa: vão pra <nome>_picos.csv. Linhas "h,n_pico,valido,sdnn,rmssd" são a
 saída do HRV a cada batimento: vão pra <nome>_hrv.csv.
@@ -32,7 +33,12 @@ SENSOR_FS_HZ = 400  # igual a MAX30102_FS_HZ em Core/Inc/max30102.h
 BAUD = 921600
 DADOS = Path(__file__).resolve().parents[2] / "dados"
 COLUNAS = ("n", "ir", "vermelho")
-PONTOS = {"b": "bruto", "f": "filtrado"}  # prefixo da linha -> ponto da cadeia na placa
+# prefixo da linha -> (ponto da cadeia na placa, colunas do CSV)
+PONTOS = {
+    "b": ("bruto", COLUNAS),
+    "f": ("filtrado", COLUNAS),
+    "r": ("respiracao", ("n", "rpm", "valido")),
+}
 COLUNAS_PICOS = ("n_pico", "fracao", "rr_valido", "rr_ms", "bpm_valido", "bpm")
 COLUNAS_HRV = ("n_pico", "valido", "sdnn_ms", "rmssd_ms")
 
@@ -45,7 +51,7 @@ class Fonte(Protocol):
 class Resumo:
     amostras: int = 0
     invalidas: int = 0
-    por_ponto: dict[str, int] = field(default_factory=dict)  # "bruto"/"filtrado" -> linhas
+    por_ponto: dict[str, int] = field(default_factory=dict)  # "bruto", "filtrado"... -> linhas
     saltos: list[tuple[int, int]] = field(default_factory=list)  # (n antes, n depois)
     comentarios: list[str] = field(default_factory=list)
     segundos: float = 0.0
@@ -72,12 +78,12 @@ def le_linha(linha: str) -> tuple[int, int, int] | None:
 
 
 def le_ponto(linha: str) -> tuple[str, tuple[int, float, float]] | None:
-    """Converte "b,n,ir,vermelho" ou "f,..." em (ponto, (n, ir, vermelho)). None se não for."""
+    """Converte "b,n,ir,vermelho", "f,..." ou "r,n,rpm,valido" em (ponto, valores)."""
     partes = linha.strip().split(",")
     if len(partes) != 4 or partes[0] not in PONTOS:
         return None
     try:
-        return PONTOS[partes[0]], (int(partes[1]), float(partes[2]), float(partes[3]))
+        return PONTOS[partes[0]][0], (int(partes[1]), float(partes[2]), float(partes[3]))
     except ValueError:
         return None
 
@@ -159,7 +165,8 @@ def grava(fonte: Fonte, destino: Path, segundos: float | None = None) -> Resumo:
                     if ponto not in abertos:
                         arq = destino_ponto(destino, ponto).open("w", newline="", encoding="utf-8")
                         abertos[ponto] = (arq, csv.writer(arq))
-                        abertos[ponto][1].writerow(COLUNAS)
+                        colunas = next(c for nome, c in PONTOS.values() if nome == ponto)
+                        abertos[ponto][1].writerow(colunas)
                     abertos[ponto][1].writerow(valores)
                     resumo.por_ponto[ponto] = resumo.por_ponto.get(ponto, 0) + 1
                     continue
