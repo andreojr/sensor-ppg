@@ -155,7 +155,7 @@ Uma janela é **boa** quando passa em tudo. Cada falha liga um bit em
 | razao ≤ | 2,0 | `MOVIMENTO` | O pulso não dobra de um segundo pro outro; o movimento, sim. No limpo, 99,9% ficam abaixo de 2,3 contra a mediana das janelas anteriores. |
 | aspereza ≥ | 1,5 | `MOVIMENTO` | Abaixo disso o sinal só subiu ou só desceu na janela: deriva ou transitório (o dedo acabou de entrar), não pulso. Menor aspereza limpa: 1,97. |
 | aspereza ≤ | 12 | `RUIDO` | Maior aspereza limpa: 10,5. Ruído de metade do tamanho do pulso já dá aspereza mediana de 22. |
-| ritmo ≥ | 0,5 | `SEM_RITMO` | No PhysioNet limpo, 4,3% das janelas de 4 s ficam abaixo (quase todas nos registros de perfusão baixa); no sinal do nosso sensor sem pulso de verdade, 0,04 a 0,26. A troca com outros limiares está na validação. |
+| ritmo ≥ | 0,45 | `SEM_RITMO` | No PhysioNet limpo, ~3% das janelas de 4 s ficam abaixo (quase todas nos registros de perfusão baixa); no sinal do nosso sensor sem pulso de verdade, 0,04 a 0,26. Começou em 0,5 (só a qualidade decidia); baixou pra 0,45 quando o picos virou o segundo teste do BPM (etapa 3 do BPM confiável). A troca está na validação. |
 
 Os limiares saíram da distribuição dos indicadores nos 22 registros `sit` do
 PhysioNet (10 783 janelas limpas) contra os defeitos fabricados (abaixo):
@@ -228,6 +228,9 @@ PhysioNet, então os defeitos são **fabricados** a partir dos trechos reais:
 | movimento ×k | solavancos de meio seno (0,2 a 0,8 s), a cada ~1,5 s, de altura k vezes a do pulso |
 | sem ritmo | a parte lenta + ruído filtrado de 0,7 a 3,5 Hz com o desvio do pulso: altura e aspereza de pulso, sem se repetir (o caso do passo 5) |
 
+As tabelas e o texto abaixo são do limiar 0,5 (o primeiro); o resultado
+com o limiar atual (0,45) está logo depois da tabela da troca de limiar.
+
 Cada registro é cortado em trechos de 20 s: os primeiros 10 s ficam limpos
 (o detector aprende a referência) e os 10 s seguintes viram o defeito. Contam
 as janelas inteiras dentro do defeito. **Acerto** = janela de defeito marcada
@@ -282,8 +285,25 @@ captura do passo 5 com o dedo mal encostado, nos trechos "parados"):
 | 0,60 | 11,0% | 82,7% | 2,0% | 0 de 31 s |
 
 Sem o ritmo, o passo 5 tinha 17 de 31 s usáveis. Qualquer limiar dessa
-faixa resolve o caso real; o 0,5 equilibra falso alarme e acerto no
-fabricado.
+faixa resolve o caso real; o 0,5 equilibrava falso alarme e acerto no
+fabricado enquanto a qualidade era o único teste.
+
+**Limiar atual: 0,45.** Com o picos exigindo ritmo regular (#123), o BPM só
+aparece quando os dois concordam, e o sinal sem ritmo que escapa da
+qualidade ainda precisa enganar o picos. Simulando os dois juntos nas três
+capturas do sensor real, nenhum lixo passou com 0,45 (nem a oscilação sem
+dedo que enganava o picos sozinho), e no pulso bom o BPM apareceu em 21 de
+43 s contra 14 com 0,5. Com 0,45, no PhysioNet:
+
+| Caso | Janela boa | Usável |
+|---|---|---|
+| limpo | 96,6% | 93,9% |
+| sem pulso | 6,0% | 4,0% |
+| movimento ×1 / ×2 / ×4 | 31,7% / 3,2% / 0% | 22,3% / 1,9% / 0% |
+| sem ritmo | 11,7% | 7,8% |
+| ausente, saturado, ruído | 0% | 0% |
+
+A latência não muda (dedo entra → usável: mediana 10 s, pior 22 s).
 
 ### Latência
 

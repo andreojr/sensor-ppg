@@ -95,7 +95,7 @@ class Limiares:
     peso_ref: float = 0.25      # a referência anda 1/4 do caminho a cada janela boa
     janelas_aceita: int = 3
     ruins_esquece: int = 10
-    ritmo_min: float = 0.5      # PhysioNet limpo: 4,3% das janelas de 4 s abaixo
+    ritmo_min: float = 0.45     # com o picos como 2º teste (etapa 3); ver a doc
 
 
 LIMIARES = Limiares()

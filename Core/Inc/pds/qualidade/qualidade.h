@@ -62,7 +62,7 @@
 #define QUALIDADE_JANELAS_ACEITA 3u        /* janelas boas seguidas pra ser usável */
 #define QUALIDADE_RUINS_ESQUECE 10u        /* janelas ruins seguidas pra esquecer a referência */
 #define QUALIDADE_LIMIAR 1.0f              /* indice >= limiar: usável */
-#define QUALIDADE_RITMO_MIN 0.5f           /* PhysioNet limpo: 4,3% das janelas abaixo */
+#define QUALIDADE_RITMO_MIN 0.45f          /* com o picos como 2º teste; ver a doc */
 #define QUALIDADE_RITMO_DECIMA 4u          /* 100 -> 25 Hz (média de 4) */
 #define QUALIDADE_RITMO_N 100u             /* 4 s a 25 Hz */
 #define QUALIDADE_RITMO_ATRASO_MIN 10u     /* 0,4 s: 150 bpm */

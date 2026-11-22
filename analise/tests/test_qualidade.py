@@ -73,7 +73,8 @@ def test_sem_ritmo_antes_de_quatro_segundos():
 def test_ruido_na_faixa_do_pulso_e_barrado():
     saidas = qualidade.roda(*faixa_do_pulso(30, semente=4))
     depois = saidas[4:]
-    assert sum(bool(s.motivo & qualidade.SEM_RITMO_BIT) for s in depois) >= 0.9 * len(depois)
+    # com o limiar 0,45, uma janela ou outra passa no ritmo; 3 seguidas, não
+    assert sum(bool(s.motivo & qualidade.SEM_RITMO_BIT) for s in depois) >= 0.8 * len(depois)
     assert not any(s.usavel for s in saidas)
 
 
