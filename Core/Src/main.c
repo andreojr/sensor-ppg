@@ -442,23 +442,30 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
   }
 }
 
-/* Se a placa resetar no meio de uma leitura, o sensor fica segurando o SDA em
-   0 esperando o resto do byte, e a I2C1 acha o barramento ocupado. Até 9
-   pulsos no SCL terminam o byte; depois um STOP solta o barramento. */
+/* Se a placa resetar no meio de uma leitura, o sensor fica no meio do byte
+   segurando o SDA em 0 esperando o resto, e a I2C1 acha o barramento ocupado.
+   9 pulsos no SCL com o SDA solto terminam o byte (o 9º é um NACK, e o sensor
+   para de mandar); depois um STOP solta o barramento. Os 9 pulsos vão sempre:
+   se o reset cair num bit 1, o SDA está alto agora mas o byte não acabou. */
 static void destrava_i2c1(void)
 {
   GPIO_InitTypeDef gpio = {0};
 
   HAL_I2C_DeInit(&hi2c1);
-  gpio.Pin = SENSOR_SCL_Pin | SENSOR_SDA_Pin;
-  gpio.Mode = GPIO_MODE_OUTPUT_OD;
   gpio.Pull = GPIO_NOPULL;
   gpio.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_WritePin(SENSOR_SCL_GPIO_Port, SENSOR_SCL_Pin | SENSOR_SDA_Pin, GPIO_PIN_SET);
+  /* SCL em push-pull (não tem resistor, ver o I2C1_MspInit); SDA em dreno
+     aberto, porque o sensor também puxa o SDA. */
+  gpio.Pin = SENSOR_SCL_Pin;
+  gpio.Mode = GPIO_MODE_OUTPUT_PP;
   HAL_GPIO_Init(SENSOR_SCL_GPIO_Port, &gpio);
+  gpio.Pin = SENSOR_SDA_Pin;
+  gpio.Mode = GPIO_MODE_OUTPUT_OD;
+  HAL_GPIO_Init(SENSOR_SDA_GPIO_Port, &gpio);
   HAL_Delay(1);
 
-  for (int i = 0; i < 9 && HAL_GPIO_ReadPin(SENSOR_SDA_GPIO_Port, SENSOR_SDA_Pin) == GPIO_PIN_RESET; i++)
+  for (int i = 0; i < 9; i++)
   {
     HAL_GPIO_WritePin(SENSOR_SCL_GPIO_Port, SENSOR_SCL_Pin, GPIO_PIN_RESET);
     HAL_Delay(1);
