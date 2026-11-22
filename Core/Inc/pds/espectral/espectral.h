@@ -47,11 +47,13 @@ bool espectral_init(espectral_t *e);
  * Processa uma amostra filtrada. Devolve true e preenche *saida a cada
  * ESPECTRAL_HOP amostras, depois de a janela encher (a primeira saída vem na
  * amostra 800); senão devolve false e não toca em *saida. Com valido = false o
- * bpm sai 0, como no picos_bpm().
+ * bpm sai 0, como no picos_bpm(). O BPM é o da janela que termina em filtrado->n;
+ * no tempo do sinal, essa janela termina PPG_ATRASO_AMOSTRAS antes.
  */
 bool espectral_processa(espectral_t *e, const ppg_amostra_t *filtrado, ppg_bpm_t *saida);
 
-/* Fração da potência da banda que ficou no pico e nos vizinhos, na última saída (0 a 1). */
+/* Fração da potência da banda que ficou no pico e nos vizinhos, na última saída (0 a 1;
+   na borda, o vizinho de fora da banda entra no total). */
 float espectral_prominencia(const espectral_t *e);
 
 #endif /* PDS_ESPECTRAL_ESPECTRAL_H */

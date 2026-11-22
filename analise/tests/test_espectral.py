@@ -60,3 +60,23 @@ def test_reinicia_zera_o_estado():
     q = Espectral()
     entrada = senoide(1.2, 12)
     assert [e.processa(x) for x in entrada] == [q.processa(x) for x in entrada]
+
+
+@pytest.mark.parametrize("f_hz", [0.55, 0.6, 3.6])
+def test_fora_da_banda_nao_vira_bpm_valido(f_hz):
+    """Um componente fora da banda vaza pro bin da borda; não é pulso."""
+    saidas = estima(senoide(f_hz, 20, amp=100.0))
+    assert not any(s.valido for s in saidas)
+    assert all(s.prominencia <= 1.0 for s in saidas)
+
+
+@pytest.mark.parametrize("bpm", [45, 205])
+def test_perto_da_borda_ainda_vale(bpm):
+    saidas = estima(senoide(bpm / 60, 20))
+    assert all(s.valido and abs(s.bpm - bpm) < 1.0 for s in saidas)
+    assert all(s.prominencia <= 1.0 for s in saidas)
+
+
+def test_silencio_nao_e_valido():
+    saidas = estima(np.zeros(1000, dtype=np.float32))
+    assert saidas and not any(s.valido or s.bpm for s in saidas)

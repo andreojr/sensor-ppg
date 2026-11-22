@@ -5,6 +5,7 @@
 
 #include "confere.h"
 #include "espectral/espectral.h"
+#include "vetores/borda.h"
 #include "vetores/s1_sit.h"
 #include "vetores/s2_walk.h"
 
@@ -85,6 +86,9 @@ int main(void)
          s1_sit_prominencia, S1_SIT_TOL},
         {"s2_walk", s2_walk_entrada, S2_WALK_ENTRADA_N, S2_WALK_VALIDO_N, s2_walk_valido,
          s2_walk_bpm, s2_walk_prominencia, S2_WALK_TOL},
+        /* Silêncio e senoides perto das bordas da banda (ver BORDA_HZ no espectral.py). */
+        {"borda", borda_entrada, BORDA_ENTRADA_N, BORDA_VALIDO_N, borda_valido, borda_bpm,
+         borda_prominencia, BORDA_TOL},
     };
 
     int falhas = 0;

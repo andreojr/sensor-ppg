@@ -20,8 +20,8 @@ sidebar:
 | Passo | Situação |
 |---|---|
 | 1. Python (`analise/src/analise/espectral.py`) | feito, validado em 15 registros do PhysioNet |
-| 2. C (`Core/*/pds/espectral/`) | feito, bate com o Python (erro máx. de 1,5e-5 bpm) |
-| 3. Teste no PC (`testes/espectral/`) | feito, 2 casos contra os vetores do Python |
+| 2. C (`Core/*/pds/espectral/`) | feito, bate com o Python (erro máx. de 7,6e-5 bpm) |
+| 3. Teste no PC (`testes/espectral/`) | feito, 3 casos contra os vetores do Python |
 | 4. Placa com a fonte falsa | **código pronto, compila; falta rodar na placa** (`-DBANCADA_ESPECTRAL=ON`) |
 | 5. Sensor real | **código pronto, compila; falta rodar com o sensor** (linha `e,...` na serial) |
 
@@ -41,8 +41,12 @@ guarda as últimas `JANELA_S` e, a cada `HOP_S`, com a janela cheia, devolve um
 4. **Maior pico de potência na banda de 0,7 a 3,5 Hz** (42 a 210 bpm).
 5. **Interpolação parabólica** em volta do pico, no log da amplitude. É o que
    faz o erro cair para cerca de 1 bpm, mesmo com a resolução de 7,5 bpm.
-6. **Validade:** o pico e seus dois vizinhos precisam ter 30% ou mais da potência
-   da banda. Ruído branco quase nunca passa; um pulso com ruído passa.
+6. **Validade:** o pico precisa ser máximo local (maior que os dois vizinhos) e,
+   junto com os vizinhos, ter 30% ou mais da potência da banda (a *prominência*, de
+   0 a 1). Ruído branco quase nunca passa; um pulso com ruído passa. Na borda da
+   banda, o vizinho de fora entra na soma: sem a regra do máximo local, um componente
+   abaixo de 0,7 Hz ou acima de 3,5 Hz (o filtro deixa passar de 0,5 a 4 Hz) vazava
+   pro bin da borda e a parábola devolvia um BPM fora da banda como válido.
 
 **Resolução × atraso.** A resolução da FFT é `1 / JANELA_S` (8 s dá 0,125 Hz, ou 7,5
 bpm entre bins), e o BPM é o da janela inteira, então chega com atraso de cerca de
@@ -61,10 +65,16 @@ partir da amostra 800, e **`bpm = 0` quando `valido = false`**, como o `picos_bp
 
 Diferenças pro Python, todas dentro da tolerância: o C faz as contas em `float` (a janela de
 Hann com `cosf`, a média por soma sequencial) e o NumPy em `float64`/pairwise. No teste
-(`testes/espectral/teste_espectral.c`, sobre 60 s do `s1_sit` e do `s2_walk`, 53 saídas
-cada) o `valido` sai **igual em todas** e o BPM difere no máximo **1,5e-5** (tolerância
+(`testes/espectral/teste_espectral.c`, sobre 60 s do `s1_sit`, do `s2_walk` e de um caso
+sintético `borda`, com silêncio e senoides perto das bordas da banda, 53 saídas cada) o
+`valido` sai **igual em todas** e o BPM difere no máximo **7,6e-5** (tolerância
 1e-3); reiniciar dá o mesmo resultado. O teste falha de verdade: com o limite de
-validade em 0,6 em vez de 0,3, o `s2_walk` dá 36 diferenças.
+validade em 0,6 em vez de 0,3, o `s2_walk` dá 36 diferenças; sem a regra do máximo
+local, o `borda` dá diferenças no `valido`.
+
+**O `n` da saída** é o da amostra filtrada em que a janela terminou, e o filtrado chega
+`PPG_ATRASO_AMOSTRAS` (1 s) depois do sinal. Pra comparar com outra referência de tempo
+(o ECG, por exemplo), desconte esse atraso.
 
 **Custo** (código ARM emulado, modelo do Cortex-M4F; ver [FFT](../fft/)): **~1 050 ciclos por
 amostra em média** (orçamento 9 600) e **~106 000 no pior caso**, a amostra em que
@@ -87,26 +97,35 @@ da fonte falsa. Reproduzir: `uv run python -m analise.espectral_validacao`.
 - **Atraso:** quantos segundos antes do fim da janela o BPM da FFT mais combina
   com a frequência cardíaca instantânea do ECG (RR suavizado em 5 batimentos).
 
-**Estudo da janela** (mediana dos 15 registros):
+O fim de cada janela, no tempo do ECG, é `n - PPG_ATRASO_AMOSTRAS` (ver acima).
+
+**Estudo da janela** (mediana dos 15 registros; p95 é a média dos 15):
 
 | Janela | NFFT | Resolução | Válidos | Erro mediano | Erro p95 | Atraso |
 |---|---|---|---|---|---|---|
-| 4 s | 1024 | 15 bpm | 98,4% | 0,91 bpm | 15,3 bpm | 2 s |
-| 6 s | 1024 | 10 bpm | 99,6% | 0,82 bpm | 11,0 bpm | 3 s |
-| **8 s** | 1024 | 7,5 bpm | 99,7% | **0,83 bpm** | 9,3 bpm | **4 s** |
-| 10 s | 1024 | 6 bpm | 99,9% | 0,99 bpm | 7,3 bpm | 5 s |
-| 12 s | 2048 | 5 bpm | 98,9% | 0,99 bpm | 10,1 bpm | 6 s |
-| 16 s | 2048 | 3,8 bpm | 98,8% | 1,15 bpm | 4,7 bpm | 8 s |
+| 4 s | 1024 | 15 bpm | 97,8% | 0,84 bpm | 9,8 bpm | 2,5 s |
+| 6 s | 1024 | 10 bpm | 99,5% | 0,79 bpm | 6,0 bpm | 3 s |
+| **8 s** | 1024 | 7,5 bpm | 99,6% | **0,84 bpm** | 6,7 bpm | **4 s** |
+| 10 s | 1024 | 6 bpm | 99,6% | 1,02 bpm | 7,3 bpm | 5 s |
+| 12 s | 2048 | 5 bpm | 98,9% | 0,93 bpm | 4,0 bpm | 6 s |
+| 16 s | 2048 | 3,8 bpm | 98,8% | 1,08 bpm | 4,0 bpm | 8 s |
 
-O atraso medido é metade da janela, como previsto. O erro **mediano** quase não
+O atraso medido é cerca de metade da janela, como previsto. O erro **mediano** quase não
 muda com a janela: a interpolação parabólica já recupera a precisão. O que a
 janela longa melhora são os erros grandes (p95), ao custo de atraso. A de 8 s
-dá erro mediano de 0,83 bpm com atraso de 4 s.
+dá erro mediano de 0,84 bpm com atraso de 4 s.
 
-**Com a janela de 8 s,** o erro mediano fica entre 0,59 e 1,23 bpm em 13 dos 15
-registros (sentado, andando e correndo), com 100% das saídas válidas.
+**Com a janela de 8 s** (`--tabela`), o erro mediano fica entre 0,59 e 1,23 bpm em 14 dos
+15 registros (sentado, andando e correndo), com 100% das saídas válidas em 14 deles.
 
 **Limitação conhecida:** em `s2_walk` e `s2_run` o artefato de movimento é maior
-que o pulso. `s2_walk` tem erro p95 de 88 bpm (96% válidas) e `s2_run`, mediana de 3,2
-bpm e p95 de 15,8. É o mesmo caso que atrapalha o módulo `picos`, e a resposta é a
+que o pulso. `s2_walk` tem erro p95 de 50 bpm (94% válidas) e `s2_run`, mediana de 2,9
+bpm e p95 de 15,2. O limite de 30% quase não rejeita esses trechos: o pico do
+artefato também é forte, então sai **válido e errado**. É o mesmo caso que atrapalha o módulo `picos`, e a resposta é a
 mesma: o módulo `qualidade` marca o trecho como inutilizável.
+
+**Outra limitação:** a prominência é relativa à banda, não ao espectro todo. Uma senoide
+forte fora da banda e longe da borda (3,8 Hz, por exemplo) deixa na banda só o lóbulo
+lateral da janela de Hann, que é pico local e concentra a potência da banda: sai válido,
+com ~195 bpm. Em PPG de verdade o pulso domina a banda e isso não aparece; o caso fica
+registrado no vetor `borda`.

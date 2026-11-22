@@ -98,16 +98,26 @@ class Espectral:
             return Bpm(self.n - 1, False, 0.0, 0.0)
 
         k = self.k0 + int(np.argmax(banda))
-        k = min(max(k, 1), len(espectro) - 2)
         vizinhos = espectro[k - 1 : k + 2]
-        prominencia = float(vizinhos.sum() / banda.sum())
+        # Na borda, um vizinho fica fora da banda: entra também no total, pra
+        # prominência não passar de 1.
+        total = banda.sum()
+        if k == self.k0:
+            total += vizinhos[0]
+        if k == self.k1 - 1:
+            total += vizinhos[2]
+        prominencia = float(vizinhos.sum() / total)
+        # O maior bin da banda só é pulso se for pico de verdade: na borda, o
+        # vizinho de fora pode ser maior (um componente fora da banda vazando).
+        # Sem isso, a parábola extrapola pra fora da banda e sai um BPM errado.
+        maximo_local = bool(vizinhos[1] >= vizinhos[0] and vizinhos[1] >= vizinhos[2])
 
         # Vértice da parábola por (k-1, k, k+1), no log da amplitude.
         a, b, c = np.log(np.maximum(vizinhos, 1e-30)) / 2
         den = a - 2 * b + c
         d = 0.5 * (a - c) / den if den != 0 else 0.0
         f_hz = (k + d) * FS_HZ / self.nfft
-        valido = prominencia >= self.prominencia
+        valido = maximo_local and prominencia >= self.prominencia
         # Inválido sai com bpm 0, como o picos_bpm(): o display mostra "--".
         return Bpm(self.n - 1, valido, 60.0 * f_hz if valido else 0.0, prominencia)
 
@@ -120,9 +130,23 @@ def estima(filtrado: np.ndarray, **parametros) -> list[Bpm]:
 
 CASOS = (
     ("s1_sit", "limpo, sentado"),
-    ("s2_walk", "artefato de movimento: pico fraco, valido = false"),
+    ("s2_walk", "artefato de movimento: BPM errado em parte das saídas"),
+    ("borda", "sintético: silêncio e senoides perto das bordas da banda"),
 )
 VETOR_DURACAO_S = 60.0
+# Caso "borda": 10 s de silêncio (banda sem potência) e 10 s de cada senoide.
+# 0,55 e 3,6 Hz ficam fora da banda e vazam pro bin da borda (inválido); 0,8 e
+# 3,3 Hz ficam dentro, perto da borda (válido). 3,8 Hz é a limitação conhecida:
+# o pico verdadeiro está longe da borda e sobra na banda só o lóbulo lateral da
+# Hann, que é pico local com prominência alta (sai válido, ~195 bpm).
+BORDA_HZ = (0.55, 0.8, 3.3, 3.6, 3.8)
+
+
+def entrada_borda() -> np.ndarray:
+    n = np.arange(10 * FS_HZ)
+    trechos = [np.zeros(len(n))]
+    trechos += [100.0 * np.sin(2 * np.pi * f * n / FS_HZ) for f in BORDA_HZ]
+    return np.concatenate(trechos).astype(np.float32)
 
 
 def gera_vetores(testes: Path | None = None) -> list[Path]:
@@ -131,8 +155,11 @@ def gera_vetores(testes: Path | None = None) -> list[Path]:
 
     saidas = []
     for nome, descricao in CASOS:
-        f = fonte_falsa.gera(physionet.carrega(nome), 30.0, VETOR_DURACAO_S)
-        entrada = f.filtrado_ir.astype(np.float32)
+        if nome == "borda":
+            entrada = entrada_borda()
+        else:
+            f = fonte_falsa.gera(physionet.carrega(nome), 30.0, VETOR_DURACAO_S)
+            entrada = f.filtrado_ir.astype(np.float32)
         r = estima(entrada)
         arrays = {
             "entrada": entrada,
@@ -147,7 +174,7 @@ def gera_vetores(testes: Path | None = None) -> list[Path]:
                 nome,
                 arrays,
                 tol=TOL_VETOR,
-                descricao=f"{nome} ({descricao}): {VETOR_DURACAO_S:g} s do filtrado_ir.",
+                descricao=f"{nome} ({descricao}): {len(entrada) / FS_HZ:g} s de entrada.",
                 **extra,
             )
         )

@@ -23,7 +23,7 @@ from functools import cache
 
 import numpy as np
 
-from analise import FS_HZ, fonte_falsa, physionet
+from analise import FS_HZ, filtro, fonte_falsa, physionet
 from analise.espectral import Espectral, estima
 
 INICIO_S = 30.0
@@ -68,7 +68,9 @@ def valida(nome: str, **parametros) -> Resultado:
     janela_s = Espectral(**parametros).n_janela / FS_HZ
     saidas = estima(f.filtrado_ir, **parametros)
     t_ecg = f.n_pico / FS_HZ
-    t = np.array([s.n for s in saidas]) / FS_HZ
+    # O filtrado chega PPG_ATRASO_AMOSTRAS (1 s) depois do sinal: o fim da janela,
+    # no tempo do ECG, é n menos esse atraso.
+    t = (np.array([s.n for s in saidas]) - filtro.ATRASO) / FS_HZ
     bpm = np.array([s.bpm if s.valido else np.nan for s in saidas])
 
     gabarito = np.array([bpm_ecg_janela(t_ecg, tt, janela_s) for tt in t])

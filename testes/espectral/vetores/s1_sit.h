@@ -1,6 +1,6 @@
 /*
  * Vetor de referência: espectral/s1_sit.
- * s1_sit (limpo, sentado): 60 s do filtrado_ir.
+ * s1_sit (limpo, sentado): 60 s de entrada.
  * Gerado por analise/src/analise/vetores.py. Não edite à mão.
  */
 #ifndef VETOR_ESPECTRAL_S1_SIT_H

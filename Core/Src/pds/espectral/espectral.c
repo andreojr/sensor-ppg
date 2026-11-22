@@ -71,8 +71,19 @@ static void estima(espectral_t *e, ppg_bpm_t *saida)
     const float a = e->x[k - 1u];
     const float b = e->x[k];
     const float c = e->x[k + 1u];
-    const float prominencia = (a + b + c) / banda;
+    /* Na borda, um vizinho fica fora da banda: entra também no total, pra a
+       prominência não passar de 1. */
+    float total = banda;
+    if (k == K0)
+        total += a;
+    if (k == K1 - 1u)
+        total += c;
+    const float prominencia = (a + b + c) / total;
     e->prominencia = prominencia;
+    /* O maior bin da banda só é pulso se for pico de verdade: na borda, o vizinho
+       de fora pode ser maior (um componente fora da banda vazando). Sem isso, a
+       parábola extrapola pra fora da banda e sai um BPM errado. */
+    const bool maximo_local = b >= a && b >= c;
 
     /* Vértice da parábola por (k-1, k, k+1), no log da amplitude. */
     const float la = logf(a > 1e-30f ? a : 1e-30f) / 2.0f;
@@ -82,7 +93,7 @@ static void estima(espectral_t *e, ppg_bpm_t *saida)
     const float d = den != 0.0f ? 0.5f * (la - lc) / den : 0.0f;
     const float f_hz = ((float)k + d) * (float)PPG_FS_HZ / (float)ESPECTRAL_NFFT;
 
-    saida->valido = (double)prominencia >= PROMINENCIA_MIN;
+    saida->valido = maximo_local && (double)prominencia >= PROMINENCIA_MIN;
     saida->bpm = saida->valido ? 60.0f * f_hz : 0.0f;
 }
 
