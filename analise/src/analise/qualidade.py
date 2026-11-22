@@ -76,7 +76,7 @@ RITMO_SOS = (
 RITMO_DECIMA = 4           # 100 -> 25 Hz (média de 4)
 RITMO_N = 100              # 4 s a 25 Hz
 RITMO_ATRASO_MIN = 10      # 0,4 s: 150 bpm
-RITMO_ATRASO_MAX = 37      # 1,48 s: ~40 bpm
+RITMO_ATRASO_MAX = 37      # 1,48 s: ~41 bpm
 
 
 @dataclass(frozen=True)
@@ -95,7 +95,7 @@ class Limiares:
     peso_ref: float = 0.25      # a referência anda 1/4 do caminho a cada janela boa
     janelas_aceita: int = 3
     ruins_esquece: int = 10
-    ritmo_min: float = 0.5      # PhysioNet limpo: 2,6% das janelas de 4 s abaixo
+    ritmo_min: float = 0.5      # PhysioNet limpo: 4,3% das janelas de 4 s abaixo
 
 
 LIMIARES = Limiares()

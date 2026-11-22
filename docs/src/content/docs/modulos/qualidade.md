@@ -49,7 +49,9 @@ Tudo é acumulado amostra a amostra (soma, máximo, mínimo, soma de
 diferenças), sem guardar as 200 amostras: essa parte do estado tem 108
 bytes e custa umas poucas somas e comparações por amostra. Só a amostra que
 fecha o bloco faz 5 divisões. O ritmo (abaixo) precisa guardar 4 s a 25 Hz,
-duas vezes (o buffer e a cópia): com ele, o estado inteiro tem 964 bytes.
+num buffer de 125 pontos guardado em dobro (abaixo): com ele, o estado
+inteiro tem 1 184 bytes, mais que a pilha da placa (1 KB). No firmware, o
+`qualidade_t` tem que ser `static` ou global, nunca variável local.
 
 ### O passa-altas
 
@@ -106,7 +108,11 @@ $r[k]$ é a semelhança do sinal com ele mesmo atrasado de $k$ amostras (1 =
 idêntico). Um pulso a 72 bpm repete a cada 0,83 s (21 amostras a 25 Hz), e
 $r[21]$ fica perto de 0,8 (não chega a 1 porque a soma do numerador tem
 $100 - k$ termos). Ruído na mesma faixa não tem atraso nenhum com $r$ alto.
-Os atrasos de 10 a 37 (0,4 a 1,48 s) cobrem de 40 a 150 bpm.
+Os atrasos de 10 a 37 (0,4 a 1,48 s) cobrem de ~41 a 150 bpm. Perto de
+40 bpm a folga é pequena: cabem só 2,7 batimentos em 4 s e o fator
+$(100-k)/100$ no atraso 37 é 0,63, então um pulso sintético perfeito a
+40 bpm dá 0,58 e a 38 bpm já cai abaixo de 0,5. Bradicardia com variação
+forte de ritmo pode ser marcada `SEM_RITMO`.
 
 **Por que um passa-faixa próprio.** Com o $y$ do passa-altas de 1ª ordem, a
 respiração e a deriva que sobram derrubam o $r$: 8,5% das janelas limpas do
@@ -119,15 +125,20 @@ comparar um com o seguinte. Mais que isso atrasa a resposta.
 **Quando ainda não há 4 s** (início, reinício): a janela conta como ruim
 (`SEM_RITMO`), e o sinal limpo só fica usável no 7º segundo, não no 4º.
 
-**No C**, a conta (2 800 multiplicações) é feita sobre uma cópia dos 4 s
-tirada no fim do bloco, espalhada pelas amostras do bloco seguinte, pra
-nenhuma amostra passar do orçamento. O Python faz a mesma conta de uma vez,
-com a cópia do bloco anterior, e dá o mesmo número.
+**No C**, a conta (~2 240 multiplicações, 2 342 passos com as somas) é
+feita sobre os 4 s que fecharam o bloco anterior, espalhada pelas amostras
+do bloco seguinte (25 passos por amostra), pra nenhuma amostra passar do
+orçamento. Sem cópia: o buffer tem 125 pontos (os 100 da janela parada +
+os 25 que chegam durante um bloco) e cada ponto é gravado duas vezes
+(`pos` e `pos + 125`), então a janela é sempre um trecho contíguo que o
+bloco atual não sobrescreve. O Python faz a mesma conta de uma vez, sobre
+os 4 s do bloco anterior, e dá o mesmo número.
 
 **Limitação conhecida:** um movimento **periódico** na faixa do pulso
 (bater o dedo a 1 Hz) tem ritmo alto. Enquanto há referência, a `razao`
 barra; depois de 10 janelas ruins a referência é esquecida e a batida
-regular passa. Sem um acelerômetro, isso não se separa de pulso.
+regular passa. Sem referência (a batida desde o início, antes de qualquer
+janela boa), só o pi e a aspereza decidem, e ela pode passar logo. Sem um acelerômetro, isso não se separa de pulso.
 
 ### A regra e os limiares
 
@@ -187,7 +198,7 @@ os batimentos desse trecho, não só os que vierem depois.
 ### Implementação em C
 
 ```c
-qualidade_t q;                /* 964 B, de quem chama */
+static qualidade_t q;         /* 1 184 B: static, não cabe na pilha de 1 KB */
 qualidade_init(&q);
 ...
 ppg_qualidade_t qual;

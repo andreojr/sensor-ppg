@@ -37,7 +37,7 @@ bool bancada_qualidade(void)
 {
     ciclos_liga(); /* bancada.h; pode rodar antes do ciclos_liga() do main */
 
-    static qualidade_t q; /* 964 B: fora da pilha */
+    static qualidade_t q; /* 1 184 B: fora da pilha (1 KB) */
     qualidade_init(&q);
 
     uint32_t saidas = 0, fora = 0, max_ciclos = 0, usaveis = 0;

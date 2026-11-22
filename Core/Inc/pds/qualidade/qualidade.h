@@ -66,7 +66,7 @@
 #define QUALIDADE_RITMO_DECIMA 4u          /* 100 -> 25 Hz (média de 4) */
 #define QUALIDADE_RITMO_N 100u             /* 4 s a 25 Hz */
 #define QUALIDADE_RITMO_ATRASO_MIN 10u     /* 0,4 s: 150 bpm */
-#define QUALIDADE_RITMO_ATRASO_MAX 37u     /* 1,48 s: ~40 bpm */
+#define QUALIDADE_RITMO_ATRASO_MAX 37u     /* 1,48 s: ~41 bpm */
 /* Buffer: os 4 s parados + os 25 pontos que chegam durante um bloco. */
 #define QUALIDADE_RITMO_ANEL (QUALIDADE_RITMO_N + QUALIDADE_BLOCO / QUALIDADE_RITMO_DECIMA)
 #define QUALIDADE_RITMO_POR_AMOSTRA 25u    /* passos da conta por amostra (~2 340 por bloco) */
