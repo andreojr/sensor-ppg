@@ -19,7 +19,7 @@ Código que usa HAL, em `Core/Inc` e `Core/Src` (fora de `pds/`).
 | Bancada da qualidade na placa (`-DBANCADA_QUALIDADE=ON`) | André | feita: `bancada_qualidade.c`, passou na placa (55/55, pior caso 2 149 ciclos no Debug); ver [Qualidade](../modulos/qualidade/) |
 | Fonte falsa (PhysioNet em flash) | André | feita: os vetores do PhysioNet das bancadas (`-DBANCADA_*`) |
 | Timer, filas e laço principal (#17) | André | feito e medido na placa (23/11): `app.c`, `sensor.c`, `monitor.c`, `pds/cadeia/`. Ver [Laço principal](#laço-principal) e [Cadeia](../modulos/cadeia/) |
-| Display OLED (I2C3) | Celso | fora da v0.4.0 (PRs #121 e #122); no `app.c`, `display_amostra()` e `display_servico()` são vazias |
+| Display OLED (I2C3, SSD1306) | Celso | `display.c` (chip) e `pds/oled/` (telas), chamados pelo `app.c`; ver [Display OLED](#display-oled-displayc) e [OLED](../modulos/oled/) |
 
 ## Pinagem
 
@@ -190,7 +190,9 @@ t,1199,1,6420
   amostra: 96 MHz / 100 Hz); `# espectral: ...` mostra os dois. Depois vêm a
   cadeia inteira por amostra, a volta do laço e o maior intervalo entre duas
   leituras da FIFO (ver [Laço principal](#laço-principal)).
-- Linhas que começam com `#` são comentário. Se o sensor não responder no
+- Linhas que começam com `#` são comentário. Se o display não responder no
+  boot, sai `# aviso: display nao respondeu na I2C3: segue sem ele` e a placa segue sem ele.
+  Se o sensor não responder no
   boot, sai `# erro: MAX30102 nao respondeu na I2C1` e a placa para. Se a
   taxa do sensor não tiver filtro de decimação, sai
   `# erro: decimacao sem filtro para essa taxa do MAX30102` e a placa para.
@@ -218,6 +220,48 @@ da serial. A 921600 cada bit dura ~1 µs e um pico de ruído vira bit errado: o
 adaptador descarta o byte e a linha chega cortada no meio. A 460800 o bit dura o
 dobro e a mesma captura não perdeu nada. Ainda sobra banda: a serial padrão usa ~3 kB/s
 e a completa até ~16 kB/s, de ~46 kB/s (acima).
+
+## Display OLED (`display.c`)
+
+SSD1306 na I2C3 (SCL no PA8, SDA no PB4, Fast Mode a 400 kHz, já configurado). O código tem duas
+partes: o módulo [`oled/`](../modulos/oled/) desenha numa memória de imagem de 1024 bytes (C puro, testado no
+PC) e o `display.c` fala com o chip pela HAL, mandando só as páginas que mudaram.
+
+Ligação (a confirmar com o módulo que você tiver): VCC em 3V3, GND em G, SCL em A8, SDA em B4. O OLED comum
+aceita 3,3 a 5 V; em 3,3 V o SDA e o SCL ficam no mesmo nível da placa. Os pull-ups costumam já estar na plaquinha.
+
+| Item | Valor | Tipo |
+|---|---|---|
+| Controlador e ligação | SSD1306, I2C3, PA8 / PB4 | fato (`.ioc`) |
+| Endereço | 0x3C (`DISPLAY_ENDERECO`; alguns módulos usam 0x3D) | suposição |
+| Resolução | 128 × 64 | fato (confirmada por quem tem o módulo) |
+| Orientação | segmentos e linhas remapeados; `-DDISPLAY_ORIENTACAO_NORMAL=0` desfaz | suposição |
+| Envio | uma página (128 bytes, ~3 ms a 400 kHz) por volta do laço principal, nunca no TIM2 | decisão |
+| Quadros | 20 por segundo (`DISPLAY_QUADRO_MS = 50`) | decisão |
+
+- **Boot:** o display liga logo depois da serial e mostra a inicialização (uma linha por etapa: `MAX30102`,
+  `DECIMACAO`, `FILTRO`). Se o sensor ou a decimação falham, mostra a tela de erro antes de a placa parar.
+  A tela de inicialização fica no ar ao menos 2 s (`DISPLAY_AGUARDE_MS`).
+- **Display ausente:** `display_init` devolve `false` (o chip não respondeu em `DISPLAY_ENDERECO`), avisa na
+  serial e o resto da placa segue. Depois de 3 falhas seguidas de envio o display também se desliga, e a I2C3 é
+  reiniciada a cada falha, pra um barramento preso não deixar a placa sem ela.
+- **Resultados:** o `main.c` mantém um `ppg_resultados_t` e o preenche com o que já existe (hoje, o último
+  batimento e o BPM do picos); o que ainda não existe fica inválido e aparece como `--`.
+
+### Bancada do display (demonstração)
+
+Com `-DBANCADA_DISPLAY=ON` a placa, logo depois da serial e **sem precisar do sensor**, percorre as telas com dados de
+mentira, num ciclo de 30 s: 0 a 20 s sinal bom (SpO2 e respiração entram aos 10 s), 20 a 25 s sinal ruim com
+movimento na onda, 25 a 30 s sem dedo. **Não volta** (é só a demonstração). A cada 5 s manda quanto tempo o laço ficou
+bloqueado numa chamada do display, pra conferir a folga do sensor:
+
+```text
+# bancada display: chamada do laco med ... us max ... us (folga do sensor 37500 us): OK
+```
+
+**Estado: não rodou na placa.** O código compila (Debug e Release, sem avisos) e o desenho está conferido no PC
+byte a byte contra a referência em Python. Falta ver as telas num módulo de verdade (endereço, orientação, o
+sinal da onda) e medir o tempo de uma página. Ver [Display OLED](../modulos/oled/).
 
 ## Rodar na placa e ver a leitura
 

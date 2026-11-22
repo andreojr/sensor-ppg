@@ -23,8 +23,14 @@ typedef struct {
     ciclos_t decimacao;        /* por amostra do sensor */
 } sensor_medidas_t;
 
-/* Liga o sensor e a decimação; se falhar, avisa na serial e para (Error_Handler). */
-void sensor_init(I2C_HandleTypeDef *hi2c, fila_t *fila);
+typedef enum {
+    SENSOR_OK,
+    SENSOR_ERRO_SEM_RESPOSTA, /* o MAX30102 não respondeu na I2C1 */
+    SENSOR_ERRO_SEM_FILTRO,   /* a decimação não tem filtro pra MAX30102_FS_HZ */
+} sensor_erro_t;
+
+/* Liga o sensor e a decimação. Quem chama avisa (serial e display) e para se falhar. */
+sensor_erro_t sensor_init(I2C_HandleTypeDef *hi2c, fila_t *fila);
 
 /* Do callback do EXTI: tem amostra na FIFO. */
 void sensor_int(void);

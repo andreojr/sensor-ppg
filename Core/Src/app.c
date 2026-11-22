@@ -10,6 +10,7 @@
 #include "cadeia/cadeia.h"
 #include "cadeia/fila.h"
 #include "cadeia/linhas.h"
+#include "display.h"
 #include "max30102.h"
 #include "monitor.h"
 #include "sensor.h"
@@ -19,16 +20,15 @@ static fila_t fila;       /* sensor -> cadeia */
 static cadeia_t cadeia;   /* ~20 KB: static */
 static TIM_HandleTypeDef *tim_regua;
 
-/* O display (#26) entra pelo PR do driver (#122): até lá, nada. Mesma assinatura. */
-static void display_amostra(float ir_filtrado)
+/* Para a placa: avisa na serial (e na tela, se houver display) e cai no Error_Handler. */
+static void para(const char *msg, uint32_t tam, bool na_tela, oled_erro_t erro)
 {
-    (void)ir_filtrado;
-}
-
-static void display_servico(const ppg_resultados_t *r, uint32_t agora_ms)
-{
-    (void)r;
-    (void)agora_ms;
+    serial_escreve(msg, tam);
+    serial_envia();
+    if (na_tela)
+        display_tela_erro(erro);
+    HAL_Delay(50); /* o DMA termina antes de parar */
+    Error_Handler();
 }
 
 static void cabecalho(void)
@@ -53,9 +53,19 @@ static void cabecalho(void)
 void app_init(I2C_HandleTypeDef *sensor, I2C_HandleTypeDef *display, UART_HandleTypeDef *serial,
               TIM_HandleTypeDef *regua)
 {
-    (void)display; /* I2C3: o driver do display (#122) */
     tim_regua = regua;
     serial_init(serial);
+    /* O display liga primeiro: ele conta o boot, inclusive o erro do sensor. */
+    oled_etapa_t etapas[3] = {OLED_ETAPA_PENDENTE, OLED_ETAPA_PENDENTE, OLED_ETAPA_PENDENTE};
+    if (display_init(display)) {
+        display_tela_inicio(etapas, false);
+    } else {
+        static const char aviso[] = "# aviso: display nao respondeu na I2C3: segue sem ele\n";
+        serial_escreve(aviso, sizeof aviso - 1u);
+    }
+#ifdef BANCADA_DISPLAY
+    (void)bancada_display(); /* demonstração das telas, sem o sensor: não volta */
+#endif
 #ifdef BANCADA_HRV
     /* Fonte falsa no HRV, antes do sensor (roda mesmo sem o MAX30102). */
     (void)bancada_hrv();
@@ -64,7 +74,22 @@ void app_init(I2C_HandleTypeDef *sensor, I2C_HandleTypeDef *display, UART_Handle
     /* Vetor da qualidade, antes do sensor (roda mesmo sem o MAX30102). */
     (void)bancada_qualidade();
 #endif
-    sensor_init(sensor, &fila);
+    switch (sensor_init(sensor, &fila)) {
+    case SENSOR_ERRO_SEM_RESPOSTA: {
+        static const char erro[] = "# erro: MAX30102 nao respondeu na I2C1\n";
+        para(erro, sizeof erro - 1u, true, OLED_ERRO_SENSOR);
+        break;
+    }
+    case SENSOR_ERRO_SEM_FILTRO: {
+        static const char erro[] = "# erro: decimacao sem filtro para essa taxa do MAX30102\n";
+        para(erro, sizeof erro - 1u, true, OLED_ERRO_DECIMACAO);
+        break;
+    }
+    case SENSOR_OK:
+        break;
+    }
+    etapas[0] = etapas[1] = OLED_ETAPA_OK; /* MAX30102 e DECIMACAO */
+    display_tela_inicio(etapas, false);
     cabecalho();
     monitor_init(regua);
     /* Bancadas: fonte falsa em cada módulo, resultado (OK/FALHOU) na serial; a placa
@@ -90,11 +115,10 @@ void app_init(I2C_HandleTypeDef *sensor, I2C_HandleTypeDef *display, UART_Handle
 #endif
     if (!cadeia_init(&cadeia, ciclos_agora)) {
         static const char erro[] = "# erro: FFT de 1024 pontos nao compilada (espectral)\n";
-        serial_escreve(erro, sizeof erro - 1u);
-        serial_envia();
-        HAL_Delay(50);
-        Error_Handler();
+        para(erro, sizeof erro - 1u, false, OLED_ERRO_SENSOR);
     }
+    etapas[2] = OLED_ETAPA_OK; /* FILTRO (a cadeia) */
+    display_tela_inicio(etapas, true);
     monitor_comeca(); /* o TIM2 contou durante as bancadas: os relatos começam agora */
 }
 

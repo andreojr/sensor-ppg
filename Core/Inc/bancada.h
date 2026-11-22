@@ -3,7 +3,7 @@
  *
  * As bancadas só existem com a opção do CMake ligada (-DBANCADA_DECIMACAO=ON,
  * -DBANCADA_FILTRO=ON, -DBANCADA_PICOS=ON, -DBANCADA_ESPECTRAL=ON,
- * -DBANCADA_RESPIRACAO=ON): tocam a fonte falsa (o vetor do teste no PC) no
+ * -DBANCADA_RESPIRACAO=ON, -DBANCADA_DISPLAY=ON): tocam a fonte falsa (o vetor do teste no PC) no
  * módulo, conferem com a saída do Python e medem os ciclos. O resultado sai
  * pela serial como comentário ("# bancada ...").
  */
@@ -73,6 +73,11 @@ bool bancada_espectral(void);
 #ifdef BANCADA_RESPIRACAO
 /* Roda 5 min do bruto do s1_sit na respiração e manda o resultado pela serial. */
 bool bancada_respiracao(void);
+#endif
+
+#ifdef BANCADA_DISPLAY
+/* Demonstração das telas com dados de mentira, sem o sensor. Não volta (false se não há display). */
+bool bancada_display(void);
 #endif
 
 #endif /* BANCADA_H */

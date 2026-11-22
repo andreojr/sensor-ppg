@@ -11,7 +11,7 @@ sidebar:
 | Item do plano | Display OLED (#26) |
 | Entrada | `ppg_resultados_t` e as amostras do sinal filtrado |
 | Saída | as páginas do SSD1306 que mudaram (128 bytes cada) |
-| Código | `Core/*/pds/oled/` (o desenho). O chip, pela HAL, é o `Core/Src/display.c`, no PR seguinte |
+| Código | `Core/*/pds/oled/` (o desenho) e `Core/Src/display.c` (o chip, pela HAL) |
 | Gabarito | `analise/src/analise/oled.py`, porte do protótipo do design |
 
 **O quê:** mostrar a onda do pulso e os números do `ppg_resultados_t` num OLED. O módulo
@@ -25,8 +25,8 @@ no PC). O `display.c` manda para o chip só as páginas que mudaram, uma por vol
 | Design das telas (protótipo interativo) | feito: 7 artboards |
 | Referência em Python (`oled.py`) e vetores | feito |
 | Módulo em C (`oled/`) e teste no PC, byte a byte | feito: 10 telas idênticas à referência |
-| Driver do SSD1306 e integração no `main.c` | PR seguinte (`display.c`) |
-| Demonstração com dados de mentira (`-DBANCADA_DISPLAY=ON`) | PR seguinte |
+| Driver do SSD1306 e integração no `main.c` | feito, compila (Debug e Release, sem avisos) |
+| Demonstração com dados de mentira (`-DBANCADA_DISPLAY=ON`) | feita, compila |
 | **Rodar na placa, com o módulo de display de verdade** | **a fazer** |
 
 Esta página é atualizada em todo PR que mexe no módulo.
@@ -97,6 +97,36 @@ páginas reprova com mensagem clara.
 não foi conferida; o que está conferido é C = Python, e Python = a leitura do código do design.
 
 Os vetores e a tabela da fonte do C saem de `uv run python -m analise.oled` (em `analise/`).
+
+## Custo
+
+Firmware compilado com o `arm-none-eabi-gcc` 14.2.1, sem avisos. Release (`-Os`), sobre a `main`:
+
+| | Flash | RAM |
+|---|---|---|
+| `main` | 21.796 B | 16.792 B |
+| com o display | 27.372 B (**+5.576 B**) | 20.000 B (**+3.208 B**) |
+| com a demonstração (`-DBANCADA_DISPLAY=ON`) | 33.064 B | 20.000 B |
+
+A RAM é o `oled_t` (~3 KB: a memória de imagem, a cópia do que o chip já tem e as 256 amostras da
+onda) mais o `ppg_resultados_t` do `main.c` (~100 B).
+
+**Ciclos de desenhar um quadro** (código ARM emulado, modelo simples do Cortex-M4F, **sem** a espera
+da flash; `uv run testes/oled/ciclos/ciclos.py`, precisa do `arm-none-eabi-gcc`):
+
+| Tela | Ciclos | Tempo a 96 MHz | Páginas que mudam no quadro seguinte |
+|---|---|---|---|
+| principal | ~75.500 | 0,8 ms | 6 |
+| resumo | ~232.300 | 2,4 ms | 0 |
+| alvo | ~125.800 | 1,3 ms | 4 |
+| sem dedo | ~134.000 | 1,4 ms | 0 |
+| sinal ruim | ~162.400 | 1,7 ms | 5 |
+
+As páginas que mudam batem com as que o design previu (6, 4 e 5). Desenhar um quadro bloqueia o laço
+por no máximo ~2,4 ms, uma vez a cada 50 ms. Mandar uma página leva ~3 ms a 400 kHz (130 bytes × 9
+bits ÷ 400 kHz; cálculo, **não medido na placa**) e vai uma por volta, então o laço fica parado
+~3 ms por vez, contra os 37,5 ms de folga depois do INT do sensor. Uma tela de onda completa (6 páginas)
+ocupa o barramento ~18 ms a cada 50 ms (~36%).
 
 ## Pendente
 

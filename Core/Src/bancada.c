@@ -327,3 +327,102 @@ bool bancada_respiracao(void)
 }
 
 #endif /* BANCADA_RESPIRACAO */
+
+#ifdef BANCADA_DISPLAY
+
+#include <math.h>
+#include <string.h>
+
+#include "display.h"
+
+/* O pulso do design: o pico e o entalhe dicrótico, fase de 0 a 1 dentro de um batimento. */
+static float pulso(float fase)
+{
+    float a = (fase - 0.14f) / 0.055f, b = (fase - 0.40f) / 0.09f;
+    return expf(-a * a) + 0.45f * expf(-b * b);
+}
+
+/*
+ * Demonstração das telas com dados de mentira, sem o sensor. Um ciclo de 30 s: 0 a 20 s
+ * sinal bom (o alvo, SpO2 e respiração, entra aos 10 s), 20 a 25 s sinal ruim (com
+ * movimento na onda), 25 a 30 s sem dedo. Não volta. A cada 5 s manda pela serial quanto
+ * tempo o laço ficou bloqueado numa chamada do display (o limite é a folga do sensor, 37,5 ms).
+ */
+bool bancada_display(void)
+{
+    static const char sem[] = "# bancada display: display nao respondeu: FALHOU\n";
+    if (!display_ativo()) {
+        serial_escreve(sem, sizeof sem - 1u);
+        serial_envia();
+        return false;
+    }
+    ciclos_liga();
+
+    ppg_resultados_t r;
+    memset(&r, 0, sizeof r);
+    ciclos_t c = {0};
+    uint32_t inicio = HAL_GetTick(), amostras = 0, batimentos = 0, relato = inicio + 5000u;
+    float fase = 0.3f;
+
+    for (;;) {
+        uint32_t agora = HAL_GetTick();
+        uint32_t t = agora - inicio;
+        uint32_t s = (t / 1000u) % 30u;
+        bool bom = s < 20u, ruim = s >= 20u && s < 25u;
+        float bpm = 72.0f + 4.0f * sinf(6.2831853f * (float)t / 20000.0f);
+
+        r.qualidade.valido = true;
+        r.qualidade.dedo_presente = s < 25u;
+        r.qualidade.usavel = bom;
+        r.qualidade.indice = bom ? 0.82f : (ruim ? 0.3f : 0.0f);
+        r.bpm_picos.valido = bom;
+        r.bpm_picos.bpm = bpm;
+        r.bpm_espectral.valido = bom;
+        r.bpm_espectral.bpm = bpm - 1.0f;
+        r.hrv.valido = bom;
+        r.hrv.sdnn_ms = 48.0f;
+        r.hrv.rmssd_ms = 35.0f;
+        r.hrv.lf_hf_valido = bom && s >= 15u;
+        r.hrv.lf_hf = 1.4f;
+        r.spo2.valido = bom && s >= 10u;
+        r.spo2.spo2_pct = 97.0f;
+        r.respiracao.valido = bom && s >= 10u;
+        r.respiracao.rpm = 16.0f;
+
+        /* O filtrado a 100 Hz, como o IR de verdade: o pulso desce (o display inverte). */
+        while (amostras < t / 10u) {
+            fase += bpm / 6000.0f;
+            if (fase >= 1.0f) {
+                fase -= 1.0f;
+                batimentos++;
+                r.ultimo_batimento.valido = true;
+                r.ultimo_batimento.n_pico = batimentos * 80u;
+            }
+            float v = pulso(fase) + (ruim ? 2.6f * sinf((float)amostras * 0.11f) : 0.0f);
+            display_amostra(-v);
+            amostras++;
+        }
+
+        uint32_t t0 = ciclos_agora();
+        display_servico(&r, agora);
+        ciclos_conta(&c, ciclos_agora() - t0);
+
+        if ((int32_t)(agora - relato) >= 0) {
+            relato += 5000u;
+            uint32_t mhz = SystemCoreClock / 1000000u;
+            char linha[120];
+            int n = snprintf(linha, sizeof linha,
+                             "# bancada display: chamada do laco med %lu us max %lu us "
+                             "(folga do sensor 37500 us): %s\n",
+                             (unsigned long)((c.conta ? c.soma / c.conta : 0u) / mhz),
+                             (unsigned long)(c.max / mhz), c.max / mhz < 37500u ? "OK" : "FALHOU");
+            serial_escreve(linha, (uint32_t)n);
+            c.soma = 0;
+            c.max = 0;
+            c.conta = 0;
+        }
+        serial_envia();
+    }
+}
+
+#endif /* BANCADA_DISPLAY */
