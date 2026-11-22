@@ -208,3 +208,18 @@ def test_filtro_do_ritmo_e_o_butterworth():
     esperado = y[: len(y) // 4 * 4].reshape(-1, 4).mean(1)[-qualidade.RITMO_N:]
     anel = np.array(q.anel[q.pos:] + q.anel[: q.pos])
     assert np.allclose(anel, esperado, rtol=1e-9, atol=1e-9)
+
+
+@pytest.mark.parametrize("usavel, valido, tem, n, n_pico, mostra", [
+    (True, True, True, 1000, 900, True),     # os dois concordam, batimento recente
+    (True, False, True, 1000, 900, False),   # picos sem ritmo regular
+    (False, True, True, 1000, 900, False),   # qualidade diz que não dá
+    (False, False, True, 1000, 900, False),
+    (True, True, False, 1000, 0, False),     # nenhum batimento ainda
+    (True, True, True, 1000, 700, True),     # idade = BATIMENTO_VALE: ainda vale
+    (True, True, True, 1001, 700, False),    # idade = BATIMENTO_VALE + 1: velho
+    (True, True, True, 1000, 1080, True),    # batimento "à frente" do n (atrasos)
+])
+def test_bpm_confiavel(usavel, valido, tem, n, n_pico, mostra):
+    assert qualidade.BATIMENTO_VALE == 3 * FS_HZ
+    assert qualidade.bpm_confiavel(usavel, valido, tem, n, n_pico) is mostra

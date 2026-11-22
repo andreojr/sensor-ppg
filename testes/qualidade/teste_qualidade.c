@@ -272,6 +272,34 @@ static int reinicio(void)
     return falhas;
 }
 
+/* A decisão do BPM confiável: mesmos casos de test_bpm_confiavel no Python. */
+static int decisao(void)
+{
+    struct {
+        bool usavel, valido, tem;
+        uint32_t n, n_pico;
+        bool mostra;
+    } casos[] = {
+        {true, true, true, 1000u, 900u, true},   {true, false, true, 1000u, 900u, false},
+        {false, true, true, 1000u, 900u, false}, {false, false, true, 1000u, 900u, false},
+        {true, true, false, 1000u, 0u, false},   {true, true, true, 1000u, 700u, true},
+        {true, true, true, 1001u, 700u, false},  {true, true, true, 1000u, 1080u, true},
+    };
+    int falhas = (QUALIDADE_BATIMENTO_VALE != 3u * PPG_FS_HZ);
+    for (uint32_t i = 0; i < sizeof casos / sizeof casos[0]; i++) {
+        ppg_qualidade_t q = {.valido = true, .dedo_presente = true, .indice = 1.0f,
+                             .usavel = casos[i].usavel};
+        ppg_bpm_t b = {.valido = casos[i].valido, .bpm = 60.0f};
+        bool m = qualidade_bpm_confiavel(&q, &b, casos[i].tem, casos[i].n, casos[i].n_pico);
+        if (m != casos[i].mostra) {
+            printf("decisão: caso %u deu %d\n", (unsigned)i, m);
+            falhas++;
+        }
+    }
+    printf("decisão: %d falhas\n", falhas);
+    return falhas;
+}
+
 int main(void)
 {
     const caso_t physionet = {
@@ -286,7 +314,8 @@ int main(void)
         bordas_saida_motivo, bordas_saida_indice, bordas_saida_dc, bordas_saida_pi,
         bordas_saida_aspereza, bordas_saida_razao, bordas_saida_ritmo, BORDAS_TOL};
 
-    int falhas = roda_caso(&physionet) + roda_caso(&bordas) + inicio() + estados() + reinicio();
+    int falhas = roda_caso(&physionet) + roda_caso(&bordas) + inicio() + estados() + reinicio() +
+                 decisao();
     printf(falhas ? "FALHOU (%d)\n" : "OK\n", falhas);
     return falhas ? 1 : 0;
 }

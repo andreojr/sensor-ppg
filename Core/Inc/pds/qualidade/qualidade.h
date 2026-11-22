@@ -143,4 +143,15 @@ void qualidade_init(qualidade_t *q);
  */
 bool qualidade_processa(qualidade_t *q, const ppg_amostra_t *bruto, ppg_qualidade_t *s);
 
+/*
+ * A decisão do BPM confiável: a tela mostra o BPM do picos só se a qualidade
+ * diz que dá pra usar (q->usavel), o picos diz que o ritmo é regular
+ * (b->valido) e o último batimento (n_ultimo_pico) tem no máximo
+ * QUALIDADE_BATIMENTO_VALE amostras em relação a n (o n da última saída da
+ * qualidade). Um batimento "à frente" de n (pelos atrasos) conta como recente.
+ */
+#define QUALIDADE_BATIMENTO_VALE (3u * PPG_FS_HZ) /* p, sai ~1,3 s depois; RR até 1,5 s */
+bool qualidade_bpm_confiavel(const ppg_qualidade_t *q, const ppg_bpm_t *b, bool tem_batimento,
+                             uint32_t n, uint32_t n_ultimo_pico);
+
 #endif /* PDS_QUALIDADE_QUALIDADE_H */

@@ -260,6 +260,21 @@ def ritmo_de(z: np.ndarray) -> float:
     return max(float(z[k:] @ z[:-k]) / e for k in range(RITMO_ATRASO_MIN, RITMO_ATRASO_MAX + 1))
 
 
+# ---- A decisão do BPM confiável (etapa 3) -----------------------------------------
+
+# O último batimento vale por 3 s: o "p," sai ~1,3 s depois do pulso e, a 40 bpm,
+# o RR é 1,5 s; com menos que isso a tela piscaria a cada batimento lento.
+BATIMENTO_VALE = 3 * FS_HZ
+
+
+def bpm_confiavel(usavel: bool, bpm_valido: bool, tem_batimento: bool, n: int,
+                  n_pico: int) -> bool:
+    """A tela mostra o BPM do picos só se a qualidade e o picos concordam e o último
+    batimento é recente (um batimento "à frente" de n, pelos atrasos, conta como recente)."""
+    idade = n - n_pico if n >= n_pico else 0
+    return usavel and bpm_valido and tem_batimento and idade <= BATIMENTO_VALE
+
+
 def roda(ir: np.ndarray, vm: np.ndarray, n: np.ndarray | None = None,
          lim: Limiares = LIMIARES) -> list[Saida]:
     """Passa o sinal todo pelo detector e devolve as saídas."""
