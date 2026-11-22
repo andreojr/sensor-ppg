@@ -28,7 +28,9 @@
 #include "bancada_qualidade.h"
 #include "decimacao/decimacao.h"
 #include "filtro/filtro.h"
+#include "hrv/hrv.h"
 #include "max30102.h"
+#include "picos/picos.h"
 #include "serial.h"
 
 /* USER CODE END Includes */
@@ -64,10 +66,14 @@ static volatile max30102_amostra_t ultima; /* pra olhar no Live Watch do debugge
 static decimacao_t decimacao;              /* sensor -> bruto a PPG_FS_HZ */
 static max30102_amostra_t anterior;        /* repetida no lugar das perdidas */
 static filtro_t filtro;                    /* bruto -> filtrado (0,5 a 4 Hz) */
+static picos_t picos;                      /* filtrado -> batimentos e BPM */
+static hrv_t hrv;                          /* batimentos -> SDNN e RMSSD */
 
 /* Ciclos de cada módulo, resumidos pela serial a cada 10 s. */
 static ciclos_t ciclos_decimacao;
 static ciclos_t ciclos_filtro;
+static ciclos_t ciclos_picos;
+static ciclos_t ciclos_hrv; /* por batimento, não por amostra */
 #ifdef BANCADA_QUALIDADE
 static qualidade_t qualidade;              /* bruto -> qualidade, linha "q,..." por segundo */
 static ciclos_t ciclos_qualidade;
@@ -147,10 +153,12 @@ int main(void)
     HAL_UART_Transmit(&huart1, (const uint8_t *)erro, sizeof erro - 1, 100);
     Error_Handler();
   }
-  char cabecalho[160];
+  char cabecalho[256];
   int n = snprintf(cabecalho, sizeof cabecalho,
                    "# MAX30102 %u Hz: n,ir,vermelho\n# decimacao %u Hz: b,n,ir,vermelho\n"
-                   "# filtro %u Hz, atraso %u: f,n,ir,vermelho\n",
+                   "# filtro %u Hz, atraso %u: f,n,ir,vermelho\n"
+                   "# picos: p,n_pico,fracao,rr_valido,rr_ms,bpm_valido,bpm\n"
+                   "# hrv: h,n_pico,valido,sdnn,rmssd\n",
                    MAX30102_FS_HZ, PPG_FS_HZ, PPG_FS_HZ, (unsigned)PPG_ATRASO_AMOSTRAS);
   serial_escreve(cabecalho, (uint32_t)n);
   ciclos_liga();
@@ -163,6 +171,9 @@ int main(void)
 #ifdef BANCADA_FILTRO
   (void)bancada_filtro(); /* só informativo, como a da decimação */
 #endif
+#ifdef BANCADA_PICOS
+  (void)bancada_picos(); /* só informativo, como as outras */
+#endif
   if (!decimacao_init(&decimacao, MAX30102_FS_HZ))
   {
     static const char erro[] = "# erro: decimacao sem filtro para essa taxa do MAX30102\n";
@@ -170,6 +181,8 @@ int main(void)
     Error_Handler();
   }
   filtro_init(&filtro);
+  picos_init(&picos);
+  hrv_init(&hrv);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -286,7 +299,7 @@ static void MX_I2C3_Init(void)
 
   /* USER CODE END I2C3_Init 1 */
   hi2c3.Instance = I2C3;
-  hi2c3.Init.ClockSpeed = 100000;
+  hi2c3.Init.ClockSpeed = 400000;
   hi2c3.Init.DutyCycle = I2C_DUTYCYCLE_2;
   hi2c3.Init.OwnAddress1 = 0;
   hi2c3.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
@@ -439,23 +452,30 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
   }
 }
 
-/* Se a placa resetar no meio de uma leitura, o sensor fica segurando o SDA em
-   0 esperando o resto do byte, e a I2C1 acha o barramento ocupado. Até 9
-   pulsos no SCL terminam o byte; depois um STOP solta o barramento. */
+/* Se a placa resetar no meio de uma leitura, o sensor fica no meio do byte
+   segurando o SDA em 0 esperando o resto, e a I2C1 acha o barramento ocupado.
+   9 pulsos no SCL com o SDA solto terminam o byte (o 9º é um NACK, e o sensor
+   para de mandar); depois um STOP solta o barramento. Os 9 pulsos vão sempre:
+   se o reset cair num bit 1, o SDA está alto agora mas o byte não acabou. */
 static void destrava_i2c1(void)
 {
   GPIO_InitTypeDef gpio = {0};
 
   HAL_I2C_DeInit(&hi2c1);
-  gpio.Pin = SENSOR_SCL_Pin | SENSOR_SDA_Pin;
-  gpio.Mode = GPIO_MODE_OUTPUT_OD;
   gpio.Pull = GPIO_NOPULL;
   gpio.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_WritePin(SENSOR_SCL_GPIO_Port, SENSOR_SCL_Pin | SENSOR_SDA_Pin, GPIO_PIN_SET);
+  /* SCL em push-pull (não tem resistor, ver o I2C1_MspInit); SDA em dreno
+     aberto, porque o sensor também puxa o SDA. */
+  gpio.Pin = SENSOR_SCL_Pin;
+  gpio.Mode = GPIO_MODE_OUTPUT_PP;
   HAL_GPIO_Init(SENSOR_SCL_GPIO_Port, &gpio);
+  gpio.Pin = SENSOR_SDA_Pin;
+  gpio.Mode = GPIO_MODE_OUTPUT_OD;
+  HAL_GPIO_Init(SENSOR_SDA_GPIO_Port, &gpio);
   HAL_Delay(1);
 
-  for (int i = 0; i < 9 && HAL_GPIO_ReadPin(SENSOR_SDA_GPIO_Port, SENSOR_SDA_Pin) == GPIO_PIN_RESET; i++)
+  for (int i = 0; i < 9; i++)
   {
     HAL_GPIO_WritePin(SENSOR_SCL_GPIO_Port, SENSOR_SCL_Pin, GPIO_PIN_RESET);
     HAL_Delay(1);
@@ -541,8 +561,38 @@ static void envia_ppg(char tipo, const ppg_amostra_t *s)
   serial_escreve(linha, (uint32_t)tam);
 }
 
+/* Um batimento: "p,n_pico,fracao,rr_valido,rr_ms,bpm_valido,bpm", com a
+   fracao em 4 casas e rr_ms e bpm em 2. */
+static void envia_batimento(const ppg_batimento_t *b, const ppg_bpm_t *v)
+{
+  char rr[24];
+  char bpm[24];
+  char linha[96];
+  unsigned long f = (unsigned long)(b->fracao * 10000.0f + 0.5f); /* fracao em [0, 1) */
+  centesimos(rr, sizeof rr, b->rr_ms);
+  centesimos(bpm, sizeof bpm, v->valido ? v->bpm : 0.0f);
+  int tam = snprintf(linha, sizeof linha, "p,%lu,%lu.%04lu,%d,%s,%d,%s\n",
+                     (unsigned long)b->n_pico, f / 10000u, f % 10000u, b->rr_valido ? 1 : 0, rr,
+                     v->valido ? 1 : 0, bpm);
+  serial_escreve(linha, (uint32_t)tam);
+}
+
+/* A saída do HRV depois de um batimento: "h,n_pico,valido,sdnn,rmssd" (ms, 2 casas). */
+static void envia_hrv(uint32_t n_pico, const ppg_hrv_t *s)
+{
+  char sdnn[24];
+  char rmssd[24];
+  char linha[80];
+  centesimos(sdnn, sizeof sdnn, s->sdnn_ms);
+  centesimos(rmssd, sizeof rmssd, s->rmssd_ms);
+  int tam = snprintf(linha, sizeof linha, "h,%lu,%d,%s,%s\n", (unsigned long)n_pico,
+                     s->valido ? 1 : 0, sdnn, rmssd);
+  serial_escreve(linha, (uint32_t)tam);
+}
+
 /* Uma amostra do sensor na cadeia. A cada 4, sai o bruto a PPG_FS_HZ (linha
-   "b,...") e ele passa no filtro (linha "f,..."); a cada 10 s, os ciclos. */
+   "b,..."), ele passa no filtro (linha "f,...") e o filtrado no picos; a cada
+   batimento, as linhas "p,..." e "h,..." (HRV); a cada 10 s, os ciclos. */
 static void decima(const max30102_amostra_t *amostra)
 {
   decimacao_entrada_t e = {amostra->ir, amostra->vermelho};
@@ -559,6 +609,26 @@ static void decima(const max30102_amostra_t *amostra)
     ciclos_conta(&ciclos_filtro, ciclos_agora() - t0);
     envia_ppg('b', &bruto);
     envia_ppg('f', &filtrado);
+
+    ppg_batimento_t batimento;
+    t0 = ciclos_agora();
+    bool bateu = picos_processa(&picos, &filtrado, &batimento);
+    ciclos_conta(&ciclos_picos, ciclos_agora() - t0);
+    if (bateu)
+    {
+      ppg_bpm_t bpm;
+      picos_bpm(&picos, &bpm);
+      envia_batimento(&batimento, &bpm);
+
+      ppg_hrv_t h;
+      t0 = ciclos_agora();
+      bool saiu_hrv = hrv_processa(&hrv, &batimento, &h);
+      ciclos_conta(&ciclos_hrv, ciclos_agora() - t0);
+      if (saiu_hrv)
+      {
+        envia_hrv(batimento.n_pico, &h);
+      }
+    }
 #ifdef BANCADA_QUALIDADE
     ppg_qualidade_t q;
     t0 = ciclos_agora();
@@ -577,6 +647,8 @@ static void decima(const max30102_amostra_t *amostra)
   {
     ciclos_relata(&ciclos_decimacao, "decimacao", BANCADA_ORCAMENTO_DECIMACAO);
     ciclos_relata(&ciclos_filtro, "filtro", BANCADA_ORCAMENTO_FILTRO);
+    ciclos_relata(&ciclos_picos, "picos", BANCADA_ORCAMENTO_PICOS);
+    ciclos_relata(&ciclos_hrv, "hrv", BANCADA_ORCAMENTO_HRV);
 #ifdef BANCADA_QUALIDADE
     ciclos_relata(&ciclos_qualidade, "qualidade", BANCADA_ORCAMENTO_QUALIDADE);
 #endif

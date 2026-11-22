@@ -161,3 +161,49 @@ def test_hrv_janela_ignora_rr_fora_da_faixa():
     t = np.concatenate([[0.0], np.cumsum(rr) / 1000])
     r = hrv.hrv_janela(t, 60.0, a_partir_s=60.0)
     assert np.allclose(r, 0.0)
+
+
+def _placa_hrv(segundos: float = 240, rr_medio: float = 0.85):
+    """Batimentos e saída do HRV como a placa manda (rr_ms e HRV com 2 casas)."""
+    from analise.hrv import Batimento, Hrv
+
+    rng = np.random.default_rng(1)
+    t, p, h, ant = 0.0, [], [], None
+    estado = Hrv()
+    while t < segundos:
+        t += rr_medio + 0.04 * np.sin(2 * np.pi * 0.25 * t) + rng.normal(0, 0.01)
+        n_pico, fracao = int(t * FS_HZ), round(t * FS_HZ % 1, 4)
+        rr = 0.0 if ant is None else round((n_pico + fracao - ant) * 10.0, 2)
+        valido_rr = ant is not None
+        ant = n_pico + fracao
+        p.append((n_pico, fracao, int(valido_rr), rr, 0, 0.0))
+        s = estado.processa(Batimento(True, n_pico, fracao, valido_rr, rr))
+        h.append((n_pico, int(s.valido), round(s.sdnn_ms, 2), round(s.rmssd_ms, 2)))
+    return np.array(p), np.array(h)
+
+
+def test_confere_placa_desde_o_boot_e_no_meio():
+    from analise.hrv import confere_placa
+
+    p, h = _placa_hrv()
+    r = confere_placa(p, h)
+    assert r["ok"] and r["desde_boot"] and r["validos"] > 100, r
+    k = 40  # captura começando no meio: o Python só compara depois de uma janela
+    r = confere_placa(p[k:], h[k:])
+    assert r["ok"] and not r["desde_boot"] and r["batimentos"] < len(p) - k, r
+
+    errado = h.copy()
+    errado[-10, 2] += 0.2  # um SDNN errado
+    assert not confere_placa(p, errado)["ok"]
+    errado = h.copy()
+    errado[-10, 1] = 0  # um válido que virou inválido
+    assert not confere_placa(p, errado)["ok"]
+
+
+def test_confere_par_cortado_nas_pontas_e_sem_validos():
+    from analise.hrv import confere_placa
+
+    p, h = _placa_hrv()
+    assert confere_placa(p, h[:-1])["ok"]  # parou entre o último p, e o h,
+    assert confere_placa(p[11:], h[10:])["ok"]  # começou entre um p, e o h,
+    assert not confere_placa(p[:30], h[:30])["ok"]  # 30 batimentos: nenhum HRV válido

@@ -4,9 +4,12 @@ O firmware manda, a SENSOR_FS_HZ, uma linha "n,ir,vermelho" por amostra
 (ver docs/src/content/docs/firmware.md). Linhas com "#" são comentário.
 Linhas "b,n,ir,vermelho" e "f,n,ir,vermelho" são o bruto (decimado) e o
 filtrado que a placa calculou a 100 Hz: vão pra <nome>_bruto.csv e
-<nome>_filtrado.csv, ao lado do primeiro. Linhas "q,..." (com
--DBANCADA_QUALIDADE=ON) são a qualidade do bruto, uma por segundo: vão pra
-<nome>_qualidade.csv.
+<nome>_filtrado.csv, ao lado do primeiro. Linhas
+"p,n_pico,fracao,rr_valido,rr_ms,bpm_valido,bpm" são os batimentos do picos
+na placa: vão pra <nome>_picos.csv. Linhas "h,n_pico,valido,sdnn,rmssd" são a
+saída do HRV a cada batimento: vão pra <nome>_hrv.csv.
+Linhas "q,..." (com -DBANCADA_QUALIDADE=ON) são a qualidade do bruto, uma
+por segundo: vão pra <nome>_qualidade.csv.
 
 Uso:
     uv run python -m analise.captura COM3 --segundos 30
@@ -32,6 +35,8 @@ BAUD = 921600
 DADOS = Path(__file__).resolve().parents[2] / "dados"
 COLUNAS = ("n", "ir", "vermelho")
 PONTOS = {"b": "bruto", "f": "filtrado"}  # prefixo da linha -> ponto da cadeia na placa
+COLUNAS_PICOS = ("n_pico", "fracao", "rr_valido", "rr_ms", "bpm_valido", "bpm")
+COLUNAS_HRV = ("n_pico", "valido", "sdnn_ms", "rmssd_ms")
 COLUNAS_QUALIDADE = ("n", "dedo", "usavel", "indice", "motivo", "dc", "pi", "aspereza", "razao")
 
 
@@ -80,6 +85,35 @@ def le_ponto(linha: str) -> tuple[str, tuple[int, float, float]] | None:
         return None
 
 
+def le_batimento(linha: str) -> tuple[int, float, int, float, int, float] | None:
+    """Converte "p,n_pico,fracao,rr_valido,rr_ms,bpm_valido,bpm". None se não for."""
+    partes = linha.strip().split(",")
+    if len(partes) != 7 or partes[0] != "p":
+        return None
+    try:
+        return (
+            int(partes[1]),
+            float(partes[2]),
+            int(partes[3]),
+            float(partes[4]),
+            int(partes[5]),
+            float(partes[6]),
+        )
+    except ValueError:
+        return None
+
+
+def le_hrv(linha: str) -> tuple[int, int, float, float] | None:
+    """Converte "h,n_pico,valido,sdnn,rmssd". None se não for."""
+    partes = linha.strip().split(",")
+    if len(partes) != 5 or partes[0] != "h":
+        return None
+    try:
+        return int(partes[1]), int(partes[2]), float(partes[3]), float(partes[4])
+    except ValueError:
+        return None
+
+
 def le_qualidade(linha: str) -> tuple[int, int, int, float, int, int, float, float, float] | None:
     """Converte "q,n,dedo,usavel,indice,motivo,dc,pi,aspereza,razao" (inteiros
     escalados, ver Core/Inc/bancada_qualidade.h) em valores. None se não for."""
@@ -91,6 +125,14 @@ def le_qualidade(linha: str) -> tuple[int, int, int, float, int, int, float, flo
     except ValueError:
         return None
     return n, dedo, usavel, indice / 1000, motivo, dc, pi / 1e5, aspereza / 100, razao / 100
+
+
+# prefixo -> (csv, leitor, colunas) das linhas de saída dos módulos
+LINHAS = {
+    "p,": ("picos", le_batimento, COLUNAS_PICOS),
+    "h,": ("hrv", le_hrv, COLUNAS_HRV),
+    "q,": ("qualidade", le_qualidade, COLUNAS_QUALIDADE),
+}
 
 
 def destino_ponto(destino: Path, ponto: str) -> Path:
@@ -115,6 +157,19 @@ def grava(fonte: Fonte, destino: Path, segundos: float | None = None) -> Resumo:
                 if linha.startswith("#"):
                     resumo.comentarios.append(linha)
                     continue
+                if linha[:2] in LINHAS:
+                    ponto, ler, colunas = LINHAS[linha[:2]]
+                    valores = ler(linha)
+                    if valores is None:
+                        resumo.invalidas += 1
+                        continue
+                    if ponto not in abertos:
+                        arq = destino_ponto(destino, ponto).open("w", newline="", encoding="utf-8")
+                        abertos[ponto] = (arq, csv.writer(arq))
+                        abertos[ponto][1].writerow(colunas)
+                    abertos[ponto][1].writerow(valores)
+                    resumo.por_ponto[ponto] = resumo.por_ponto.get(ponto, 0) + 1
+                    continue
                 if linha[:2] in {f"{p}," for p in PONTOS}:
                     lido = le_ponto(linha)
                     if lido is None:
@@ -127,19 +182,6 @@ def grava(fonte: Fonte, destino: Path, segundos: float | None = None) -> Resumo:
                         abertos[ponto][1].writerow(COLUNAS)
                     abertos[ponto][1].writerow(valores)
                     resumo.por_ponto[ponto] = resumo.por_ponto.get(ponto, 0) + 1
-                    continue
-                if linha.startswith("q,"):
-                    qualidade = le_qualidade(linha)
-                    if qualidade is None:
-                        resumo.invalidas += 1
-                        continue
-                    if "qualidade" not in abertos:
-                        arq = destino_ponto(destino, "qualidade").open(
-                            "w", newline="", encoding="utf-8")
-                        abertos["qualidade"] = (arq, csv.writer(arq))
-                        abertos["qualidade"][1].writerow(COLUNAS_QUALIDADE)
-                    abertos["qualidade"][1].writerow(qualidade)
-                    resumo.por_ponto["qualidade"] = resumo.por_ponto.get("qualidade", 0) + 1
                     continue
                 amostra = le_linha(linha)
                 if amostra is None:
@@ -177,7 +219,7 @@ def main(argv: list[str] | None = None) -> None:
     print(f"saltos no n: {len(resumo.saltos)} ({resumo.perdidas} amostras perdidas); "
           f"linhas inválidas: {resumo.invalidas}")
     for ponto, linhas in resumo.por_ponto.items():
-        print(f"{linhas} linhas de {ponto} da placa em {destino_ponto(destino, ponto)}")
+        print(f"{linhas} linhas do {ponto} da placa em {destino_ponto(destino, ponto)}")
     for c in resumo.comentarios:
         print(f"  {c}")
 
