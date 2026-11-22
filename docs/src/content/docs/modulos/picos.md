@@ -82,7 +82,7 @@ a 0,6, refratário de 0,25 a 0,35 s e envelope de 0,5 a 3 s. O que se viu:
 
 **O problema.** Um sinal sem pulso (dedo mal apoiado) também gera "batimentos": o detector acha picos no
 ruído, com RR de 300 a 1 600 ms. Cada RR pode passar sozinho pela faixa do `rr_valido`, e o `valido` do BPM,
-que só pedia 4 RR válidos, **acreditava em 94% do tempo** num ruído sem pulso (medido com ruído branco passando
+que só pedia 4 RR válidos, **acreditava em 94% dos batimentos** (100% depois dos 8 primeiros, a mesma base da tabela abaixo) num ruído sem pulso (medido com ruído branco passando
 pelo mesmo filtro e pelo picos). Só o picos, que vê a forma do sinal, consegue reconhecer que os batimentos não
 formam um ritmo.
 
@@ -92,14 +92,14 @@ menos de **15%** da mediana dos RR válidos. O `ppg.h` não muda: só fica mais 
 significa ("BPM confiável pelo picos"). O BPM em si continua sendo a média dos últimos 8 RR válidos.
 
 **Como se escolheu.** Os números 6 de 8 e 15% eram o ponto de partida; a variante também mudou, pelos dados
-(`uv run python -m analise.picos_validacao --regularidade`, nos 21 registros do PhysioNet no cache e em 12 trechos
-de 60 s de ruído branco, fração do tempo com o `valido` ligado):
+(`uv run python -m analise.picos_validacao --regularidade`, nos 66 registros do PhysioNet, baixados se faltarem, e em
+12 trechos de 60 s de ruído branco, fração do tempo com o `valido` ligado):
 
 | | todos os RR válidos perto da mediana (10 / 15 / 20 / 25%) | **6 de 8 bons** (10 / **15** / 20 / 25%) |
 |---|---|---|
-| sentado (11) | 78 / 90 / 95 / 98% | 93 / **97** / 100 / 100% |
-| andando (5) | 45 / 74 / 78 / 82% | 71 / **79** / 81 / 85% |
-| correndo (5) | 66 / 89 / 93 / 95% | 87 / **94** / 94 / 95% |
+| sentado (22) | 72 / 89 / 95 / 98% | 91 / **97** / 99 / 100% |
+| andando (22) | 34 / 47 / 51 / 54% | 48 / **52** / 54 / 57% |
+| correndo (22) | 61 / 75 / 79 / 82% | 75 / **80** / 82 / 84% |
 | **ruído sem pulso (12)** | 0 / 2 / 5 / 10% | 1 / **3** / 8 / 14% |
 
 - **Exigir que *todos* os RR válidos fiquem perto da mediana** (a primeira ideia) rejeita o ruído tão bem quanto,
@@ -107,7 +107,10 @@ de 60 s de ruído branco, fração do tempo com o `valido` ligado):
   do tempo, e uma única extrassístole desliga o BPM por 8 batimentos. Por isso a regra virou "6 de 8 bons": uma ou
   duas fora do ritmo não derrubam, e o ruído continua caindo em 3%.
 - **15%** é o meio-termo: a 20% o ruído passa a ser aceito em 8% do tempo (14% a 25%), e a 10% já se perde o
-  BPM de gente saudável (93% sentado, 71% andando).
+  BPM de gente saudável (91% sentado, 48% andando).
+- **Andando e correndo, o `valido` fica bem mais desligado** (52% e 80% do tempo, piores `s11_walk` com 0% e `s8_run`
+  com 4%; sentado, o pior é `s17_sit` com 78%). Nos registros andando em que ele fica baixo (s8, s10 a s14), o BPM do
+  picos erra de 5 a 17 bpm contra o ECG: desligar ali é o comportamento certo, não uma perda.
 - No registro com movimento forte, `s2_walk`, o `valido` fica ligado em só 22% dos batimentos, que é o certo: o
   BPM dele erra 8,4 bpm.
 
