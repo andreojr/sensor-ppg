@@ -31,6 +31,7 @@
 #include "hrv/hrv.h"
 #include "max30102.h"
 #include "picos/picos.h"
+#include "espectral/espectral.h"
 #include "respiracao/respiracao.h"
 #include "serial.h"
 
@@ -68,6 +69,7 @@ static decimacao_t decimacao;              /* sensor -> bruto a PPG_FS_HZ */
 static max30102_amostra_t anterior;        /* repetida no lugar das perdidas */
 static filtro_t filtro;                    /* bruto -> filtrado (0,5 a 4 Hz) */
 static picos_t picos;                      /* filtrado -> batimentos e BPM */
+static espectral_t espectral;              /* filtrado -> BPM pela FFT (~15 KB) */
 static hrv_t hrv;                          /* batimentos -> SDNN e RMSSD */
 static respiracao_t respiracao;            /* bruto -> respirações por minuto */
 
@@ -75,6 +77,7 @@ static respiracao_t respiracao;            /* bruto -> respirações por minuto 
 static ciclos_t ciclos_decimacao;
 static ciclos_t ciclos_filtro;
 static ciclos_t ciclos_picos;
+static ciclos_t ciclos_espectral;
 static ciclos_t ciclos_hrv; /* por batimento, não por amostra */
 static ciclos_t ciclos_respiracao;
 static qualidade_t qualidade;              /* bruto -> qualidade (1 184 B: static) */
@@ -157,11 +160,12 @@ int main(void)
     HAL_UART_Transmit(&huart1, (const uint8_t *)erro, sizeof erro - 1, 100);
     Error_Handler();
   }
-  char cabecalho[288];
+  char cabecalho[352];
   int n = snprintf(cabecalho, sizeof cabecalho,
                    "# MAX30102 %u Hz: n,ir,vermelho\n# decimacao %u Hz: b,n,ir,vermelho\n"
                    "# filtro %u Hz, atraso %u: f,n,ir,vermelho\n"
                    "# picos: p,n_pico,fracao,rr_valido,rr_ms,bpm_valido,bpm\n"
+                   "# espectral: e,n,bpm_valido,bpm\n"
                    "# hrv: h,n_pico,valido,sdnn,rmssd\n"
                    "# respiracao 1 Hz: r,n,rpm,valido\n"
                    "# tela 1 Hz: t,n,mostra,bpm x100\n",
@@ -180,6 +184,9 @@ int main(void)
 #ifdef BANCADA_PICOS
   (void)bancada_picos(); /* só informativo, como as outras */
 #endif
+#ifdef BANCADA_ESPECTRAL
+  (void)bancada_espectral(); /* idem */
+#endif
 #ifdef BANCADA_RESPIRACAO
   (void)bancada_respiracao();
 #endif
@@ -191,6 +198,12 @@ int main(void)
   }
   filtro_init(&filtro);
   picos_init(&picos);
+  if (!espectral_init(&espectral))
+  {
+    static const char erro[] = "# erro: FFT de 1024 pontos nao compilada (espectral)\n";
+    HAL_UART_Transmit(&huart1, (const uint8_t *)erro, sizeof erro - 1, 100);
+    Error_Handler();
+  }
   hrv_init(&hrv);
   respiracao_init(&respiracao);
   /* USER CODE END 2 */
@@ -587,6 +600,18 @@ static void envia_batimento(const ppg_batimento_t *b, const ppg_bpm_t *v)
   serial_escreve(linha, (uint32_t)tam);
 }
 
+/* O BPM do espectral: "e,n,bpm_valido,bpm", com n o da amostra filtrada em que a janela
+   terminou e o bpm em 2 casas (0 quando inválido). */
+static void envia_espectral(const ppg_amostra_t *filtrado, const ppg_bpm_t *v)
+{
+  char bpm[24];
+  char linha[64];
+  centesimos(bpm, sizeof bpm, v->valido ? v->bpm : 0.0f);
+  int tam = snprintf(linha, sizeof linha, "e,%lu,%d,%s\n", (unsigned long)filtrado->n,
+                     v->valido ? 1 : 0, bpm);
+  serial_escreve(linha, (uint32_t)tam);
+}
+
 /* A saída do HRV depois de um batimento: "h,n_pico,valido,sdnn,rmssd" (ms, 2 casas). */
 static void envia_hrv(uint32_t n_pico, const ppg_hrv_t *s)
 {
@@ -613,8 +638,9 @@ static void envia_respiracao(uint32_t n, const ppg_respiracao_t *r)
 
 /* Uma amostra do sensor na cadeia. A cada 4, sai o bruto a PPG_FS_HZ (linha
    "b,..."), ele passa no filtro (linha "f,...") e na respiração (linha
-   "r,...", uma por segundo), e o filtrado no picos; a cada batimento, as
-   linhas "p,..." e "h,..." (HRV); a cada 10 s, os ciclos. */
+   "r,...", uma por segundo), e o filtrado no picos e no espectral; a cada
+   batimento, as linhas "p,..." e "h,..." (HRV); a cada segundo, a linha
+   "e,..." (espectral); a cada 10 s, os ciclos. */
 static void decima(const max30102_amostra_t *amostra)
 {
   decimacao_entrada_t e = {amostra->ir, amostra->vermelho};
@@ -655,6 +681,15 @@ static void decima(const max30102_amostra_t *amostra)
       }
     }
 
+    ppg_bpm_t bpm_espectral;
+    t0 = ciclos_agora();
+    bool saiu_espectral = espectral_processa(&espectral, &filtrado, &bpm_espectral);
+    ciclos_conta(&ciclos_espectral, ciclos_agora() - t0);
+    if (saiu_espectral)
+    {
+      envia_espectral(&filtrado, &bpm_espectral);
+    }
+
     ppg_respiracao_t resp;
     t0 = ciclos_agora();
     bool estimou = respiracao_processa(&respiracao, &bruto, &resp);
@@ -688,6 +723,8 @@ static void decima(const max30102_amostra_t *amostra)
     ciclos_relata(&ciclos_decimacao, "decimacao", BANCADA_ORCAMENTO_DECIMACAO);
     ciclos_relata(&ciclos_filtro, "filtro", BANCADA_ORCAMENTO_FILTRO);
     ciclos_relata(&ciclos_picos, "picos", BANCADA_ORCAMENTO_PICOS);
+    ciclos_relata_max(&ciclos_espectral, "espectral", BANCADA_ORCAMENTO_ESPECTRAL,
+                      BANCADA_ORCAMENTO_ESPECTRAL_MAX);
     ciclos_relata(&ciclos_hrv, "hrv", BANCADA_ORCAMENTO_HRV);
     ciclos_relata(&ciclos_respiracao, "respiracao", BANCADA_ORCAMENTO_RESPIRACAO);
     ciclos_relata(&ciclos_qualidade, "qualidade", BANCADA_ORCAMENTO_QUALIDADE);
