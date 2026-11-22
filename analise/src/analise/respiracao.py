@@ -312,32 +312,52 @@ def gera_vetores(testes: Path | None = None, coef: Path = COEF_H,
 # ---- Placa x Python (sensor real) e metrônomo -------------------------------
 
 
+AQUECE_S = 20  # captura no meio: transitório do filtro, depois da janela de 60 s
+
+
 def confere_placa(bruto: np.ndarray, resp_placa: np.ndarray) -> dict:
     """Roda o Estimador no bruto (IR) que a placa mandou e compara com o que ela estimou.
 
-    bruto: colunas n, ir, vermelho a 100 Hz, sem saltos e desde o n = 0 (a
-    janela de 60 s e o filtro guardam estado desde o boot).
+    bruto: colunas n, ir, vermelho a 100 Hz (o _bruto.csv da captura).
     resp_placa: colunas n (do bruto que soltou a estimativa), rpm, valido.
+    Captura aberta antes do reset: fica só o que veio depois do boot, e tudo
+    tem que bater. Captura no meio: a placa agrupa o bruto em blocos de BLOCO
+    e solta uma estimativa a cada BLOCO * PASSO amostras desde o n = 0; o
+    Python começa no primeiro n múltiplo disso (os mesmos blocos) e só compara
+    depois da janela de 60 s mais AQUECE_S de transitório do filtro.
     """
+    from analise.picos import depois_do_reset
+
+    bruto = depois_do_reset(bruto)
+    resp_placa = depois_do_reset(resp_placa)
     n = bruto[:, 0].astype(np.int64)
-    if n[0] != 0 or np.any(np.diff(n) != 1):
-        raise ValueError("o bruto tem que começar no n = 0 e não ter saltos")
-    py = estima(bruto[:, 1])
-    por_n = {int(i): (bool(v), rpm) for i, v, rpm, _ in py}
+    if np.any(np.diff(n) != 1):
+        raise ValueError("o bruto tem saltos no n: a comparação não vale")
+    desde_boot = bool(n[0] == 0)
+    ciclo = BLOCO * PASSO
+    k0 = int((-n[0]) % ciclo)  # primeiro n alinhado com os blocos da placa
+    n0 = int(n[0]) + k0
+    a_partir = 0 if desde_boot else n0 + (JANELA_S + AQUECE_S) * FS_HZ
+    py = estima(bruto[k0:, 1])
+    por_n = {n0 + int(i): (bool(v), rpm) for i, v, rpm, _ in py}
     comparadas, diferentes, pior = 0, 0, 0.0
     for nn, rpm, valido in resp_placa:
-        if int(nn) not in por_n:
+        if int(nn) not in por_n or nn < a_partir:
             continue
         v_py, rpm_py = por_n[int(nn)]
         comparadas += 1
         diferentes += bool(valido) != v_py
         if v_py and valido:
             pior = max(pior, abs(rpm - rpm_py))
-    return {"comparadas": comparadas, "valido_diferente": diferentes, "erro_max_rpm": pior}
+    return {"comparadas": comparadas, "valido_diferente": diferentes, "erro_max_rpm": pior,
+            "desde_boot": desde_boot}
 
 
 def confere_metronomo(resp_placa: np.ndarray, rpm_alvo: float, descarte_s: float = 60) -> dict:
     """Estimativas válidas da placa contra o ritmo do metrônomo (descarta o 1º minuto)."""
+    from analise.picos import depois_do_reset
+
+    resp_placa = depois_do_reset(resp_placa)
     n = resp_placa[:, 0]
     ok = (resp_placa[:, 2] > 0) & (n >= n[0] + descarte_s * FS_HZ)
     rpm = resp_placa[ok, 1]
@@ -368,8 +388,9 @@ def main(argv: list[str] | None = None) -> None:
         if args.confere:
             bruto = np.loadtxt(base.with_name(base.stem + "_bruto.csv"), delimiter=",", skiprows=1)
             r = confere_placa(bruto, resp)
-            ok = r["valido_diferente"] == 0 and r["erro_max_rpm"] <= 0.5
-            print(f"{r['comparadas']} estimativas comparadas; valido diferente em "
+            ok = r["comparadas"] > 0 and r["valido_diferente"] == 0 and r["erro_max_rpm"] <= 0.5
+            modo = "desde o boot" if r["desde_boot"] else f"no meio (depois de {JANELA_S + AQUECE_S} s)"
+            print(f"captura {modo}: {r['comparadas']} estimativas comparadas; valido diferente em "
                   f"{r['valido_diferente']}; erro máximo {r['erro_max_rpm']:.3f} rpm: "
                   f"{'OK' if ok else 'DIVERGE'}")
         if args.metronomo:

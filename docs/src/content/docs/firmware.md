@@ -254,8 +254,8 @@ Python. Pode ser ligada junto com as outras.
 
 Com `-DBANCADA_RESPIRACAO=ON`: 5 min do bruto do `s1_sit` (o vetor de
 `testes/respiracao/vetores/s1_sit.h`, ~120 KB na flash), porque os 60 s da
-fonte falsa só enchem uma janela. As três bancadas juntas ocupam ~294 KB de
-flash.
+fonte falsa só enchem uma janela. Decimação, filtro e respiração juntas
+ocupam ~300 KB de flash; as cinco bancadas, ~341 KB.
 
 ```text
 # bancada respiracao: 299 estimativas (esperado 299), 0 diferentes, erro max 0 milesimos de rpm

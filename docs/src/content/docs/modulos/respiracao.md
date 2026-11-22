@@ -1,6 +1,6 @@
 ---
 title: Respiração
-description: "Frequência respiratória pela banda lenta (0,1 a 0,5 Hz)."
+description: "Frequência respiratória pela banda lenta (passa-faixa de 0,07 a 0,6 Hz)."
 sidebar:
   order: 3
 ---
@@ -14,7 +14,7 @@ sidebar:
 | Código | `Core/*/pds/respiracao/` |
 | Protótipo | `analise/src/analise/respiracao.py` |
 
-**O quê:** frequência respiratória pela banda lenta (0,1 a 0,5 Hz).
+**O quê:** frequência respiratória pela banda lenta (passa-faixa de 0,07 a 0,6 Hz, busca de 4,8 a 31,2 rpm).
 
 ## Estado
 
@@ -148,9 +148,12 @@ cmake --build --preset Debug
 
 **Orçamento:** 1% da CPU por amostra a 100 Hz em média (9600 ciclos). O
 espectro (240 × 89 iterações do Goertzel) roda uma vez por segundo. Pela
-contagem de instruções em `-O0`, são ~500 mil ciclos (~5 ms) nessa amostra,
-o que dá ~5000 ciclos por amostra em média. O máximo fica bem acima do
-orçamento, mas cabe com folga nos 37 ms que a FIFO do sensor aguenta.
+contagem de instruções em `-O0`, são ~500 mil instruções nessa amostra; com
+os acessos à memória (16 das 27 instruções do laço) e os wait states da
+flash, devem ser ~0,7 a 0,9 milhão de ciclos (~8 ms), ou ~8000 ciclos por
+amostra em média: a margem contra os 9600 é pequena, e o número de verdade
+sai da bancada (passo 4). O máximo fica bem acima do orçamento, mas cabe nos
+37 ms que a FIFO do sensor aguenta.
 
 **Resultado na placa:** *(preencher com a saída da bancada)*
 
@@ -162,14 +165,19 @@ seguindo um metrônomo com o dedo parado. Ponha o metrônomo no dobro do ritmo
 (12, 20 e 30 batidas por minuto): inspira numa batida, expira na outra.
 
 ```bash
-uv run python -m analise.captura COM3 --segundos 180 -o dados/metronomo_6.csv
+uv run python -m analise.captura COM3 --segundos 180 -o dados/metronomo_6.csv   # e aperte o reset
 uv run python -m analise.respiracao --metronomo dados/metronomo_6.csv --rpm 6
 uv run python -m analise.respiracao --confere dados/metronomo_6.csv
 ```
 
-O `--metronomo` descarta o 1º minuto (a janela enchendo) e mostra quantas
-estimativas saíram válidas, a mediana e o erro médio contra o ritmo. O
-`--confere` refaz a conta no Python sobre o bruto da placa. Na placa simulada
+Abra a captura e só então resete a placa (botão ou
+`STM32_Programmer_CLI -c port=SWD -rst`): o `--confere` usa o trecho depois
+do último reset e aí compara tudo. Capturando no meio (sem reset), ele começa
+no primeiro bloco alinhado com os da placa e só compara depois de 80 s (a
+janela de 60 s e o transitório do filtro). O `--metronomo` descarta o 1º
+minuto depois do reset (a janela enchendo) e mostra quantas estimativas
+saíram válidas, a mediana e o erro médio contra o ritmo. O `--confere` refaz
+a conta no Python sobre o bruto da placa. Na placa simulada
 no PC (cadeia inteira em C, "sensor" a 400 Hz respirando a 10 rpm), deu 179
 estimativas iguais às do Python (erro de 0,005 rpm) e 119 de 119 válidas a
 10,0 rpm.

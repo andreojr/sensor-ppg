@@ -79,10 +79,27 @@ def test_confere_placa_e_metronomo():
     s = respiracao.estima(x)
     placa = np.column_stack([s[:, 0], s[:, 2], s[:, 1]])
     r = respiracao.confere_placa(bruto, placa)
-    assert r == {"comparadas": 120, "valido_diferente": 0, "erro_max_rpm": 0.0}
+    assert r == {"comparadas": 120, "valido_diferente": 0, "erro_max_rpm": 0.0, "desde_boot": True}
     placa[100, 1] += 1
     assert respiracao.confere_placa(bruto, placa)["erro_max_rpm"] == pytest.approx(1)
     m = respiracao.confere_metronomo(placa, 10)
     assert m["validas"] == m["estimativas"] == 60 and m["mediana_rpm"] == pytest.approx(10, abs=0.1)
-    with pytest.raises(ValueError):
-        respiracao.confere_placa(bruto[1:], placa)
+    with pytest.raises(ValueError):  # salto no n
+        respiracao.confere_placa(np.delete(bruto, 500, axis=0), placa)
+
+
+def test_confere_no_meio_e_depois_do_reset():
+    """Captura aberta com a placa rodando (no meio) e aberta antes do reset."""
+    x = respiracao.metronomo_sintetico(rpms=(10,), minutos=4)
+    s = respiracao.estima(x)
+    placa = np.column_stack([s[:, 0], s[:, 2], s[:, 1]])
+    bruto = np.column_stack([np.arange(len(x)), x, x])
+    k = 1234  # começa no meio, fora do alinhamento dos blocos
+    r = respiracao.confere_placa(bruto[k:], placa[placa[:, 0] >= k])
+    assert not r["desde_boot"] and r["comparadas"] > 60
+    assert r["valido_diferente"] == 0 and r["erro_max_rpm"] < 0.05
+    antes = np.column_stack([np.arange(900, 1500), x[:600], x[:600]])  # fim do boot anterior
+    r = respiracao.confere_placa(np.vstack([antes, bruto]), np.vstack([placa[:3] + [5000, 0, 0], placa]))
+    assert r["desde_boot"] and r["comparadas"] == len(placa) and r["valido_diferente"] == 0
+    m = respiracao.confere_metronomo(np.vstack([placa[:3] + [5000, 0, 0], placa]), 10)
+    assert m["estimativas"] == len(placa) - 60
