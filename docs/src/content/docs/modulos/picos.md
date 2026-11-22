@@ -177,7 +177,8 @@ sentado e de 8 a 45 ms em movimento.
 maiores que o pulso, e o detector segue os passos em vez do coração (erro de
 BPM de 8 e 3,5 bpm; sensibilidade de 80 e 85%). Nenhum parâmetro resolve isso:
 é o papel do módulo `qualidade` marcar esse trecho como inutilizável
-(`usavel = false`), e o laço principal descarta os batimentos dele.
+(`usavel = false`); a tela não mostra o BPM nesse trecho (decisão do BPM confiável). O laço
+ainda não descarta os batimentos dele pro HRV (pendência).
 
 **A corcova do FIR (`s3_sit`), resolvida:** o FIR de fase linear deixa uma corcova
 antes do batimento. Sem tratamento, ela passava do limiar, virava batimento e o
@@ -191,8 +192,8 @@ ECG**, e o erro do RMSSD fica entre −0,2 e 4,2 ms. O teste
 
 **O BPM não expira sozinho:** depois de 8 batimentos regulares, `picos_bpm()` continua
 `valido` com o último valor mesmo que não chegue batimento novo (dedo
-retirado, sinal parado). Quem tira o "--" do display nesse caso é a
-`qualidade` (`dedo_presente`).
+retirado, sinal parado). Quem põe o "--" no display nesse caso é a decisão do BPM
+confiável (`qualidade_bpm_confiavel()`): o último batimento tem que ter no máximo 3 s.
 
 ### Placa com a fonte falsa
 

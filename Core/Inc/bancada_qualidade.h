@@ -11,7 +11,7 @@
  * ...").
  *
  * Passo 5, qualidade_linha(): no laço, a cada saída da qualidade sobre o
- * bruto do sensor, uma linha "q,n,dedo,usavel,indice,motivo,dc,pi,aspereza,razao"
+ * bruto do sensor, uma linha "q,n,dedo,usavel,indice,motivo,dc,pi,aspereza,razao,ritmo"
  * (só inteiros: o printf do nano.specs não tem float). analise.captura grava
  * essas linhas em <nome>_qualidade.csv.
  */
@@ -25,10 +25,11 @@
 #include "qualidade/qualidade.h"
 
 /*
- * Orçamento por amostra: 2000 ciclos (~21 us a 96 MHz), 0,2% da CPU a 100 Hz.
- * O pior caso é a amostra que fecha o bloco (as divisões da janela).
+ * Orçamento por amostra: 3000 ciclos (~31 us a 96 MHz), 0,3% da CPU a 100 Hz.
+ * Era 2000; com o ritmo (25 passos da autocorrelação por amostra, no build
+ * Debug sem otimização) o pior caso foi a ~2200 e o André subiu pra 3000.
  */
-#define BANCADA_ORCAMENTO_QUALIDADE 2000u
+#define BANCADA_ORCAMENTO_QUALIDADE 3000u
 
 #ifdef BANCADA_QUALIDADE
 /* Roda o vetor bordas na qualidade e manda o resultado pela serial. true se passou. */
@@ -36,7 +37,8 @@ bool bancada_qualidade(void);
 
 /*
  * Escreve em linha a saída da qualidade (com o diagnóstico de q), sem float:
- *   q,<n>,<dedo>,<usavel>,<indice x1000>,<motivo>,<dc>,<pi x1e5>,<aspereza x100>,<razao x100>
+ *   q,<n>,<dedo>,<usavel>,<indice x1000>,<motivo>,<dc>,<pi x1e5>,<aspereza x100>,<razao x100>,
+ *     <ritmo x1000>
  * pi x1e5 = milésimos de ponto percentual (400 = 0,400%). Devolve o tamanho.
  */
 int qualidade_linha(char *linha, size_t tam, uint32_t n, const ppg_qualidade_t *s,
