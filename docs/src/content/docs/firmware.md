@@ -8,7 +8,7 @@ Código que usa HAL, em `Core/Inc` e `Core/Src` (fora de `pds/`).
 | Parte | Responsável | Estado |
 |---|---|---|
 | Leitura do MAX30102 (I2C1, FIFO, INT no PB5) | João | feita: `max30102.c` |
-| Serial pro PC (USART1 a 921600 com DMA, adaptador USB-serial) | João | feita: `serial.c`, manda o sinal cru e as saídas da cadeia (bruto, filtrado, batimentos, HRV e respiração) |
+| Serial pro PC (USART1 a 921600 com DMA, adaptador USB-serial) | João | feita: `serial.c`, manda o sinal cru e as saídas da cadeia (bruto, filtrado, batimentos, HRV, BPM do espectral e respiração) |
 | Decimação na placa (400 → 100 Hz) e ciclos (DWT) | João | feita: `main.c` e `bancada.c`; ver [Decimação](../modulos/decimacao/) |
 | Filtro na placa (bruto → filtrado) | João | feito: `main.c` e `bancada.c`; ver [Filtro](../modulos/filtro/) |
 | Picos na placa (filtrado → batimentos e BPM) | Celso / André | feito: `main.c` e `bancada.c`; ver [Picos](../modulos/picos/) |
@@ -210,8 +210,9 @@ passam de 100 000 e oscilam ~1% com o pulso.
 
 Pra gravar em CSV e plotar, dentro de `analise/` (o CSV vai pra
 `analise/dados/`, que não entra no git). No fim, a captura mostra a taxa medida
-e quantas amostras se perderam. As linhas `b,`, `f,` e `r,` vão pra
-`<nome>_bruto.csv`, `<nome>_filtrado.csv` e `<nome>_respiracao.csv`, e cada
+e quantas amostras se perderam. As linhas `b,`, `f,`, `p,`, `h,`, `e,` e `r,` vão pra
+`<nome>_bruto.csv`, `<nome>_filtrado.csv`, `<nome>_picos.csv`, `<nome>_hrv.csv`,
+`<nome>_espectral.csv` e `<nome>_respiracao.csv`, e cada
 `--confere` compara o módulo da placa com o do Python no mesmo sinal:
 
 ```bash

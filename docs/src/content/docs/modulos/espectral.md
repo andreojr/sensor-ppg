@@ -109,8 +109,13 @@ O Python rodou no mesmo filtrado que a placa mandou (linhas `f,`), janela a jane
 | Saídas comparadas | 30 de 60 (3 linhas perdidas na serial tiraram as outras janelas) |
 | `valido` placa × Python | igual em todas |
 | BPM placa × Python | diferença máxima de 0,005 (o filtrado vem com 2 casas) |
-| BPM da placa | mediana de 64,4 bpm (de 55,6 a 73,9), 100% válidos |
-| Espectral × picos (60 / RR médio na mesma janela) | diferença mediana de 1,06 bpm, máxima de 9,5 |
+| BPM da placa | 60 de 60 saídas válidas, de 55,6 a 73,9 bpm (mediana de 64,4 nas 30 comparadas) |
+| Espectral × picos, janela a janela | \|diferença\| mediana de 1,06 bpm, máxima de 9,5 |
+
+Pro picos, o BPM de referência é 60 / RR médio dos batimentos com `rr_valido` cujo
+`n_pico` cai na mesma janela. Como o `n_pico` já desconta `PPG_ATRASO_AMOSTRAS` e o `n`
+do espectral não, a janela vai de `n - 900` a `n - 100`; sem esse recuo, a diferença
+mediana sobe pra 1,4 bpm. O script dessa comparação (`--confere`) vem num PR à parte.
 
 **Sem dedo, sai válido.** Antes do dedo, só com ruído no sensor, a placa marcou de 135 a
 141 bpm como válido. O espectral não sabe se há dedo: isso é do módulo `qualidade`.
