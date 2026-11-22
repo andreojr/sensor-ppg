@@ -38,7 +38,9 @@ guarda as últimas `JANELA_S` e, a cada `HOP_S`, com a janela cheia, devolve um
    todo o espectro (vazamento espectral).
 3. **Zero-padding até `NFFT`.** Não traz informação nova, mas interpola o
    espectro e deixa o pico mais fácil de localizar.
-4. **Maior pico de potência na banda de 0,7 a 3,5 Hz** (42 a 210 bpm).
+4. **Maior pico de potência na banda de 0,7 a 3,5 Hz** (bins 8 a 35, de 0,78 a
+   3,42 Hz). Com a regra do máximo local (passo 6), a faixa que sai válida vai, na
+   prática, de **~44 a ~208 bpm** (medido com senoides).
 5. **Interpolação parabólica** em volta do pico, no log da amplitude. É o que
    faz o erro cair para cerca de 1 bpm, mesmo com a resolução de 7,5 bpm.
 6. **Validade:** o pico precisa ser máximo local (maior que os dois vizinhos) e,
@@ -62,6 +64,8 @@ janela. A janela de 8 s é o meio-termo medido abaixo.
 (aloque fora da pilha). `espectral_processa()` devolve `true` uma vez por segundo, a
 partir da amostra 800, e **`bpm = 0` quando `valido = false`**, como o `picos_bpm()`
 (o display mostra "--"). A FFT é a do módulo [FFT](../fft/) (CMSIS-DSP).
+O `espectral_init()` devolve `bool` (o molde do `ppg.h` é `void`): `false` quando a FFT
+de 1024 pontos não foi compilada, como o `decimacao_init()` faz com uma taxa sem filtro.
 
 Diferenças pro Python, todas dentro da tolerância: o C faz as contas em `float` (a janela de
 Hann com `cosf`, a média por soma sequencial) e o NumPy em `float64`/pairwise. No teste
@@ -69,16 +73,17 @@ Hann com `cosf`, a média por soma sequencial) e o NumPy em `float64`/pairwise. 
 sintético `borda`, com silêncio e senoides perto das bordas da banda, 53 saídas cada) o
 `valido` sai **igual em todas** e o BPM difere no máximo **7,6e-5** (tolerância
 1e-3); reiniciar dá o mesmo resultado. O teste falha de verdade: com o limite de
-validade em 0,6 em vez de 0,3, o `s2_walk` dá 36 diferenças; sem a regra do máximo
+validade em 0,6 em vez de 0,3, o `s2_walk` dá 35 diferenças; sem a regra do máximo
 local, o `borda` dá diferenças no `valido`.
 
 **O `n` da saída** é o da amostra filtrada em que a janela terminou, e o filtrado chega
 `PPG_ATRASO_AMOSTRAS` (1 s) depois do sinal. Pra comparar com outra referência de tempo
 (o ECG, por exemplo), desconte esse atraso.
 
-**Custo** (código ARM emulado, modelo do Cortex-M4F; ver [FFT](../fft/)): **~1 050 ciclos por
-amostra em média** (orçamento 9 600) e **~106 000 no pior caso**, a amostra em que
-sai a FFT (orçamento 960 000, 11% de um período de amostra, 1,1 ms a 96 MHz). Em Release,
+**Custo** (código ARM emulado, modelo do Cortex-M4F, `arm-none-eabi-gcc` 16.2.0; ver
+[FFT](../fft/)): **~1 060 ciclos por amostra em média** (orçamento 9 600) e **~107 400 no
+pior caso**, a amostra em que sai a FFT (orçamento 960 000, 11% de um período de amostra,
+1,1 ms a 96 MHz). Em Release,
 o espectral acrescenta ~26 KB de flash e ~14,7 KB de RAM ao firmware.
 
 **Na placa e com o sensor real:** o `main.c` já passa o filtrado pelo espectral e manda

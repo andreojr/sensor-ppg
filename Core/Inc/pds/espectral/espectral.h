@@ -5,12 +5,13 @@
  * de teste saem dele). Sem HAL, sem malloc, sem global.
  *
  * Entrada: filtrado (ppg.h), uma amostra por vez, usando o canal ir.
- * Saída: um ppg_bpm_t a cada ESPECTRAL_HOP_S, com a janela cheia.
+ * Saída: um ppg_bpm_t a cada ESPECTRAL_HOP amostras, com a janela cheia.
  *
  * A cada passo: janela das últimas 8 s, menos a média, janela de Hann, FFT de
- * 1024 pontos (zero-padding), maior pico na banda de 0,7 a 3,5 Hz (42 a 210 bpm)
- * e interpolação parabólica pra achar a frequência entre dois bins. Só vale
- * (valido) se o pico e os dois vizinhos têm 30% ou mais da potência da banda.
+ * 1024 pontos (zero-padding), maior pico na banda de 0,7 a 3,5 Hz e interpolação
+ * parabólica pra achar a frequência entre dois bins. Só vale (valido) se o pico é
+ * máximo local e, com os dois vizinhos, tem 30% ou mais da potência da banda; na
+ * prática, sai válido de ~44 a ~208 bpm.
  *
  * A FFT é a do módulo fft/ (CMSIS-DSP), que precisa do tamanho 1024 compilado
  * (o padrão).

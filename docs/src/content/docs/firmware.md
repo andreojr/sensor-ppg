@@ -268,7 +268,7 @@ junto com as outras.
 
 **Estado: não rodou na placa.** O código compila (Debug e Release, sem avisos) e o
 mesmo código ARM foi emulado (`uv run testes/fft/ciclos/ciclos.py espectral`): 53 saídas
-iguais às do Python, média de ~1 050 ciclos por amostra e pior caso de ~106 000 (modelo
+iguais às do Python, média de ~1 060 ciclos por amostra e pior caso de ~107 400 (modelo
 do Cortex-M4F, sem a espera da flash). Falta rodar na placa pra trocar a estimativa
 pela medida do contador de ciclos (DWT) e ver as linhas `# bancada espectral` acima.
 

@@ -52,6 +52,7 @@ ORCAMENTO = 96_000_000 // FS_HZ  # ciclos por amostra: 96 MHz / 100 Hz
 
 FLAGS = ["-mcpu=cortex-m4", "-mfpu=fpv4-sp-d16", "-mfloat-abi=hard", "-mthumb", "-Os",
          "-ffunction-sections", "-fdata-sections", "-std=gnu11"]
+PDS = RAIZ / "Core" / "Src" / "pds"
 INCLUDES = [f"-I{DSP / 'Include'}", f"-I{RAIZ / 'Drivers' / 'CMSIS' / 'Include'}",
             f"-I{RAIZ / 'Core' / 'Inc' / 'pds'}", f"-I{RAIZ / 'testes'}"]
 
@@ -70,6 +71,8 @@ def compila(saida: Path, modo: str = "fft") -> tuple[bytes, dict[str, int]]:
     for fonte in fontes:
         obj = saida / (fonte.stem + ".o")
         extra = ["-w"] if DSP in fonte.parents else []
+        if PDS in fonte.parents:
+            extra = ["-ffp-contract=off"]  # como o pds no firmware (CMakeLists.txt)
         gcc(*FLAGS, *extra, *INCLUDES, "-c", str(fonte), "-o", str(obj))
         objetos.append(str(obj))
     elf = saida / "bench.elf"

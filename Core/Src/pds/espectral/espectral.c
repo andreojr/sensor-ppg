@@ -13,6 +13,8 @@
 #define PROMINENCIA_MIN 0.3 /* em double, como no Python */
 #define PI_F 3.14159265358979323846f
 
+_Static_assert(ESPECTRAL_NFFT == 1024u && PPG_FS_HZ == 100u,
+               "K0 e K1 valem só pra FFT de 1024 pontos a 100 Hz: recalcule a banda");
 _Static_assert(ESPECTRAL_JANELA <= ESPECTRAL_NFFT, "a janela tem mais amostras que a FFT");
 
 bool espectral_init(espectral_t *e)

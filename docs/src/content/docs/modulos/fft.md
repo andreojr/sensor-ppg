@@ -119,11 +119,16 @@ o caso passou a usar a entrada normalizada pra amplitude 1, como os outros.
 
 ## Flash e RAM
 
-Firmware compilado com o `arm-none-eabi-gcc` 14.2.1, `cmake --preset <X>`, sem nenhum
-aviso. Como nada no firmware chama a FFT ainda, o linker descarta tudo e o tamanho
-**não muda** em relação à `main`. Pra medir o custo real, uma função temporária
-(fora do repositório) chama `fft_init` dos 3 tamanhos e um `fft_potencia` de cada, com
-dois buffers de 1024 `float`:
+**Hoje**, com o espectral no `main.c` (Release, `arm-none-eabi-gcc` 16.2.0, sem aviso):
+o firmware fica em **47.740 B de flash e 31.484 B de RAM**, contra 21.604 B e 16.788 B
+da `main` (v0.2.0): **+26.136 B de flash e +14.696 B de RAM** pelo espectral e pela FFT
+juntos. Os 14.680 B do `espectral_t` são quase toda a RAM. As tabelas de 256 e 512 pontos
+também entram (o `fft_init` aceita os três tamanhos), embora o espectral só use 1024.
+
+**Medida da FFT sozinha** (histórica, antes de o espectral entrar no `main.c`, com o
+`arm-none-eabi-gcc` 14.2.1 e a `main` de então): uma função temporária (fora do
+repositório) chama `fft_init` dos 3 tamanhos e um `fft_potencia` de cada, com dois
+buffers de 1024 `float`:
 
 | Build | Flash (`main`) | Flash (com a FFT) | Diferença | RAM (`main`) | RAM (com a FFT) | Diferença |
 |---|---|---|---|---|---|---|
@@ -180,11 +185,14 @@ NumPy** (erro ≤ 2,3e-7 relativo ao pico) e conta:
 
 | Pontos | Instruções executadas | Ciclos (modelo) | % do orçamento de 1 amostra | Em tempo a 96 MHz |
 |---|---|---|---|---|
-| 256 | 12.689 | ~21.200 | 2,2% | 0,22 ms |
-| 512 | 27.359 | ~45.250 | 4,7% | 0,47 ms |
-| 1024 | 50.466 | ~83.300 | 8,7% | 0,87 ms |
+| 256 | 12.795 | ~21.300 | 2,2% | 0,22 ms |
+| 512 | 27.624 | ~45.550 | 4,7% | 0,47 ms |
+| 1024 | 51.375 | ~84.550 | 8,8% | 0,88 ms |
 
-Rodar: `uv run testes/fft/ciclos/ciclos.py` (precisa do `arm-none-eabi-gcc` no PATH).
+Rodar: `uv run testes/fft/ciclos/ciclos.py` (precisa do `arm-none-eabi-gcc` no PATH). Os
+números acima são do `arm-none-eabi-gcc` 16.2.0; outra versão do compilador gera outro
+código e muda um pouco a contagem (com o 14.2.1, a de 1024 deu 50.466). Como no firmware,
+o `-ffp-contract=off` vale só pros fontes do `pds` (o CMSIS pode fundir multiplicação e soma).
 
 **O que é exato e o que é estimativa.** A contagem de instruções é exata (cada uma que
 o processador executaria, no código que o compilador gerou). Os ciclos vêm de um
@@ -198,9 +206,9 @@ O número de verdade sai do contador de ciclos da placa (`DWT->CYCCNT`), ainda a
 
 **O espectral inteiro** (`espectral_processa()` amostra a amostra sobre os 60 s do `s2_walk`,
 `uv run testes/fft/ciclos/ciclos.py espectral`): as 53 saídas saem iguais às do Python, e o
-custo é de **~1 054 ciclos por amostra em média** (orçamento 9 600) e **~106 211 no pior caso**,
-a amostra em que sai a FFT (orçamento 960 000; 11,1% de um período de amostra, 1,11 ms a
-96 MHz). A FFT de 1024 pontos é ~83 300 desses; o resto é copiar a janela, tirar a média,
+custo é de **~1 058 ciclos por amostra em média** (orçamento 9 600) e **~107 406 no pior caso**,
+a amostra em que sai a FFT (orçamento 960 000; 11,2% de um período de amostra, 1,12 ms a
+96 MHz). A FFT de 1024 pontos é ~84 550 desses; o resto é copiar a janela, tirar a média,
 aplicar o Hann e achar o pico.
 
 Os números são do **Release (`-Os`)**. O Debug (`-O0`) é bem mais lento, então
