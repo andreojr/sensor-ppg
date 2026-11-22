@@ -134,9 +134,10 @@ static int vetor(void)
 
     /* Ficha: o display lê o último BPM e a última decisão da regra. */
     const ppg_resultados_t *r = cadeia_resultados(&cadeia);
-    if (r->bpm_picos.valido != (tela_mostra[nt - 1u] != 0) || r->spo2.valido) {
-        printf("ficha: bpm_picos.valido %d (última tela %d), spo2.valido %d\n",
-               r->bpm_picos.valido, tela_mostra[nt - 1u], r->spo2.valido);
+    /* A spo2 da ficha não tem referência neste vetor (só o IR do PhysioNet): vale o spo2.c. */
+    if (r->bpm_picos.valido != (tela_mostra[nt - 1u] != 0)) {
+        printf("ficha: bpm_picos.valido %d (última tela %d)\n", r->bpm_picos.valido,
+               tela_mostra[nt - 1u]);
         f++;
     }
     if (r->ultimo_batimento.n_pico != (uint32_t)bat_n_pico[nb - 1u]) {

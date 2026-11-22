@@ -45,6 +45,9 @@ static cadeia_saida_t saida_cheia(void)
     s.bpm_espectral = (ppg_bpm_t){false, 0.0f};
     s.respirou = true;
     s.respiracao = (ppg_respiracao_t){true, 15.2f};
+    s.oxigenou = true;
+    s.spo2 = (ppg_spo2_t){true, 96.36f};
+    s.spo2_r = 0.5464f;
     s.julgou = true;
     s.mostra = true;
     return s;
@@ -64,6 +67,7 @@ static void todas(void)
           "h,1180,0,0.00,0.00,0\n"
           "e,1500,0,0.00\n"
           "r,1500,15.20,1\n"
+          "s,1500,1,96.36,0.546\n"
           "t,1500,1,7385\n");
     if (n != strlen(buf)) {
         printf("devolveu %zu, escreveu %zu\n", n, strlen(buf));

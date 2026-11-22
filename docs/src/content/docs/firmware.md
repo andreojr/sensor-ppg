@@ -15,6 +15,7 @@ Código que usa HAL, em `Core/Inc` e `Core/Src` (fora de `pds/`).
 | HRV na placa (batimentos → SDNN e RMSSD) | André | feito: `pds/cadeia/`, linhas `h,`, bate com o Python na placa; ver [HRV](../modulos/hrv/) |
 | Espectral na placa (filtrado → BPM pela FFT) | Celso | feito: `pds/cadeia/`, linhas `e,`, bate com o Python na placa; ver [Espectral](../modulos/espectral/) e [FFT](../modulos/fft/) |
 | Respiração na placa (bruto → rpm, 1 por segundo) | João | feita: `pds/cadeia/` e `bancada.c`; ver [Respiração](../modulos/respiracao/) |
+| SpO2 na placa (bruto → SpO2 **estimada**) | Celso | **código pronto e compilando, ainda não rodou na placa**: `pds/cadeia/`, `bancada.c`, linhas `s,`; ver [SpO2](../modulos/spo2/) |
 | Bancada do HRV na placa (`-DBANCADA_HRV=ON`) | André | feita: `bancada_hrv.c`, passou na placa; ver [HRV](../modulos/hrv/) |
 | Bancada da qualidade na placa (`-DBANCADA_QUALIDADE=ON`) | André | feita: `bancada_qualidade.c`, passou na placa (55/55, pior caso 2 149 ciclos no Debug); ver [Qualidade](../modulos/qualidade/) |
 | Fonte falsa (PhysioNet em flash) | André | feita: os vetores do PhysioNet das bancadas (`-DBANCADA_*`) |
@@ -134,6 +135,7 @@ INT ficar baixo, não vem outra borda de descida, e sem isso a leitura travaria.
 # espectral: e,n,bpm_valido,bpm
 # hrv: h,n_pico,valido,sdnn,rmssd,rr_usado
 # respiracao 1 Hz: r,n,rpm,valido
+# spo2 (ESTIMADA, reta 110 - 25 R, sem calibracao): s,n,valido,spo2,r
 # tela 1 Hz: t,n,mostra,bpm x100
 # laco 1 Hz (TIM2): amostras, fila_max, fila_cheia, perdidas
 0,112034,98765
@@ -148,6 +150,7 @@ r,99,0.00,0
 ...
 e,799,1,73.85
 ...
+s,799,1,96.36,0.546
 t,1199,1,6420
 ...
 # laco: amostras 100 fila_max 5 fila_cheia 0 perdidas 0
@@ -158,6 +161,7 @@ t,1199,1,6420
 # espectral: ciclos med ... (orcamento 9600) max ... (orcamento 960000)
 # hrv: ciclos med ... max ... (orcamento 20000)
 # respiracao: ciclos med ... max ... (orcamento 9600)
+# spo2: ciclos med ... max ... (orcamento 9600)
 # qualidade: ciclos med ... max ... (orcamento 3000)
 # cadeia: ciclos med ... (orcamento 51000) max ... (orcamento 960000)
 # volta: ciclos med ... max ... (orcamento 3600000)
@@ -199,7 +203,7 @@ t,1199,1,6420
   `valido` 0.
 - A cada 1 s do TIM2, `# laco: ...` (ver [Laço principal](#laço-principal)).
 - A cada 10 s, `# decimacao: ...`, `# filtro: ...`, `# picos: ...`,
-  `# espectral: ...`, `# hrv: ...`, `# qualidade: ...` e
+  `# espectral: ...`, `# hrv: ...`, `# qualidade: ...`, `# spo2: ...` e
   `# respiracao: ciclos med X max Y` medem cada `_processa()`
   com o contador de ciclos do núcleo (DWT). Os orçamentos são 1% da CPU pra
   decimação (96 MHz / 400 Hz / 100 = 2400 ciclos por amostra do sensor), 2%
@@ -211,6 +215,10 @@ t,1199,1,6420
   amostra: 96 MHz / 100 Hz); `# espectral: ...` mostra os dois. Depois vêm a
   cadeia inteira por amostra, a volta do laço e o maior intervalo entre duas
   leituras da FIFO (ver [Laço principal](#laço-principal)).
+- Uma linha `s,` por segundo (a partir de 8 s de sinal), com a **SpO2 estimada** (`spo2_processa()` sobre o
+  **bruto**, não o filtrado): `n` (o do bruto em que a janela terminou), `valido` (0/1), `spo2` em % com 2 casas
+  (0 quando inválida) e o `r` (a razão das razões) com 3 casas. Sem calibração com oxímetro, é uma estimativa:
+  serve para a tendência e a ordem de grandeza. Só confie com o sinal bom.
 - Linhas que começam com `#` são comentário. Se o display não responder no
   boot, sai `# aviso: display nao respondeu na I2C3: segue sem ele` e a placa segue sem ele.
   Se o sensor não responder no
@@ -464,6 +472,20 @@ firmware não linka: ligue só as que for usar.
 # bancada respiracao: 299 estimativas (esperado 299), 0 diferentes, erro max 0 milesimos de rpm
 # bancada respiracao: ciclos por amostra med ... max ... (orcamento 9600): OK
 ```
+### Bancada do spo2 (fonte falsa)
+
+Com `-DBANCADA_SPO2=ON`: os 40 s do bruto do vetor `sem_dedo` (`testes/spo2/vetores/sem_dedo.h`, ~32 KB na flash,
+com janelas válidas, inválidas e de transição) passam pelo spo2 e são conferidos com o Python (`valido` exato; `spo2`
+e `r` com tolerância de 0,001). Confere também o orçamento de ciclos. Pode ser ligada junto com as outras.
+
+```text
+# bancada spo2: 33 saidas (esperado 33), 0 fora da tolerancia, erro max ... milesimos
+# bancada spo2: ciclos por amostra med ... max ... (orcamento 9600): OK
+```
+
+**Estado: não rodou na placa.** O código compila (Debug e Release, sem avisos) e o mesmo código ARM, emulado,
+dá as mesmas 33 saídas do Python, com ~186 ciclos por amostra em média e 1.559 no pior caso (modelo do Cortex-M4F,
+sem a espera da flash). Falta rodar na placa e com o sensor. Ver [SpO2](../modulos/spo2/).
 
 ### O BPM que a tela mostraria (linha `t,`)
 

@@ -144,6 +144,26 @@ def test_qualidade_vai_pro_terceiro_csv(tmp_path):
     assert q["ritmo"].tolist() == [0.512, 0.0]
 
 
+def test_spo2_vai_pro_csv_do_spo2(tmp_path):
+    serial_falsa = io.BytesIO(
+        b"# spo2: s,n,valido,spo2,r\n"
+        b"0,100,200\n"
+        b"s,799,1,96.35,0.546\n"
+        b"s,899,0,0.00,0.000\n"
+        b"s,1,x,0,0\n"
+        b"s,999\n"
+    )
+    destino = tmp_path / "x.csv"
+    resumo = captura.grava(serial_falsa, destino, segundos=0.1)
+    assert resumo.amostras == 1 and resumo.invalidas == 2
+    assert resumo.por_ponto == {"spo2": 2}
+    o2 = pd.read_csv(tmp_path / "x_spo2.csv")
+    assert list(o2.columns) == list(captura.COLUNAS_SPO2)
+    assert o2["valido"].tolist() == [1, 0]
+    assert o2["spo2"].tolist() == [96.35, 0.0]
+    assert o2["r"].tolist() == [0.546, 0.0]
+
+
 def test_plota_gera_png(tmp_path):
     csv = tmp_path / "x.csv"
     csv.write_text("n,ir,vermelho\n100,1,2\n101,3,4\n102,5,6\n", encoding="utf-8")

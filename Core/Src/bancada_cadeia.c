@@ -46,6 +46,7 @@ bool bancada_cadeia(cadeia_t *c)
                       BANCADA_ORCAMENTO_ESPECTRAL_MAX);
     ciclos_relata(&k->hrv, "bancada hrv", BANCADA_ORCAMENTO_HRV);
     ciclos_relata(&k->respiracao, "bancada respiracao", BANCADA_ORCAMENTO_RESPIRACAO);
+    ciclos_relata(&k->spo2, "bancada spo2", BANCADA_ORCAMENTO_SPO2);
     ciclos_relata(&k->qualidade, "bancada qualidade", BANCADA_ORCAMENTO_QUALIDADE);
     n = snprintf(linha, sizeof linha,
                  "# bancada cadeia: ciclos por amostra med %lu max %lu (orcamento %lu / %lu%s): %s\n",

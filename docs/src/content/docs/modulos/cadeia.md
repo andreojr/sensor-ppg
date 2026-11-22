@@ -32,7 +32,7 @@ PDS própria: é a "cola" que antes ficava no `main.c`.
 Por amostra do bruto (a decimação fica antes, no `sensor.c`):
 
 ```text
-bruto ─► filtro ─► picos ─► espectral ─► respiração ─► qualidade
+bruto ─► filtro ─► picos ─► espectral ─► respiração ─► spo2 ─► qualidade
           │         │                                    │
           │         └─ batimento: fila do HRV ◄──────────┘ julgamento: esvazia a fila
           │                                                no HRV e decide o BPM da tela
@@ -70,7 +70,7 @@ mais recente):
 | `hrv` | a cada saída do HRV |
 | `respiracao` | a cada estimativa (1 por segundo) |
 | `qualidade` | a cada julgamento |
-| `spo2` | nunca: `valido = false` até a #125 |
+| `spo2` | a cada estimativa (1 por segundo, do **bruto**); é uma ESTIMATIVA, sem calibração |
 
 Entre dois julgamentos, `bpm_picos.valido` mantém a última decisão e o número
 acompanha o último batimento; se esse batimento vier com BPM inválido (o picos perdeu o

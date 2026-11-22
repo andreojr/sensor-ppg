@@ -25,6 +25,7 @@ bool cadeia_init(cadeia_t *c, cadeia_relogio_t relogio)
     filtro_init(&c->filtro);
     picos_init(&c->picos);
     respiracao_init(&c->respiracao);
+    spo2_init(&c->spo2);
     qualidade_init(&c->qualidade);
     qualidade_fila_init(&c->fila_hrv);
     hrv_init(&c->hrv);
@@ -50,7 +51,7 @@ static void para_hrv(cadeia_t *c, const ppg_batimento_t *b, cadeia_saida_t *s)
 void cadeia_processa(cadeia_t *c, const ppg_amostra_t *bruto, cadeia_saida_t *s)
 {
     uint32_t t_total = inicio(c);
-    s->bateu = s->espectral = s->respirou = s->julgou = s->mostra = false;
+    s->bateu = s->espectral = s->respirou = s->oxigenou = s->julgou = s->mostra = false;
     s->n_hrv = 0;
 
     uint32_t t0 = inicio(c);
@@ -91,6 +92,15 @@ void cadeia_processa(cadeia_t *c, const ppg_amostra_t *bruto, cadeia_saida_t *s)
     fim(c, &c->ciclos.respiracao, t0);
     if (s->respirou)
         c->ficha.respiracao = s->respiracao;
+
+    /* A SpO2 usa o bruto (com DC), não o filtrado. */
+    t0 = inicio(c);
+    s->oxigenou = spo2_processa(&c->spo2, bruto, &s->spo2);
+    fim(c, &c->ciclos.spo2, t0);
+    if (s->oxigenou) {
+        s->spo2_r = spo2_r(&c->spo2);
+        c->ficha.spo2 = s->spo2;
+    }
 
     t0 = inicio(c);
     s->julgou = qualidade_processa(&c->qualidade, bruto, &s->qualidade);

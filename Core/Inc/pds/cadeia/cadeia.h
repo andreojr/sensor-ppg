@@ -4,7 +4,7 @@
  * Chama os módulos na ordem do laço da placa (a mesma da referência em
  * analise/src/analise/cadeia.py):
  *
- *   bruto --> filtro --> picos --> espectral --> respiração --> qualidade
+ *   bruto --> filtro --> picos --> espectral --> respiração --> spo2 --> qualidade
  *
  * e aplica as regras que ligam os módulos (ver qualidade.h):
  *  - batimento: entra na fila do HRV com o julgamento "de antes"; fila cheia solta o
@@ -31,6 +31,7 @@
 #include "picos/picos.h"
 #include "qualidade/qualidade.h"
 #include "respiracao/respiracao.h"
+#include "spo2/spo2.h"
 
 /* Devolve um contador de ciclos que só sobe (dá a volta em uint32_t). */
 typedef uint32_t (*cadeia_relogio_t)(void);
@@ -57,6 +58,9 @@ typedef struct {
     ppg_bpm_t bpm_espectral;
     bool respirou;
     ppg_respiracao_t respiracao;
+    bool oxigenou;                       /* saiu uma SpO2 (estimada) */
+    ppg_spo2_t spo2;
+    float spo2_r;                        /* a razão das razões dessa saída */
     bool julgou;
     ppg_qualidade_t qualidade;
     bool mostra;                         /* a tela mostra o BPM do picos */
@@ -65,7 +69,7 @@ typedef struct {
 } cadeia_saida_t;
 
 typedef struct {
-    ciclos_t filtro, picos, espectral, respiracao, qualidade, hrv, total;
+    ciclos_t filtro, picos, espectral, respiracao, spo2, qualidade, hrv, total;
 } cadeia_ciclos_t;
 
 typedef struct {
@@ -73,6 +77,7 @@ typedef struct {
     picos_t picos;
     espectral_t espectral;
     respiracao_t respiracao;
+    spo2_t spo2;
     qualidade_t qualidade;
     qualidade_fila_t fila_hrv;   /* batimentos esperando o julgamento de depois */
     hrv_t hrv;
@@ -96,7 +101,7 @@ bool cadeia_init(cadeia_t *c, cadeia_relogio_t relogio);
    batimento com BPM inválido). */
 void cadeia_processa(cadeia_t *c, const ppg_amostra_t *bruto, cadeia_saida_t *s);
 
-/* A ficha, só leitura. spo2 fica inválido (não há módulo ainda). */
+/* A ficha, só leitura. A spo2 é uma ESTIMATIVA (sem calibração). */
 const ppg_resultados_t *cadeia_resultados(const cadeia_t *c);
 
 #endif /* PDS_CADEIA_CADEIA_H */
