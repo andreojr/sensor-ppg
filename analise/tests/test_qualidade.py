@@ -220,7 +220,7 @@ def test_filtro_do_ritmo_e_o_butterworth():
     (True, False, True, 1000, 900, False),   # picos sem ritmo regular
     (False, True, True, 1000, 900, False),   # qualidade diz que não dá
     (False, False, True, 1000, 900, False),
-    (True, True, False, 1000, 0, False),     # nenhum batimento ainda
+    (True, True, False, 100, 0, False),      # nenhum batimento ainda (idade de 100 aceitaria)
     (True, True, True, 1000, 700, True),     # idade = BATIMENTO_VALE: ainda vale
     (True, True, True, 1001, 700, False),    # idade = BATIMENTO_VALE + 1: velho
     (True, True, True, 1000, 1080, False),   # n_pico > n: anomalia (n reiniciado), bloqueia

@@ -24,7 +24,7 @@ sidebar:
 | 2. C sem HAL | feito: `qualidade.h`, `qualidade.c` |
 | 3. Teste no PC contra os vetores | feito: `testes/qualidade/`, no CI |
 | 4. Placa com a fonte falsa | feito: a bancada passou na placa |
-| 5. Sensor real | feito: com o ritmo, barra o sinal sem pulso desse sensor e libera o pulso bom (BPM de 59 a 64 contra 58 a 62 do relógio), piscando (abaixo) |
+| 5. Sensor real | feito: com o ritmo, barra o sinal sem pulso desse sensor e libera o pulso bom (na validação final, BPM de 62,5 a 67,4 contra 60 a 68 do relógio; abaixo) |
 
 ## Método
 
@@ -111,7 +111,8 @@ $100 - k$ termos). Ruído na mesma faixa não tem atraso nenhum com $r$ alto.
 Os atrasos de 10 a 37 (0,4 a 1,48 s) cobrem de ~41 a 150 bpm. Perto de
 40 bpm a folga é pequena: cabem só 2,7 batimentos em 4 s e o fator
 $(100-k)/100$ no atraso 37 é 0,63, então um pulso sintético perfeito a
-40 bpm dá 0,58 e a 38 bpm já cai abaixo de 0,5. Bradicardia com variação
+40 bpm dá 0,58 a 0,64, a 38 bpm desce até 0,49 e a 36 bpm (0,39 a 0,47) já cai abaixo
+do limiar de 0,45. Bradicardia com variação
 forte de ritmo pode ser marcada `SEM_RITMO`.
 
 **Por que um passa-faixa próprio.** Com o $y$ do passa-altas de 1ª ordem, a
@@ -152,7 +153,7 @@ Uma janela é **boa** quando passa em tudo. Cada falha liga um bit em
 | pi ≥ | 0,05% | `PULSO_FRACO` | Menor pi limpo do PhysioNet: 0,09%. Metade disso. |
 | razao ≥ | 0,4 | `PULSO_FRACO` | Pulso que cai a menos de 40% de repente: dedo apertado demais ou saindo. No limpo, só 1% das janelas fica abaixo de 0,59. |
 | pi ≤ | 5% | `MOVIMENTO` | Maior pi limpo do PhysioNet: 5,0%; 99% ficam abaixo de 2,9%. |
-| razao ≤ | 2,0 | `MOVIMENTO` | O pulso não dobra de um segundo pro outro; o movimento, sim. No limpo, 99,9% ficam abaixo de 2,3 contra a referência (média exponencial das alturas das janelas boas). |
+| razao ≤ | 2,0 | `MOVIMENTO` | O pulso não dobra de um segundo pro outro; o movimento, sim. No limpo, 99,9% ficam abaixo de 2,4 contra a referência (média exponencial das alturas das janelas boas). |
 | aspereza ≥ | 1,5 | `MOVIMENTO` | Abaixo disso o sinal só subiu ou só desceu na janela: deriva ou transitório (o dedo acabou de entrar), não pulso. Menor aspereza limpa: 1,97. |
 | aspereza ≤ | 12 | `RUIDO` | Maior aspereza limpa: 10,6. Ruído de metade do tamanho do pulso já dá aspereza mediana de 22. |
 | ritmo ≥ | 0,45 | `SEM_RITMO` | No PhysioNet limpo, ~3% das janelas de 4 s ficam abaixo (quase todas nos registros de perfusão baixa); no sinal do nosso sensor sem pulso de verdade, 0,04 a 0,26. Começou em 0,5 (só a qualidade decidia); baixou pra 0,45 quando o picos virou o segundo teste do BPM (etapa 3 do BPM confiável). A troca está na validação. |
@@ -276,15 +277,15 @@ movimento ×1 passava em 94%, o ×4 sem limpo antes em 53%.
   pulso, 84% (era 6%): os solavancos irregulares quebram o ritmo mesmo
   quando a amplitude não denuncia.
 
-**Troca do limiar do ritmo** (mesmos registros; a última coluna é a
+**Troca do limiar do ritmo** (`uv run python -m analise.qualidade --limiares-ritmo`, mesmos registros; a última coluna é a
 captura do passo 5 com o dedo mal encostado, nos trechos "parados"):
 
 | ritmo ≥ | limpo ruim | limpo usável | sem ritmo usável | passo 5 usável |
 |---|---|---|---|---|
-| 0,40 | 2,5% | 95,5% | 11,2% | 0 de 31 s |
-| 0,45 | 3,4% | 93,9% | 8,1% | 0 de 31 s |
-| **0,50** | **5,0%** | **91,4%** | **5,5%** | **0 de 31 s** |
-| 0,55 | 7,5% | 87,6% | 3,7% | 0 de 31 s |
+| 0,40 | 2,5% | 95,5% | 11,0% | 0 de 31 s |
+| 0,45 | 3,4% | 93,9% | 7,8% | 0 de 31 s |
+| **0,50** | **5,0%** | **91,4%** | **5,6%** | **0 de 31 s** |
+| 0,55 | 7,5% | 87,6% | 3,5% | 0 de 31 s |
 | 0,60 | 11,0% | 82,7% | 2,0% | 0 de 31 s |
 
 Sem o ritmo, o passo 5 tinha 17 de 31 s usáveis. Qualquer limiar dessa
@@ -384,7 +385,7 @@ onde cada multiplicação da autocorrelação custa ~30 ciclos) ficou em ~2 200,
 e o orçamento subiu pra 3 000 (decisão do André, 21/11/2026; o filtro gasta
 ~9 900). Compila com o
 Arm GNU com e sem a opção (e com todas as bancadas juntas), sem warnings
-(a bancada acrescenta ~74 KB de flash, quase tudo o vetor `bordas`). No laço,
+(a bancada acrescenta ~73 KB de flash, quase tudo o vetor `bordas`). No laço,
 os ciclos da qualidade no sensor real saem a cada 10 s, junto dos da
 decimação e do filtro (`# qualidade: ciclos med ... max ...`).
 
@@ -414,8 +415,8 @@ essas linhas em `<nome>_qualidade.csv`, ao lado do cru e do bruto. Roteiro,
 ~2 min, provocando cada caso de propósito e anotando o tempo de cada um:
 
 1. 15 s sem dedo → `dedo` 0, `motivo` 1.
-2. Pôr o dedo e deixar parado 30 s → usável em ~6 s e ficar usável.
-3. Mexer o dedo 10 s → não usável em ~1 s (`motivo` 8); parar → volta em ~4 s.
+2. Pôr o dedo e deixar parado 30 s → usável em ~10 s (com o ritmo) e ficar usável.
+3. Mexer o dedo 10 s → não usável em ~1 s (`motivo` 8); parar → volta em ~8 s.
 4. Apertar forte o dedo 10 s → pulso some (`motivo` 4)?
 5. Encostar só a ponta do dedo (mal posicionado) 10 s → o que acontece?
 6. Tirar o dedo → `dedo` 0 em ≤ 2 s.
@@ -488,9 +489,9 @@ abaixo tira o sinal do ar por 3 s. A mesma captura com outros limiares:
 
 | ritmo ≥ | usável (de 44 s) | limpo ruim (PhysioNet) | sem ritmo usável |
 |---|---|---|---|
-| 0,40 | 29 | 2,5% | 11,2% |
-| 0,45 | 23 | 3,4% | 8,1% |
-| **0,50** | **15** | **5,0%** | **5,5%** |
+| 0,40 | 29 | 2,5% | 11,0% |
+| 0,45 | 23 | 3,4% | 7,8% |
+| **0,50** | **15** | **5,0%** | **5,6%** |
 
 ## A decisão do BPM confiável
 

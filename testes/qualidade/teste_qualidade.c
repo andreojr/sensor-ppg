@@ -335,7 +335,7 @@ static int decisao(void)
     } casos[] = {
         {true, true, true, 1000u, 900u, true},   {true, false, true, 1000u, 900u, false},
         {false, true, true, 1000u, 900u, false}, {false, false, true, 1000u, 900u, false},
-        {true, true, false, 1000u, 0u, false},   {true, true, true, 1000u, 700u, true},
+        {true, true, false, 100u, 0u, false},   {true, true, true, 1000u, 700u, true},
         {true, true, true, 1001u, 700u, false},  {true, true, true, 1000u, 1080u, false},
         {true, true, true, 50u, 0xFFFFFFCEu, true},
     };

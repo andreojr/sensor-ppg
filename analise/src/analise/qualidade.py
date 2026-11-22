@@ -27,6 +27,15 @@ ASPEREZA_MAX e razao entre RAZAO_MIN e RAZAO_MAX (se já há referência).
 Aspereza abaixo de ASPEREZA_MIN = o sinal só subiu ou só desceu na janela:
 deriva ou transitório (o dedo acabou de entrar), não pulso.
 
+Ritmo: o IR passa por um passa-faixa e é guardado a 25 Hz por 4 s; a cada
+janela sai o maior pico da autocorrelação normalizada nos atrasos de um
+batimento (~41 a 150 bpm). Pulso se repete (ritmo perto de 1); ruído na
+mesma faixa, não. Abaixo de LIMIARES.ritmo_min liga o bit SEM_RITMO.
+
+A decisão do BPM confiável (bpm_confiavel) junta os dois testes: a tela só
+mostra o BPM do picos se a qualidade diz usável, o picos diz que o ritmo dos
+batimentos é regular e o último batimento é recente.
+
 Histerese: o índice é o número de janelas boas seguidas dividido por
 JANELAS_ACEITA, limitado a 1. Uma janela ruim zera o índice; usável só
 depois de JANELAS_ACEITA janelas boas seguidas. Rejeita rápido, aceita
@@ -37,13 +46,15 @@ Uso:
   uv run python -m analise.qualidade              validação no PhysioNet
   uv run python -m analise.qualidade --vetores    vetores do teste em C
   uv run python -m analise.qualidade --figura ../docs/src/assets/qualidade.png
+  uv run python -m analise.qualidade --distribuicao     de onde vêm os limiares
+  uv run python -m analise.qualidade --limiares-ritmo   a troca do limiar do ritmo
 """
 
 from __future__ import annotations
 
 import argparse
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import numpy as np
@@ -580,19 +591,33 @@ def gera_vetores(testes: Path | None = None) -> list[Path]:
 
 def distribuicao(nomes: list[str]) -> None:
     """De onde vêm os limiares: pi, aspereza e razão em todas as janelas do limpo."""
-    pi, asp, raz = [], [], []
+    pi, asp, raz, rit = [], [], [], []
     for nome in nomes:
         for s in roda(*registro_100hz(nome)):
             pi.append(s.pi)
             asp.append(s.aspereza)
             if s.razao > 0:
                 raz.append(s.razao)
-    pi, asp, raz = np.array(pi), np.array(asp), np.array(raz)
+            if s.ritmo > 0:
+                rit.append(s.ritmo)
+    pi, asp, raz, rit = np.array(pi), np.array(asp), np.array(raz), np.array(rit)
     print(f"{len(pi)} janelas do limpo em {len(nomes)} registros")
     print(f"pi: min {100 * pi.min():.2f}%, p99 {100 * np.percentile(pi, 99):.2f}%, "
           f"max {100 * pi.max():.2f}%")
     print(f"aspereza: min {asp.min():.2f}, max {asp.max():.2f}")
     print(f"razão: p99,9 {np.percentile(raz, 99.9):.2f}")
+    print(f"ritmo: {np.mean(rit < LIMIARES.ritmo_min):.1%} das janelas abaixo de "
+          f"{LIMIARES.ritmo_min:g}")
+
+
+def limiares_ritmo(nomes: list[str], limiares=(0.40, 0.45, 0.50, 0.55, 0.60)) -> None:
+    """A troca do limiar do ritmo: falso alarme no limpo contra o sem ritmo que passa."""
+    print(f"{'ritmo >=':>9s} {'limpo ruim':>11s} {'limpo usável':>13s} {'sem ritmo usável':>17s}")
+    for t in limiares:
+        taxas = avalia(nomes, lim=replace(LIMIARES, ritmo_min=t))
+        limpo, sem = taxas["limpo"], taxas["sem_ritmo"]
+        print(f"{t:9.2f} {100 * (1 - limpo.p_boas):10.1f}% {100 * limpo.p_usaveis:12.1f}% "
+              f"{100 * sem.p_usaveis:16.1f}%")
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -603,8 +628,13 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--figura", type=Path, help="grava a figura do vetor bordas")
     p.add_argument("--distribuicao", action="store_true",
                    help="pi, aspereza e razão no limpo (de onde vêm os limiares)")
+    p.add_argument("--limiares-ritmo", action="store_true",
+                   help="falso alarme e acerto pra cada limiar do ritmo (alguns minutos)")
     p.add_argument("registros", nargs="*", help="padrão: os 22 registros sit")
     args = p.parse_args(argv)
+    if args.limiares_ritmo:
+        limiares_ritmo(args.registros or [f"s{i}_sit" for i in range(1, 23)])
+        return
     if args.distribuicao:
         distribuicao(args.registros or [f"s{i}_sit" for i in range(1, 23)])
         return
