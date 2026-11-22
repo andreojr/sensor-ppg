@@ -1173,7 +1173,7 @@ static const int32_t physionet_saida_dedo[29] = {
 
 #define PHYSIONET_SAIDA_USAVEL_N 29u
 static const int32_t physionet_saida_usavel[29] = {
-    0, 0, 1, 1, 1, 1, 1, 1,
+    0, 0, 0, 0, 0, 1, 1, 1,
     1, 1, 1, 1, 1, 1, 1, 1,
     1, 1, 1, 1, 1, 1, 1, 1,
     1, 1, 1, 1, 1,
@@ -1181,7 +1181,7 @@ static const int32_t physionet_saida_usavel[29] = {
 
 #define PHYSIONET_SAIDA_MOTIVO_N 29u
 static const int32_t physionet_saida_motivo[29] = {
-    0, 0, 0, 0, 0, 0, 0, 0,
+    32, 32, 32, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0,
@@ -1189,7 +1189,7 @@ static const int32_t physionet_saida_motivo[29] = {
 
 #define PHYSIONET_SAIDA_INDICE_N 29u
 static const float physionet_saida_indice[29] = {
-    0.33333334f, 0.6666667f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+    0.0f, 0.0f, 0.0f, 0.33333334f, 0.6666667f, 1.0f, 1.0f, 1.0f,
     1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
     1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
     1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
@@ -1221,10 +1221,18 @@ static const float physionet_saida_aspereza[29] = {
 
 #define PHYSIONET_SAIDA_RAZAO_N 29u
 static const float physionet_saida_razao[29] = {
-    0.0f, 0.92836684f, 0.8889545f, 0.9143378f, 0.91225535f, 0.9498073f, 0.93595016f, 0.95091295f,
-    0.9478885f, 0.94960004f, 0.96171767f, 0.9310545f, 0.95316297f, 0.96569973f, 0.9659643f, 1.0218058f,
-    1.0576174f, 1.0030495f, 0.9376443f, 0.9368046f, 0.97879195f, 0.9840092f, 0.9525576f, 0.96207833f,
-    0.98651844f, 0.98630726f, 1.0171112f, 0.97768664f, 1.0585299f,
+    0.0f, 0.0f, 0.0f, 0.0f, 0.9763556f, 1.0001591f, 0.9731616f, 0.9794592f,
+    0.96934026f, 0.96584237f, 0.97416115f, 0.94014823f, 0.96025133f, 0.97113997f, 0.9700753f, 1.0250918f,
+    1.0601524f, 1.004826f, 0.93888825f, 0.9377512f, 0.9795455f, 0.9845802f, 0.9529738f, 0.96239734f,
+    0.98676616f, 0.9864936f, 1.0172558f, 0.9777905f, 1.0586146f,
+};
+
+#define PHYSIONET_SAIDA_RITMO_N 29u
+static const float physionet_saida_ritmo[29] = {
+    0.0f, 0.0f, 0.0f, 0.7434963f, 0.749964f, 0.7806171f, 0.77874696f, 0.7809337f,
+    0.7866257f, 0.80034965f, 0.784421f, 0.7897296f, 0.78964967f, 0.77157706f, 0.76006204f, 0.7882182f,
+    0.77789855f, 0.7932551f, 0.78518915f, 0.7421708f, 0.7858902f, 0.7892257f, 0.75976044f, 0.7707968f,
+    0.7545708f, 0.7465014f, 0.76358014f, 0.719827f, 0.76461583f,
 };
 
 #endif /* VETOR_QUALIDADE_PHYSIONET_H */

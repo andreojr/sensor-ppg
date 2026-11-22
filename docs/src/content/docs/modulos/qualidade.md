@@ -46,9 +46,10 @@ altura do pulso, e a 30 bpm um batimento dura 2 s. Janela maior demora mais
 pra perceber o defeito e mistura trecho bom com ruim.
 
 Tudo é acumulado amostra a amostra (soma, máximo, mínimo, soma de
-diferenças), sem guardar as 200 amostras: o estado inteiro tem 108 bytes e o
-custo por amostra é de umas poucas somas e comparações. Só a amostra que
-fecha o bloco faz 5 divisões.
+diferenças), sem guardar as 200 amostras: essa parte do estado tem 108
+bytes e custa umas poucas somas e comparações por amostra. Só a amostra que
+fecha o bloco faz 5 divisões. O ritmo (abaixo) precisa guardar 4 s a 25 Hz,
+duas vezes (o buffer e a cópia): com ele, o estado inteiro tem 964 bytes.
 
 ### O passa-altas
 
@@ -186,7 +187,7 @@ os batimentos desse trecho, não só os que vierem depois.
 ### Implementação em C
 
 ```c
-qualidade_t q;                /* 108 B, de quem chama */
+qualidade_t q;                /* 964 B, de quem chama */
 qualidade_init(&q);
 ...
 ppg_qualidade_t qual;
@@ -196,7 +197,8 @@ if (qualidade_processa(&q, &bruto, &qual)) {
 ```
 
 As contas são as mesmas do Python, em `float`. A diferença do C pro Python
-(float64) é de no máximo 1,2 × 10⁻⁴ relativo, e nenhuma decisão muda.
+(float64) é de no máximo 1,2 × 10⁻⁴ relativo (2,4 × 10⁻⁵ no ritmo), e nenhuma
+decisão muda.
 
 ## Validação
 
@@ -344,7 +346,7 @@ ciclos de cada chamada. Esperado:
 **Orçamento:** 2 000 ciclos por amostra no pior caso (~21 µs a 96 MHz, 0,2%
 da CPU a 100 Hz). O pior caso é a amostra que fecha o bloco. Compila com o
 Arm GNU com e sem a opção (e com as quatro bancadas juntas), sem warnings
-(com a bancada, a flash vai de 34 a 109 KB, por causa do vetor). No laço,
+(com a bancada, a flash vai de 34 a 111 KB, por causa do vetor). No laço,
 os ciclos da qualidade no sensor real saem a cada 10 s, junto dos da
 decimação e do filtro (`# qualidade: ciclos med ... max ...`).
 

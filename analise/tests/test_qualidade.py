@@ -158,7 +158,6 @@ def test_referencia_esquecida_e_reaprendida():
     assert saidas[-1].usavel
 
 
-@pytest.mark.xfail(strict=True, reason="C ganha o ritmo na Task 3")
 def test_constantes_iguais_ao_c():
     texto = QUALIDADE_H.read_text(encoding="utf-8")
     define = dict(re.findall(r"#define QUALIDADE_(\w+) ([\d.]+)f?u?\b", texto))
@@ -183,7 +182,6 @@ def _le_vetor(caminho: Path) -> dict[str, np.ndarray]:
     return arrays
 
 
-@pytest.mark.xfail(strict=True, reason="vetores regerados com o ritmo na Task 3")
 @pytest.mark.parametrize("caso", ["physionet", "bordas"])
 def test_vetor_em_dia(caso):
     """O Python de hoje, na entrada gravada no vetor, dá a saída gravada (sem PhysioNet)."""

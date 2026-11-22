@@ -479,6 +479,7 @@ def _arrays(saidas: list[Saida], entrada: dict[str, np.ndarray]) -> dict[str, np
         "saida_pi": np.array([s.pi for s in saidas]),
         "saida_aspereza": np.array([s.aspereza for s in saidas]),
         "saida_razao": np.array([s.razao for s in saidas]),
+        "saida_ritmo": np.array([s.ritmo for s in saidas]),
     }
 
 
