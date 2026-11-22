@@ -395,9 +395,9 @@ def confere_placa(picos_placa: np.ndarray, hrv_placa: np.ndarray) -> dict:
     """Passa os batimentos que a placa mandou pelo HRV do Python e compara com a saída dela.
 
     picos_placa: colunas n_pico, fracao, rr_valido, rr_ms, bpm_valido, bpm (o _picos.csv).
-    hrv_placa: colunas n_pico, valido, sdnn_ms, rmssd_ms[, rr_usado] (o _hrv.csv), uma linha
+    hrv_placa: colunas n_pico, valido, sdnn_ms, rmssd_ms, rr_usado (o _hrv.csv), uma linha
     por batimento. Com rr_usado = 0 a placa deixou o RR de fora (trecho que a qualidade
-    disse não usável), e o Python faz o mesmo; sem a coluna (firmware antigo), entra tudo.
+    disse não usável), e o Python faz o mesmo.
     Captura desde o boot (o primeiro batimento é o primeiro da placa, com
     rr_ms = 0): tudo tem que bater. No meio: só depois de uma janela inteira
     (JANELA_S), quando a janela do Python tem os mesmos batimentos que a da placa.
@@ -416,9 +416,6 @@ def confere_placa(picos_placa: np.ndarray, hrv_placa: np.ndarray) -> dict:
     # As linhas casam por n_pico. Uma p, ou h, perdida na serial no meio: o HRV do Python
     # pode não ver o mesmo batimento que a placa (p, perdida: falta o RR; h, perdida: não
     # se sabe se o RR entrou). A comparação recomeça uma janela depois, como "no meio".
-    # Firmware novo: uma h, com rr_usado -1 foi cortada na serial; conta como perdida.
-    if hrv_placa.shape[1] >= 5 and np.any(hrv_placa[:, 4] >= 0):
-        hrv_placa = hrv_placa[hrv_placa[:, 4] >= 0]
     h_de = {int(o[0]): o for o in hrv_placa}
     p_ns = {int(b[0]) for b in picos_placa}
     ultimo_h = int(hrv_placa[-1, 0])
@@ -437,7 +434,7 @@ def confere_placa(picos_placa: np.ndarray, hrv_placa: np.ndarray) -> dict:
     validos = []
     for b in picos_placa:
         o = h_de.get(int(b[0]))
-        usado = o is None or len(o) < 5 or bool(o[4])  # -1: firmware antigo, entrava tudo
+        usado = o is None or bool(o[4])
         s = h.processa(Batimento(True, int(b[0]), float(b[1]), bool(b[2]) and usado, float(b[3])))
         if o is None or pulado(int(b[0])):
             pulados += int(o is not None and b[0] >= a_partir)
@@ -500,24 +497,15 @@ def _preenche(x: np.ndarray) -> tuple[np.ndarray, list[int]]:
     return cheio, [int(n[k]) for k in saltos]
 
 
-def hrv_tem_rr_usado(arq) -> bool:
-    """O _hrv.csv veio de firmware que manda o rr_usado (a captura grava -1 senão)."""
-    h = np.loadtxt(arq, delimiter=",", skiprows=1, ndmin=2)
-    return h.shape[1] >= 5 and bool(np.any(h[:, 4] >= 0))
-
-
 def confere_rr_usado(bruto: np.ndarray, filtrado: np.ndarray, hrv_placa: np.ndarray,
-                     picos_placa: np.ndarray | None = None) -> dict | None:
+                     picos_placa: np.ndarray | None = None) -> dict:
     """Refaz no Python a decisão do laço (qual RR entra no HRV) e compara com o rr_usado.
 
     bruto e filtrado: colunas n, ir, vermelho de uma captura desde o boot. hrv_placa:
-    o _hrv.csv. None se a placa não mandou o rr_usado (a captura grava -1). Batimentos
-    perto de um buraco no n (linha perdida na serial) ficam de fora da comparação."""
+    o _hrv.csv. Batimentos perto de um buraco no n (linha perdida na serial) ficam de fora da comparação."""
     from analise.picos import depois_do_reset
     from analise.qualidade import rr_entrou_no_hrv
 
-    if hrv_placa.shape[1] < 5 or np.all(hrv_placa[:, 4] < 0):
-        return None
     bruto, filtrado = depois_do_reset(bruto), depois_do_reset(filtrado)
     inicio = int(max(bruto[0, 0], filtrado[0, 0]))
     if inicio > BURACO_MAX:
@@ -537,7 +525,7 @@ def confere_rr_usado(bruto: np.ndarray, filtrado: np.ndarray, hrv_placa: np.ndar
     def perto(n: int) -> bool:
         return any(b - BURACO_ANTES <= n <= b + BURACO_DEPOIS for b in buracos)
 
-    todos = [(int(k), bool(u)) for k, u in placa[:, [0, 4]] if int(k) <= fim and u >= 0]
+    todos = [(int(k), bool(u)) for k, u in placa[:, [0, 4]] if int(k) <= fim]
     longe = [(k, u) for k, u in todos if not perto(k)]
 
     # O picos do Python roda no filtrado com 2 casas: o mesmo pulso pode cair uma amostra
@@ -598,17 +586,13 @@ def confere_rr_usado(bruto: np.ndarray, filtrado: np.ndarray, hrv_placa: np.ndar
     }
 
 
-def veredito(r: dict, rr: dict | None, tem_coluna: bool, porque: str = "") -> tuple[bool, str]:
+def veredito(r: dict, rr: dict | None, porque: str = "") -> tuple[bool, str]:
     """O ACEITE do passo 5 da #128 a partir do confere_placa (r) e do confere_rr_usado (rr).
 
-    tem_coluna: o _hrv.csv veio de firmware que manda o rr_usado. porque: por que o
-    rr_usado não foi conferido, quando rr não tem "comparados"."""
+    porque: por que o rr_usado não foi conferido, quando rr não tem "comparados"."""
     hrv_nada = ("o HRV não comparou nenhum batimento (captura curta, ou a primeira p,/h, "
                 "perdida virou a captura em \"no meio\")" if r["batimentos"] == 0 else
                 "o HRV não ficou válido nesta captura: repita com mais tempo parado")
-    if not tem_coluna:
-        # O passo 5 da #128 é conferir o rr_usado: sem ele, a placa não está com esta branch.
-        return False, "firmware sem a coluna rr_usado: grave o firmware desta branch e repita"
     if rr is None or "comparados" not in rr:
         return False, f"o rr_usado não foi conferido ({porque})"
     if rr["diferentes"]:
@@ -665,13 +649,10 @@ def main() -> None:
         else:
             print("  nenhum HRV válido pra comparar (o HRV não foi conferido na placa)")
 
-        # O rr_usado (firmware novo) é o que a qualidade muda no HRV: confere sempre.
-        tem_coluna = hrv_tem_rr_usado(arqs[1])
+        # O rr_usado é o que a qualidade muda no HRV: confere sempre.
         bruto, filtrado = (base.with_name(f"{base.stem}_{x}.csv") for x in ("bruto", "filtrado"))
         rr, porque = None, ""
-        if not tem_coluna:
-            porque = "firmware antigo, sem a coluna rr_usado"
-        elif not (bruto.exists() and filtrado.exists()):
+        if not (bruto.exists() and filtrado.exists()):
             porque = "faltam o _bruto.csv e o _filtrado.csv"
         else:
             rr = confere_rr_usado(
@@ -692,7 +673,7 @@ def main() -> None:
                   f"{'OK' if rr['ok'] else 'DIVERGE'}")
 
         # O veredito do passo 5 da #128, numa linha, com o exit code igual a ela.
-        aceite, motivo = veredito(r, rr, tem_coluna, porque)
+        aceite, motivo = veredito(r, rr, porque)
         print(f"ACEITE: {'sim' if aceite else 'não'}, {motivo}")
         if not aceite:
             raise SystemExit(1)

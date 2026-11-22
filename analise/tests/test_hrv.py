@@ -221,8 +221,9 @@ def test_confere_placa_com_rr_fora_por_qualidade():
     assert (h[:, 4] == 0).sum() > 5
     r = confere_placa(p, h)
     assert r["ok"] and r["validos"] > 50, r
-    assert not confere_placa(p, h[:, :4])["ok"]  # ignorando o rr_usado, não bate
-    assert confere_placa(*_placa_hrv()[:1], _placa_hrv()[1][:, :4])["ok"]  # firmware antigo
+    sem_regra = h.copy()
+    sem_regra[:, 4] = 1
+    assert not confere_placa(p, sem_regra)["ok"]  # ignorando o rr_usado, não bate
 
 
 def _captura_com_qualidade(segundos: int = 120, so_antes: bool = False, ruido: bool = True,
@@ -278,10 +279,6 @@ def test_confere_rr_usado_refaz_a_decisao_da_placa():
     k = int(np.flatnonzero((errado[:, 4] == 1) & (errado[:, 0] < 100 * FS_HZ))[-1])
     errado[k, 4] = 0  # a placa teria deixado um RR bom de fora
     assert not confere_rr_usado(bruto, filtrado, errado)["ok"]
-
-    antigo = h.copy()
-    antigo[:, 4] = -1  # firmware sem a coluna: não confere
-    assert confere_rr_usado(bruto, filtrado, antigo) is None
 
 
 def test_confere_rr_usado_ignora_o_trecho_de_uma_linha_perdida():
@@ -372,24 +369,23 @@ _RR_OK = {"comparados": 150, "diferentes": 0, "sem_par": 0, "sem_h": 0, "sem_h_b
           "pouco": False, "sai": 2, "volta": 3}
 
 
-@pytest.mark.parametrize("r, rr, tem_coluna, aceite, trecho", [
-    (_R_OK, _RR_OK, True, True, "batem"),
-    (_R_OK, None, False, False, "firmware sem a coluna"),  # mesmo com o HRV batendo
-    (_R_OK, None, True, False, "não foi conferido"),
-    (_R_OK, {"ok": False, "inicio": 50}, True, False, "não foi conferido"),
-    (_R_OK, {**_RR_OK, "diferentes": 1}, True, False, "firmware errado"),
-    (_R_OK, {**_RR_OK, "sem_par": 1}, True, False, "não achou"),
-    (_R_OK, {**_RR_OK, "sem_h": 4, "sem_h_barrados": 4}, True, False, "barrados ao HRV"),
-    (_R_OK, {**_RR_OK, "sem_h": 4, "sem_h_barrados": 1}, True, False, "perdidas na serial"),
-    (_R_OK, {**_RR_OK, "sem_h": 3, "sem_h_barrados": 3}, True, True, "batem"),
-    (_R_OK, {**_RR_OK, "pouco": True}, True, False, "menos da metade"),
-    (_R_OK, {**_RR_OK, "sai": 0}, True, False, "não exercitou"),
-    (_R_OK, {**_RR_OK, "volta": 0}, True, False, "não exercitou"),
-    ({**_R_OK, "validos": 0, "ok": False}, _RR_OK, True, False, "mais tempo parado"),
-    ({**_R_OK, "ok": False}, _RR_OK, True, False, "HRV da placa não bateu"),
+@pytest.mark.parametrize("r, rr, aceite, trecho", [
+    (_R_OK, _RR_OK, True, "batem"),
+    (_R_OK, None, False, "não foi conferido"),
+    (_R_OK, {"ok": False, "inicio": 50}, False, "não foi conferido"),
+    (_R_OK, {**_RR_OK, "diferentes": 1}, False, "firmware errado"),
+    (_R_OK, {**_RR_OK, "sem_par": 1}, False, "não achou"),
+    (_R_OK, {**_RR_OK, "sem_h": 4, "sem_h_barrados": 4}, False, "barrados ao HRV"),
+    (_R_OK, {**_RR_OK, "sem_h": 4, "sem_h_barrados": 1}, False, "perdidas na serial"),
+    (_R_OK, {**_RR_OK, "sem_h": 3, "sem_h_barrados": 3}, True, "batem"),
+    (_R_OK, {**_RR_OK, "pouco": True}, False, "menos da metade"),
+    (_R_OK, {**_RR_OK, "sai": 0}, False, "não exercitou"),
+    (_R_OK, {**_RR_OK, "volta": 0}, False, "não exercitou"),
+    ({**_R_OK, "validos": 0, "ok": False}, _RR_OK, False, "mais tempo parado"),
+    ({**_R_OK, "ok": False}, _RR_OK, False, "HRV da placa não bateu"),
 ])
-def test_veredito_um_caso_por_ramo(r, rr, tem_coluna, aceite, trecho):
+def test_veredito_um_caso_por_ramo(r, rr, aceite, trecho):
     from analise.hrv import veredito
 
-    sim, motivo = veredito(r, rr, tem_coluna, "faltam os arquivos")
+    sim, motivo = veredito(r, rr, "faltam os arquivos")
     assert sim is aceite and trecho in motivo, motivo
