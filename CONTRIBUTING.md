@@ -32,7 +32,10 @@ descrição marque quais passos ele cobre. Passo que depende de outro módulo
 3. **Teste no PC** (`testes/<módulo>/`): a saída do C bate com os vetores de
    referência gerados pelo Python.
 4. **Na placa com a fonte falsa.**
-5. **Integração com o sensor real.**
+5. **Integração com o sensor real.** Grave com
+   `uv run python -m analise.captura <porta> --qualidade` e só comece o roteiro
+   com `USAVEL` estável na tela (ver
+   [firmware](docs/src/content/docs/firmware.md)).
 
 ## Regras do PDS
 

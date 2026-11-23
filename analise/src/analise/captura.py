@@ -15,8 +15,13 @@ Linhas "q,..." (com -DBANCADA_QUALIDADE=ON) são a qualidade do bruto, uma
 por segundo: vão pra <nome>_qualidade.csv. Linhas "t,n,mostra,bpm" são o BPM
 que a tela mostraria (qualidade + picos), uma por segundo: <nome>_tela.csv.
 
+Com --qualidade, a captura roda a qualidade do Python (a mesma conta do C) nas
+linhas "b," enquanto grava e mostra, uma vez por segundo, se o sinal está
+usável e, se não está, por quê. Serve pra ajeitar o dedo antes de valer.
+
 Uso:
     uv run python -m analise.captura COM3 --segundos 30
+    uv run python -m analise.captura COM3 --segundos 60 --qualidade
     uv run python -m analise.captura /dev/ttyUSB0 -o dados/repouso.csv
 
 Sem --segundos, grava até o Ctrl+C.
@@ -33,6 +38,8 @@ from pathlib import Path
 from typing import Protocol
 
 import serial
+
+from analise import qualidade as ql
 
 SENSOR_FS_HZ = 400  # igual a MAX30102_FS_HZ em Core/Inc/max30102.h
 BAUD = 921600
@@ -178,6 +185,65 @@ LEITORES = {
 }
 
 
+# Bit do motivo da qualidade -> o que dizer na tela.
+MOTIVOS = (
+    (ql.SEM_DEDO_BIT, "sem dedo"),
+    (ql.SATURADO_BIT, "saturado (aperte menos)"),
+    (ql.PULSO_FRACO_BIT, "pulso fraco"),
+    (ql.MOVIMENTO_BIT, "movimento"),
+    (ql.RUIDO_BIT, "ruido"),
+    (ql.SEM_RITMO_BIT, "sem ritmo"),
+)
+VERDE, VERMELHO, AMARELO, FIM = "\033[32m", "\033[31m", "\033[33m", "\033[0m"
+
+
+class AoVivo:
+    """Fonte que, a cada linha "b," lida, passa a amostra pela Qualidade e imprime
+    o julgamento (1/s). Devolve as linhas sem mexer: a gravação continua igual.
+    O relógio é o do sinal: segundos desde a 1ª linha "b," (ou desde o reinício)."""
+
+    def __init__(self, fonte: Fonte):
+        self.fonte = fonte
+        self._recomeca()
+        self.ultimo: int | None = None
+
+    def _recomeca(self) -> None:
+        self.q = ql.Qualidade()
+        self.n0: int | None = None
+        self.seguidos = 0
+
+    def readline(self) -> bytes:
+        linha = self.fonte.readline()
+        if linha.startswith(b"b,"):
+            lido = le_ponto(linha.decode("ascii", errors="replace"))
+            if lido is not None:
+                self._julga(*lido[1])
+        return linha
+
+    def _julga(self, n: int, ir: float, vm: float) -> None:
+        if self.ultimo is not None and n < self.ultimo:  # o n voltou: a placa reiniciou
+            self._recomeca()
+            print(f"{AMARELO}--- placa reiniciou: a gravacao vale daqui ---{FIM}", flush=True)
+        self.ultimo = n
+        if self.n0 is None:
+            self.n0 = n
+        s = self.q.processa(n, ir, vm)
+        if s is None:
+            return
+        t = (n + 1 - self.n0) / ql.FS_HZ
+        if s.usavel:
+            self.seguidos += 1
+            print(f"{t:6.1f} s  {VERDE}USAVEL{FIM}  ({self.seguidos} seguidos)", flush=True)
+            return
+        self.seguidos = 0
+        porque = ", ".join(txt for bit, txt in MOTIVOS if s.motivo & bit)
+        print(
+            f"{t:6.1f} s  {VERMELHO}nao usavel{FIM}: {porque or 'esperando 3 janelas boas'}"
+            f"  (pi {100 * s.pi:.2f}%)",
+            flush=True,
+        )
+
+
 def destino_ponto(destino: Path, ponto: str) -> Path:
     return destino.with_name(f"{destino.stem}_{ponto}.csv")
 
@@ -250,13 +316,17 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("porta", help="ex.: COM3 ou /dev/ttyUSB0")
     p.add_argument("-s", "--segundos", type=float, help="duração (padrão: até o Ctrl+C)")
     p.add_argument("-o", "--saida", type=Path, help="CSV de saída (padrão: analise/dados/)")
+    p.add_argument(
+        "--qualidade", action="store_true",
+        help="mostra ao vivo, 1/s, se o sinal está usável (precisa das linhas b,)",
+    )
     args = p.parse_args(argv)
 
     destino = args.saida or DADOS / f"sensor_{datetime.now().astimezone():%Y%m%d_%H%M%S}.csv"
     with serial.Serial(args.porta, BAUD, timeout=0.5) as porta:
         porta.reset_input_buffer()
         print(f"gravando {args.porta} em {destino} (Ctrl+C pra parar)")
-        resumo = grava(porta, destino, args.segundos)
+        resumo = grava(AoVivo(porta) if args.qualidade else porta, destino, args.segundos)
 
     print(
         f"{resumo.amostras} amostras em {resumo.segundos:.1f} s "

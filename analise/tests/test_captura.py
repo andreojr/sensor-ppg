@@ -3,6 +3,7 @@ import re
 from pathlib import Path
 
 import matplotlib
+import numpy as np
 import pandas as pd
 
 from analise import captura, plota
@@ -168,3 +169,42 @@ def test_tela_vai_pro_csv_da_tela(tmp_path):
     assert list(t.columns) == list(captura.COLUNAS_TELA)
     assert t["mostra"].tolist() == [1, 0]
     assert t["bpm"].tolist() == [60.5, 0.0]
+
+
+def _linhas_b(n0, segundos, ir_dc, pulso):
+    """Linhas "b,n,ir,vermelho" a 100 Hz: DC + um pulso de 72 bpm de altura relativa pulso."""
+    t = np.arange(segundos * 100) / 100
+    onda = pulso * (np.sin(2 * np.pi * 1.2 * t) + 0.3 * np.sin(2 * np.pi * 2.4 * t))
+    return b"".join(
+        f"b,{n0 + k},{ir_dc * (1 + o):.2f},{1.05 * ir_dc * (1 + o):.2f}\n".encode()
+        for k, o in enumerate(onda)
+    )
+
+
+def test_qualidade_ao_vivo_mostra_usavel(tmp_path, capsys):
+    serial_falsa = io.BytesIO(_linhas_b(0, 10, 130_000.0, 0.005))
+    resumo = captura.grava(captura.AoVivo(serial_falsa), tmp_path / "x.csv", segundos=0.5)
+    assert resumo.brutos == 1000  # as linhas passam inteiras pra gravação
+    saida = capsys.readouterr().out
+    assert "USAVEL" in saida and "(1 seguidos)" in saida
+    assert "   2.0 s  " in saida  # a 1ª janela de 2 s fecha aos 2 s do sinal
+    assert "\033[32m" in saida  # verde
+
+
+def test_qualidade_ao_vivo_mostra_os_motivos(tmp_path, capsys):
+    serial_falsa = io.BytesIO(_linhas_b(0, 4, captura.ql.SEM_DEDO, 0.0))
+    captura.grava(captura.AoVivo(serial_falsa), tmp_path / "x.csv", segundos=0.5)
+    saida = capsys.readouterr().out
+    assert "nao usavel" in saida and "sem dedo" in saida and "pi 0.00%" in saida
+    assert "USAVEL" not in saida and "\033[31m" in saida  # vermelho
+
+
+def test_qualidade_ao_vivo_reinicia_quando_o_n_volta(tmp_path, capsys):
+    serial_falsa = io.BytesIO(_linhas_b(500, 8, 130_000.0, 0.005) + _linhas_b(0, 3, 130_000.0, 0.005))
+    captura.grava(captura.AoVivo(serial_falsa), tmp_path / "x.csv", segundos=0.5)
+    saida = capsys.readouterr().out
+    antes, depois = saida.split("placa reiniciou")
+    assert "USAVEL" in antes
+    # Qualidade nova: com 3 s ainda não há 4 s pro ritmo, e o relógio voltou pro zero.
+    assert "USAVEL" not in depois and "sem ritmo" in depois
+    assert depois.count(" s  ") == 2 and "   2.0 s  " in depois and "   3.0 s  " in depois
