@@ -21,19 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include <stdio.h>
-
-#include "bancada.h"
-#include "bancada_hrv.h"
-#include "bancada_qualidade.h"
-#include "decimacao/decimacao.h"
-#include "filtro/filtro.h"
-#include "hrv/hrv.h"
-#include "max30102.h"
-#include "picos/picos.h"
-#include "espectral/espectral.h"
-#include "respiracao/respiracao.h"
-#include "serial.h"
+#include "app.h"
 
 /* USER CODE END Includes */
 
@@ -62,33 +50,6 @@ UART_HandleTypeDef huart1;
 DMA_HandleTypeDef hdma_usart1_tx;
 
 /* USER CODE BEGIN PV */
-static volatile bool sensor_int;
-static uint32_t indice; /* nº da amostra a MAX30102_FS_HZ desde o início */
-static volatile max30102_amostra_t ultima; /* pra olhar no Live Watch do debugger */
-static decimacao_t decimacao;              /* sensor -> bruto a PPG_FS_HZ */
-static max30102_amostra_t anterior;        /* repetida no lugar das perdidas */
-static filtro_t filtro;                    /* bruto -> filtrado (0,5 a 4 Hz) */
-static picos_t picos;                      /* filtrado -> batimentos e BPM */
-static espectral_t espectral;              /* filtrado -> BPM pela FFT (~15 KB) */
-static hrv_t hrv;                          /* batimentos -> SDNN e RMSSD */
-static respiracao_t respiracao;            /* bruto -> respirações por minuto */
-
-/* Ciclos de cada módulo, resumidos pela serial a cada 10 s. */
-static ciclos_t ciclos_decimacao;
-static ciclos_t ciclos_filtro;
-static ciclos_t ciclos_picos;
-static ciclos_t ciclos_espectral;
-static ciclos_t ciclos_hrv; /* por batimento, não por amostra */
-static ciclos_t ciclos_respiracao;
-static qualidade_t qualidade;              /* bruto -> qualidade (1 184 B: static) */
-static ciclos_t ciclos_qualidade;
-static ppg_bpm_t bpm_picos;                /* o último BPM do picos */
-static bool tem_batimento;                 /* já houve um batimento desde o boot */
-static uint32_t n_ultimo_pico;             /* n_pico do último batimento */
-static ppg_qualidade_t julgamento;         /* a última saída da qualidade */
-static bool tem_julgamento;                /* a qualidade já julgou desde o boot */
-static uint32_t n_julgamento;              /* n do bruto em que ela julgou */
-static qualidade_fila_t fila_hrv;          /* batimentos esperando o julgamento de depois */
 
 /* USER CODE END PV */
 
@@ -101,8 +62,6 @@ static void MX_I2C3_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
-static void envia_amostras(void);
-static void decima(const max30102_amostra_t *amostra);
 static void destrava_i2c1(void);
 
 /* USER CODE END PFP */
@@ -147,70 +106,9 @@ int main(void)
   MX_USART1_UART_Init();
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
-  serial_init(&huart1);
-#ifdef BANCADA_HRV
-  /* Fonte falsa no HRV, antes do sensor (roda mesmo sem o MAX30102). */
-  (void)bancada_hrv();
-#endif
-#ifdef BANCADA_QUALIDADE
-  /* Vetor da qualidade, antes do sensor (roda mesmo sem o MAX30102). */
-  (void)bancada_qualidade();
-#endif
-  qualidade_init(&qualidade);
   destrava_i2c1();
-  if (max30102_init(&hi2c1) != HAL_OK)
-  {
-    static const char erro[] = "# erro: MAX30102 nao respondeu na I2C1\n";
-    HAL_UART_Transmit(&huart1, (const uint8_t *)erro, sizeof erro - 1, 100);
-    Error_Handler();
-  }
-  char cabecalho[352];
-  int n = snprintf(cabecalho, sizeof cabecalho,
-                   "# MAX30102 %u Hz: n,ir,vermelho\n# decimacao %u Hz: b,n,ir,vermelho\n"
-                   "# filtro %u Hz, atraso %u: f,n,ir,vermelho\n"
-                   "# picos: p,n_pico,fracao,rr_valido,rr_ms,bpm_valido,bpm\n"
-                   "# espectral: e,n,bpm_valido,bpm\n"
-                   "# hrv: h,n_pico,valido,sdnn,rmssd,rr_usado\n"
-                   "# respiracao 1 Hz: r,n,rpm,valido\n"
-                   "# tela 1 Hz: t,n,mostra,bpm x100\n",
-                   MAX30102_FS_HZ, PPG_FS_HZ, PPG_FS_HZ, (unsigned)PPG_ATRASO_AMOSTRAS);
-  serial_escreve(cabecalho, (uint32_t)n);
-  ciclos_liga();
-#ifdef BANCADA_DECIMACAO
-  /* Fonte falsa na decimação; as amostras do sensor desse intervalo podem
-     sair como "# perdidas". O resultado (OK/FALHOU) sai na serial; a placa
-     segue lendo o sensor mesmo se falhar. */
-  (void)bancada_decimacao();
-#endif
-#ifdef BANCADA_FILTRO
-  (void)bancada_filtro(); /* só informativo, como a da decimação */
-#endif
-#ifdef BANCADA_PICOS
-  (void)bancada_picos(); /* só informativo, como as outras */
-#endif
-#ifdef BANCADA_ESPECTRAL
-  (void)bancada_espectral(); /* idem */
-#endif
-#ifdef BANCADA_RESPIRACAO
-  (void)bancada_respiracao();
-#endif
-  if (!decimacao_init(&decimacao, MAX30102_FS_HZ))
-  {
-    static const char erro[] = "# erro: decimacao sem filtro para essa taxa do MAX30102\n";
-    HAL_UART_Transmit(&huart1, (const uint8_t *)erro, sizeof erro - 1, 100);
-    Error_Handler();
-  }
-  filtro_init(&filtro);
-  picos_init(&picos);
-  if (!espectral_init(&espectral))
-  {
-    static const char erro[] = "# erro: FFT de 1024 pontos nao compilada (espectral)\n";
-    HAL_UART_Transmit(&huart1, (const uint8_t *)erro, sizeof erro - 1, 100);
-    Error_Handler();
-  }
-  hrv_init(&hrv);
-  qualidade_fila_init(&fila_hrv);
-  respiracao_init(&respiracao);
+  /* Tudo o mais (sensor, cadeia, display, TIM2 de régua) fica no app.c. */
+  app_init(&hi2c1, &hi2c3, &huart1, &htim2);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -220,14 +118,7 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    /* O pino também é olhado: se uma leitura falhar, o INT fica baixo e não
-       vem outra borda de descida. */
-    if (sensor_int || HAL_GPIO_ReadPin(SENSOR_INT_GPIO_Port, SENSOR_INT_Pin) == GPIO_PIN_RESET)
-    {
-      sensor_int = false;
-      envia_amostras();
-    }
-    serial_envia();
+    app_laco();
   }
   /* USER CODE END 3 */
 }
@@ -472,14 +363,6 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
-{
-  if (GPIO_Pin == SENSOR_INT_Pin)
-  {
-    sensor_int = true;
-  }
-}
-
 /* Se a placa resetar no meio de uma leitura, o sensor fica no meio do byte
    segurando o SDA em 0 esperando o resto, e a I2C1 acha o barramento ocupado.
    9 pulsos no SCL com o SDA solto terminam o byte (o 9º é um NACK, e o sensor
@@ -521,250 +404,6 @@ static void destrava_i2c1(void)
   HAL_Delay(1);
 
   MX_I2C1_Init();
-}
-
-/* Uma linha "n,ir,vermelho" por amostra. Amostra perdida vira salto no n. */
-static void envia_amostras(void)
-{
-  static max30102_amostra_t amostras[MAX30102_FIFO_TAM];
-  uint32_t n;
-  uint32_t perdidas;
-  char linha[32];
-
-  if (max30102_le_fifo(amostras, &n, &perdidas) != HAL_OK)
-  {
-    return;
-  }
-  for (uint32_t i = 0; i < n; i++)
-  {
-    int tam = snprintf(linha, sizeof linha, "%lu,%lu,%lu\n", (unsigned long)indice,
-                       (unsigned long)amostras[i].ir, (unsigned long)amostras[i].vermelho);
-    serial_escreve(linha, (uint32_t)tam);
-    decima(&amostras[i]);
-    anterior = amostras[i];
-    indice++;
-  }
-  /* Sem rollover, a FIFO cheia descarta as amostras novas: as perdidas vêm
-     depois das que foram lidas. A decimação recebe a última amostra no lugar
-     delas, e o n (cru e bruto) continua alinhado com o tempo do sensor. */
-  if (perdidas > 0)
-  {
-    int tam = snprintf(linha, sizeof linha, "# perdidas: %lu\n", (unsigned long)perdidas);
-    serial_escreve(linha, (uint32_t)tam);
-    for (uint32_t i = 0; indice > 0 && i < perdidas; i++)
-    {
-      decima(&anterior);
-    }
-    indice += perdidas;
-  }
-  if (n > 0)
-  {
-    ultima.ir = amostras[n - 1].ir;
-    ultima.vermelho = amostras[n - 1].vermelho;
-  }
-}
-
-/* Centésimos com sinal, sem printf de float (o nano.specs não tem). Parte
-   inteira e fração separadas: v * 100 perto de 2,6e7 já perde os centésimos
-   no float. */
-static int centesimos(char *s, size_t tam, float v)
-{
-  long inteira = (long)v;
-  float fracao = v - (float)inteira; /* exata, mesmo sinal de v */
-  long c = inteira * 100L + (long)(fracao * 100.0f + (v < 0.0f ? -0.5f : 0.5f));
-  unsigned long a = (unsigned long)(c < 0 ? -c : c);
-  return snprintf(s, tam, "%s%lu.%02lu", c < 0 ? "-" : "", a / 100u, a % 100u);
-}
-
-/* Uma linha "<tipo>,n,ir,vermelho" com 2 casas. */
-static void envia_ppg(char tipo, const ppg_amostra_t *s)
-{
-  char ir[24];
-  char vermelho[24];
-  char linha[64];
-  centesimos(ir, sizeof ir, s->ir);
-  centesimos(vermelho, sizeof vermelho, s->vermelho);
-  int tam = snprintf(linha, sizeof linha, "%c,%lu,%s,%s\n", tipo, (unsigned long)s->n, ir,
-                     vermelho);
-  serial_escreve(linha, (uint32_t)tam);
-}
-
-/* Um batimento: "p,n_pico,fracao,rr_valido,rr_ms,bpm_valido,bpm", com a
-   fracao em 4 casas e rr_ms e bpm em 2. */
-static void envia_batimento(const ppg_batimento_t *b, const ppg_bpm_t *v)
-{
-  char rr[24];
-  char bpm[24];
-  char linha[96];
-  unsigned long f = (unsigned long)(b->fracao * 10000.0f + 0.5f); /* fracao em [0, 1) */
-  centesimos(rr, sizeof rr, b->rr_ms);
-  centesimos(bpm, sizeof bpm, v->valido ? v->bpm : 0.0f);
-  int tam = snprintf(linha, sizeof linha, "p,%lu,%lu.%04lu,%d,%s,%d,%s\n",
-                     (unsigned long)b->n_pico, f / 10000u, f % 10000u, b->rr_valido ? 1 : 0, rr,
-                     v->valido ? 1 : 0, bpm);
-  serial_escreve(linha, (uint32_t)tam);
-}
-
-/* O BPM do espectral: "e,n,bpm_valido,bpm", com n o da amostra filtrada em que a janela
-   terminou e o bpm em 2 casas (0 quando inválido). */
-static void envia_espectral(const ppg_amostra_t *filtrado, const ppg_bpm_t *v)
-{
-  char bpm[24];
-  char linha[64];
-  centesimos(bpm, sizeof bpm, v->valido ? v->bpm : 0.0f);
-  int tam = snprintf(linha, sizeof linha, "e,%lu,%d,%s\n", (unsigned long)filtrado->n,
-                     v->valido ? 1 : 0, bpm);
-  serial_escreve(linha, (uint32_t)tam);
-}
-
-/* A saída do HRV depois de um batimento: "h,n_pico,valido,sdnn,rmssd,rr_usado" (ms, 2 casas;
-   rr_usado = 1 se o RR entrou no HRV, 0 se ficou de fora: trecho não usável ou RR recusado
-   pelo picos). Sai até ~1 s depois da "p," do mesmo batimento (espera a qualidade). */
-static void envia_hrv(uint32_t n_pico, const ppg_hrv_t *s, bool rr_usado)
-{
-  char sdnn[24];
-  char rmssd[24];
-  char linha[80];
-  centesimos(sdnn, sizeof sdnn, s->sdnn_ms);
-  centesimos(rmssd, sizeof rmssd, s->rmssd_ms);
-  int tam = snprintf(linha, sizeof linha, "h,%lu,%d,%s,%s,%d\n", (unsigned long)n_pico,
-                     s->valido ? 1 : 0, sdnn, rmssd, rr_usado ? 1 : 0);
-  serial_escreve(linha, (uint32_t)tam);
-}
-
-/* Uma linha "r,n,rpm,valido": n é o do bruto que fechou a estimativa. */
-static void envia_respiracao(uint32_t n, const ppg_respiracao_t *r)
-{
-  char rpm[24];
-  char linha[48];
-  centesimos(rpm, sizeof rpm, r->rpm);
-  int tam = snprintf(linha, sizeof linha, "r,%lu,%s,%u\n", (unsigned long)n, rpm,
-                     r->valido ? 1u : 0u);
-  serial_escreve(linha, (uint32_t)tam);
-}
-
-/* Um batimento que saiu da fila da qualidade vai pro HRV. rr_valido falso = o RR
-   fica de fora (trecho não usável, ou o picos já tinha recusado); a linha "h," leva
-   isso em rr_usado. O hrv.c ainda recusa RR fora de HRV_RR_MIN_MS..HRV_RR_MAX_MS, a
-   mesma faixa do picos (300 a 2000 ms): rr_valido verdadeiro aqui = o RR entra. */
-static void processa_hrv(const ppg_batimento_t *b)
-{
-  ppg_hrv_t h;
-  uint32_t t0 = ciclos_agora();
-  bool saiu = hrv_processa(&hrv, b, &h);
-  ciclos_conta(&ciclos_hrv, ciclos_agora() - t0);
-  if (saiu)
-  {
-    envia_hrv(b->n_pico, &h, b->rr_valido);
-  }
-}
-
-/* Uma amostra do sensor na cadeia. A cada 4, sai o bruto a PPG_FS_HZ (linha
-   "b,..."), ele passa no filtro (linha "f,...") e na respiração (linha
-   "r,...", uma por segundo), e o filtrado no picos e no espectral; a cada
-   batimento, as linhas "p,..." e "h,..." (HRV); a cada segundo, a linha
-   "e,..." (espectral); a cada 10 s, os ciclos. */
-static void decima(const max30102_amostra_t *amostra)
-{
-  decimacao_entrada_t e = {amostra->ir, amostra->vermelho};
-  ppg_amostra_t bruto;
-  uint32_t t0 = ciclos_agora();
-  bool saiu = decimacao_processa(&decimacao, &e, &bruto);
-  ciclos_conta(&ciclos_decimacao, ciclos_agora() - t0);
-
-  if (saiu)
-  {
-    ppg_amostra_t filtrado;
-    t0 = ciclos_agora();
-    filtro_processa(&filtro, &bruto, &filtrado);
-    ciclos_conta(&ciclos_filtro, ciclos_agora() - t0);
-    envia_ppg('b', &bruto);
-    envia_ppg('f', &filtrado);
-
-    ppg_batimento_t batimento;
-    t0 = ciclos_agora();
-    bool bateu = picos_processa(&picos, &filtrado, &batimento);
-    ciclos_conta(&ciclos_picos, ciclos_agora() - t0);
-    if (bateu)
-    {
-      ppg_bpm_t bpm;
-      picos_bpm(&picos, &bpm);
-      envia_batimento(&batimento, &bpm);
-      bpm_picos = bpm;
-      tem_batimento = true;
-      n_ultimo_pico = batimento.n_pico;
-
-      /* A ordem importa: o picos roda antes da qualidade nesta amostra, então o
-         julgamento "de antes" é o anterior e o desta amostra (se houver) é o "de depois",
-         igual ao analise.qualidade.rr_entrou_no_hrv.
-         O ppg.h pede: com a qualidade dizendo que o trecho não dá pra usar, o laço
-         descarta o batimento. Pro HRV, o batimento espera o julgamento seguinte da
-         qualidade (no máximo 1 s) e o RR só entra se o de antes e o de depois
-         disserem usável (ver qualidade.h). A linha "p," acima sai já, como o picos viu. */
-      bool antes = qualidade_batimento_usavel(&julgamento, tem_julgamento, n_julgamento, bruto.n);
-      ppg_batimento_t velho;
-      if (qualidade_fila_poe(&fila_hrv, &batimento, antes, &velho))
-      {
-        processa_hrv(&velho);
-      }
-    }
-
-    ppg_bpm_t bpm_espectral;
-    t0 = ciclos_agora();
-    bool saiu_espectral = espectral_processa(&espectral, &filtrado, &bpm_espectral);
-    ciclos_conta(&ciclos_espectral, ciclos_agora() - t0);
-    if (saiu_espectral)
-    {
-      envia_espectral(&filtrado, &bpm_espectral);
-    }
-
-    ppg_respiracao_t resp;
-    t0 = ciclos_agora();
-    bool estimou = respiracao_processa(&respiracao, &bruto, &resp);
-    ciclos_conta(&ciclos_respiracao, ciclos_agora() - t0);
-    if (estimou)
-    {
-      envia_respiracao(bruto.n, &resp);
-    }
-    ppg_qualidade_t q;
-    t0 = ciclos_agora();
-    bool julgou = qualidade_processa(&qualidade, &bruto, &q);
-    ciclos_conta(&ciclos_qualidade, ciclos_agora() - t0);
-    if (julgou)
-    {
-      julgamento = q;
-      tem_julgamento = true;
-      n_julgamento = bruto.n;
-      ppg_batimento_t pronto;
-      while (qualidade_fila_tira(&fila_hrv, &q, &pronto))
-      {
-        processa_hrv(&pronto);
-      }
-      /* O que a tela mostraria: o BPM do picos só se a qualidade e o picos concordam. */
-      bool mostra = qualidade_bpm_confiavel(&q, &bpm_picos, tem_batimento, bruto.n, n_ultimo_pico);
-      char linha[96]; /* "t,..." ~25 B; "q,..." (bancada) até ~76 B */
-      int tam = snprintf(linha, sizeof linha, "t,%lu,%d,%lu\n", (unsigned long)bruto.n,
-                         mostra ? 1 : 0,
-                         mostra ? (unsigned long)(bpm_picos.bpm * 100.0f + 0.5f) : 0ul);
-      serial_escreve(linha, (uint32_t)tam);
-#ifdef BANCADA_QUALIDADE
-      tam = qualidade_linha(linha, sizeof linha, bruto.n, &q, &qualidade);
-      serial_escreve(linha, (uint32_t)tam);
-#endif
-    }
-  }
-
-  if (ciclos_decimacao.conta == MAX30102_FS_HZ * 10u)
-  {
-    ciclos_relata(&ciclos_decimacao, "decimacao", BANCADA_ORCAMENTO_DECIMACAO);
-    ciclos_relata(&ciclos_filtro, "filtro", BANCADA_ORCAMENTO_FILTRO);
-    ciclos_relata(&ciclos_picos, "picos", BANCADA_ORCAMENTO_PICOS);
-    ciclos_relata_max(&ciclos_espectral, "espectral", BANCADA_ORCAMENTO_ESPECTRAL,
-                      BANCADA_ORCAMENTO_ESPECTRAL_MAX);
-    ciclos_relata(&ciclos_hrv, "hrv", BANCADA_ORCAMENTO_HRV);
-    ciclos_relata(&ciclos_respiracao, "respiracao", BANCADA_ORCAMENTO_RESPIRACAO);
-    ciclos_relata(&ciclos_qualidade, "qualidade", BANCADA_ORCAMENTO_QUALIDADE);
-  }
 }
 
 /* USER CODE END 4 */
