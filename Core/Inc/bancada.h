@@ -14,6 +14,7 @@
 #include <stdint.h>
 
 #include "main.h"
+#include "cadeia/ciclos.h" /* ciclos_t e ciclos_conta, sem HAL */
 
 /* Orçamento da decimação: 1% da CPU por amostra do sensor (96 MHz / 400 Hz / 100). */
 #define BANCADA_ORCAMENTO_DECIMACAO 2400u
@@ -33,26 +34,12 @@
 #define BANCADA_ORCAMENTO_ESPECTRAL 9600u
 #define BANCADA_ORCAMENTO_ESPECTRAL_MAX 960000u
 
-/* Ciclos de um módulo: média e máximo desde o último relato. */
-typedef struct {
-    uint64_t soma;
-    uint32_t max;
-    uint32_t conta;
-} ciclos_t;
-
 /* Liga o contador de ciclos do núcleo (DWT->CYCCNT). */
 void ciclos_liga(void);
 
 static inline uint32_t ciclos_agora(void)
 {
     return DWT->CYCCNT;
-}
-
-static inline void ciclos_conta(ciclos_t *c, uint32_t dt)
-{
-    c->soma += dt;
-    c->max = dt > c->max ? dt : c->max;
-    c->conta++;
 }
 
 /* Manda "# <nome>: ciclos med X max Y (orcamento Z)" pela serial e zera. */
