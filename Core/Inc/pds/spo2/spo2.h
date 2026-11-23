@@ -15,9 +15,11 @@
  * ver a tendência e a ordem de grandeza (95 a 100% em pessoas saudáveis), não como medida clínica.
  *
  * valido = a janela encheu, o DC dos dois canais passa de SPO2_DC_MIN em cada segundo (tem dedo o
- * tempo todo), o DC não varia mais que SPO2_DC_VARIACAO_MAX vezes entre os segundos, o AC do IR
- * é maior que zero e R está entre SPO2_R_MIN e SPO2_R_MAX. Não olha movimento nem ruído: quem
- * decide se o trecho presta é o módulo qualidade (só mostre o SpO2 com qualidade.usavel).
+ * tempo todo), o DC não varia mais que SPO2_DC_VARIACAO_MAX vezes entre os segundos, nenhuma
+ * amostra de nenhum canal chega a SPO2_SATURA (o pulso cortado no topo do ADC dá um R errado sem
+ * outro aviso), o AC do IR é maior que zero e R está entre SPO2_R_MIN e SPO2_R_MAX. Não olha
+ * movimento nem ruído: quem decide se o trecho presta é o módulo qualidade (só mostre o SpO2 com
+ * qualidade.usavel).
  * Com valido = false o spo2_pct sai 0, como o picos_bpm(): o display mostra "--".
  */
 #ifndef PDS_SPO2_SPO2_H
@@ -32,13 +34,16 @@
 #define SPO2_HOP (1u * PPG_FS_HZ)                   /* um bloco e uma saída por segundo */
 #define SPO2_BLOCOS SPO2_JANELA_S                   /* a janela são os últimos 8 blocos */
 #define SPO2_JANELA (SPO2_JANELA_S * PPG_FS_HZ)     /* 800 amostras */
+#define SPO2_SATURA 250000.0f   /* ~95% do topo do ADC (262143): o mesmo QUALIDADE_SATURA */
 
 typedef struct {
     bool tem_dc;
     float dc[2];                    /* o DC de cada canal: ir, vermelho */
     uint32_t cont;                  /* amostras do bloco em andamento */
     float bloco[4];                 /* soma de x e de ac^2 do bloco: ir, vm, ir, vm */
+    float maior;                    /* maior amostra do bloco, dos dois canais */
     float blocos[SPO2_BLOCOS][4];   /* os últimos blocos */
+    float maiores[SPO2_BLOCOS];     /* maior amostra de cada bloco da janela */
     uint32_t idx;                   /* onde entra o próximo bloco */
     uint32_t cheios;
     float r;                        /* o R da última saída (0 se não deu pra calcular) */

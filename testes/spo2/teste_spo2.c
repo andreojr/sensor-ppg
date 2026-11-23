@@ -1,12 +1,13 @@
 /* spo2: a saída do C bate com a do protótipo Python (vetores de analise.spo2), e o módulo se
  * comporta nos casos que o Python também testa: R conhecido, canais trocados, sem pulso, NaN,
- * dedo que sai no meio da janela, reinício. */
+ * dedo que sai no meio da janela, saturação, reinício. */
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 
 #include "confere.h"
+#include "qualidade/qualidade.h"
 #include "spo2/spo2.h"
 #include "vetores/s1_sit.h"
 #include "vetores/sem_dedo.h"
@@ -190,6 +191,40 @@ static void comportamento(void)
         if (o.amostra[i] >= 1000u && o.amostra[i] < 1000u + SPO2_JANELA - SPO2_HOP)
             depois = depois || o.valido[i];
     CHECA(!depois, "DC que varia demais entre os segundos é inválido");
+
+    /* Saturação: o mesmo limite da qualidade, em qualquer um dos canais. */
+    CHECA(SPO2_SATURA == QUALIDADE_SATURA, "SPO2_SATURA igual ao QUALIDADE_SATURA");
+    for (int canal = 0; canal < 2; canal++) {
+        sintetico(ir_s, vm_s, 2000, 0.5f, canal == 0 ? 260000.0f : 80000.0f,
+                  canal == 1 ? 260000.0f : 78000.0f);
+        for (uint32_t i = 0; i < 2000u; i++) { /* o ADC corta em 262143 */
+            ir_s[i] = ir_s[i] > 262143.0f ? 262143.0f : ir_s[i];
+            vm_s[i] = vm_s[i] > 262143.0f ? 262143.0f : vm_s[i];
+        }
+        spo2_init(&s);
+        roda(&s, ir_s, vm_s, 2000, &o);
+        algum = false;
+        zero = true;
+        for (uint32_t i = 0; i < o.n; i++) {
+            algum = algum || o.valido[i];
+            zero = zero && o.spo2[i] == 0.0f;
+        }
+        CHECA(o.n > 0 && !algum && zero, canal == 0 ? "IR saturado é inválido"
+                                                   : "vermelho saturado é inválido");
+    }
+
+    /* Um segundo só passa do limite: só as janelas que o pegam ficam inválidas. */
+    sintetico(ir_s, vm_s, 2000, 0.5f, 247000.0f, 78000.0f);
+    for (uint32_t i = 1000; i < 1000u + SPO2_HOP; i++)
+        ir_s[i] += 1000.0f;
+    spo2_init(&s);
+    roda(&s, ir_s, vm_s, 2000, &o);
+    bool certo = o.n > 0u;
+    for (uint32_t i = 0; i < o.n; i++) {
+        bool pega = o.amostra[i] >= 1000u && o.amostra[i] < 1000u + SPO2_JANELA;
+        certo = certo && o.valido[i] == !pega;
+    }
+    CHECA(certo, "um segundo saturado invalida só as janelas que o pegam");
 
     /* NaN e infinito são descartados: não sobra NaN nas saídas. */
     sintetico(ir_s, vm_s, 2000, 0.5f, 80000.0f, 78000.0f);

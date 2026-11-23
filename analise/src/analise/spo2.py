@@ -23,9 +23,11 @@ tendência e a ordem de grandeza (95 a 100% em pessoas saudáveis), não como me
 valido: janela cheia; DC dos dois canais >= DC_MIN em CADA segundo da janela (tem dedo o tempo
 todo); o DC não varia mais que DC_VARIACAO_MAX vezes entre os segundos (se o dedo sai ou aperta no
 meio da janela, o degrau vira um AC enorme nos dois canais, o R fica perto de 1 e o resultado seria
-um valor plausível e errado); AC do IR > 0; e R dentro de [R_MIN, R_MAX] (a faixa que a fisiologia
-permite). Não olha movimento nem ruído: quem decide se o trecho presta é o módulo qualidade (o laço
-principal só mostra o SpO2 com qualidade.usavel).
+um valor plausível e errado); nenhuma amostra da janela, de nenhum canal, chega a SATURA (perto do
+topo do ADC, o mesmo limite do qualidade: o pulso cortado tem AC menor que o verdadeiro e o R sai
+errado sem nenhum outro aviso); AC do IR > 0; e R dentro de [R_MIN, R_MAX] (a faixa que a
+fisiologia permite). Não olha movimento nem ruído: quem decide se o trecho presta é o módulo
+qualidade (o laço principal só mostra o SpO2 com qualidade.usavel).
 
 O código é em fluxo e em float32 de propósito: o porte pra C (Core/Src/pds/spo2/spo2.c) segue
 linha a linha, e os vetores de referência saem daqui.
@@ -53,6 +55,7 @@ DC_MIN = 10000.0  # contagens; sem dedo ~1500, com dedo > 60 mil (o mesmo limite
 R_MIN = 0.2
 R_MAX = 1.6  # R = 0,2 daria 105% e R = 1,6 daria 70%: fora disso não é sangue
 DC_VARIACAO_MAX = 1.5  # maior DC por segundo / menor DC por segundo, em cada canal
+SATURA = 250000.0  # contagens; ~95% do topo do ADC (262143), o mesmo limite do qualidade
 CURVA_A = 110.0  # SpO2 = A - B * R
 CURVA_B = 25.0
 TOL_VETOR = 1e-3  # tolerância dos floats no teste em C (spo2 e r)
@@ -84,7 +87,9 @@ class Spo2:
         self.dc_vm = F32(0)
         self.cont = 0  # amostras do bloco em andamento
         self.b = [F32(0)] * 4  # soma de x e de ac² do bloco: ir, vm, ir, vm
+        self.maior = F32(0)  # maior amostra do bloco, dos dois canais
         self.blocos = [[F32(0)] * 4 for _ in range(BLOCOS)]
+        self.maiores = [F32(0)] * BLOCOS  # maior amostra de cada bloco da janela
         self.idx = 0  # onde entra o próximo bloco
         self.cheios = 0
 
@@ -104,12 +109,15 @@ class Spo2:
         b[1] = F32(b[1] + vm)
         b[2] = F32(b[2] + F32(ac_ir * ac_ir))
         b[3] = F32(b[3] + F32(ac_vm * ac_vm))
+        self.maior = max(self.maior, ir, vm)
         self.n += 1
         self.cont += 1
         if self.cont < HOP:
             return None
 
         self.blocos[self.idx] = list(b)
+        self.maiores[self.idx] = self.maior
+        self.maior = F32(0)
         self.idx = (self.idx + 1) % BLOCOS
         self.cheios = min(self.cheios + 1, BLOCOS)
         self.cont = 0
@@ -137,6 +145,8 @@ class Spo2:
             dcs_ok = dcs_ok and bool(
                 menor >= F32(DC_MIN) and maior <= F32(F32(DC_VARIACAO_MAX) * menor)
             )
+        # Algum canal perto do topo do ADC em algum segundo: o pulso pode estar cortado.
+        dcs_ok = dcs_ok and max(self.maiores) < F32(SATURA)
         dc_ir, dc_vm = F32(s[0] / n), F32(s[1] / n)
         ac_ir, ac_vm = F32(np.sqrt(F32(s[2] / n))), F32(np.sqrt(F32(s[3] / n)))
 

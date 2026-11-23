@@ -3,8 +3,8 @@ from itertools import pairwise
 import numpy as np
 import pytest
 
-from analise import FS_HZ
-from analise.spo2 import DC_MIN, HOP, JANELA, R_MAX, R_MIN, Spo2, estima
+from analise import FS_HZ, qualidade
+from analise.spo2 import DC_MIN, HOP, JANELA, R_MAX, R_MIN, SATURA, Spo2, estima
 
 
 def bruto(
@@ -119,3 +119,32 @@ def test_dc_que_varia_demais_entre_os_segundos_e_invalido():
     vm[15 * FS_HZ :] *= 0.5
     saidas = estima(ir, vm)
     assert not any(s.valido for s in saidas if 15 * FS_HZ <= s.n < 15 * FS_HZ + JANELA - HOP)
+
+
+def test_satura_igual_ao_da_qualidade():
+    assert qualidade.Limiares().satura == SATURA
+
+
+@pytest.mark.parametrize("canal", ["ir", "vermelho"])
+def test_canal_saturado_e_invalido(canal):
+    """Com o DC perto do topo, o pulso é cortado em 262143: o AC encolhe e o R sai errado."""
+    dc = 260000.0
+    ir, vm = bruto(0.5, segundos=30, dc_ir=dc if canal == "ir" else 80000.0,
+                   dc_vm=dc if canal == "vermelho" else 78000.0)
+    ir, vm = np.minimum(ir, 262143.0), np.minimum(vm, 262143.0)
+    saidas = estima(ir, vm)
+    assert saidas and not any(s.valido for s in saidas)
+    assert all(s.spo2 == 0.0 for s in saidas)
+
+
+def test_um_segundo_saturado_invalida_so_as_janelas_que_o_pegam():
+    """IR logo abaixo do limite; num segundo ele sobe 1000 contagens e os picos passam de SATURA
+    (o resto da janela não muda o bastante pra invalidar por outro motivo)."""
+    ir, vm = bruto(0.5, segundos=30, dc_ir=247000.0)
+    assert ir.max() < SATURA
+    a = 15 * FS_HZ
+    ir[a : a + HOP] += 1000.0
+    saidas = estima(ir, vm)
+    pegam = [s for s in saidas if a <= s.n < a + JANELA]
+    assert pegam and not any(s.valido for s in pegam)
+    assert all(s.valido for s in saidas if s not in pegam)

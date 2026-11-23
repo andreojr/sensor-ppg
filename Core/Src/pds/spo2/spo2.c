@@ -21,9 +21,12 @@ void spo2_init(spo2_t *s)
     s->cont = 0;
     for (uint32_t j = 0; j < 4u; j++)
         s->bloco[j] = 0.0f;
-    for (uint32_t k = 0; k < SPO2_BLOCOS; k++)
+    s->maior = 0.0f;
+    for (uint32_t k = 0; k < SPO2_BLOCOS; k++) {
         for (uint32_t j = 0; j < 4u; j++)
             s->blocos[k][j] = 0.0f;
+        s->maiores[k] = 0.0f;
+    }
     s->idx = 0;
     s->cheios = 0;
     s->r = 0.0f;
@@ -57,6 +60,9 @@ static void estima(spo2_t *s, ppg_spo2_t *saida)
         }
         dcs_ok = dcs_ok && menor >= DC_MIN && maior <= DC_VARIACAO_MAX * menor;
     }
+    /* Algum canal perto do topo do ADC em algum segundo: o pulso pode estar cortado. */
+    for (uint32_t k = 0; k < SPO2_BLOCOS; k++)
+        dcs_ok = dcs_ok && s->maiores[k] < SPO2_SATURA;
 
     const float dc_ir = soma[0] / n, dc_vm = soma[1] / n;
     const float ac_ir = sqrtf(soma[2] / n), ac_vm = sqrtf(soma[3] / n);
@@ -90,6 +96,7 @@ bool spo2_processa(spo2_t *s, const ppg_amostra_t *bruto, ppg_spo2_t *saida)
         const float ac = x[c] - s->dc[c];
         s->bloco[c] += x[c];
         s->bloco[2u + c] += ac * ac;
+        s->maior = x[c] > s->maior ? x[c] : s->maior;
     }
 
     if (++s->cont < SPO2_HOP)
@@ -98,6 +105,8 @@ bool spo2_processa(spo2_t *s, const ppg_amostra_t *bruto, ppg_spo2_t *saida)
         s->blocos[s->idx][j] = s->bloco[j];
         s->bloco[j] = 0.0f;
     }
+    s->maiores[s->idx] = s->maior;
+    s->maior = 0.0f;
     s->idx = s->idx + 1u == SPO2_BLOCOS ? 0u : s->idx + 1u;
     if (s->cheios < SPO2_BLOCOS)
         s->cheios++;
