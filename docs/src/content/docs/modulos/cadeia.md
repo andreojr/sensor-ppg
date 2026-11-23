@@ -163,8 +163,8 @@ O que a cadeia integrada **não** prova, e precisa ser dito na apresentação:
   último batimento com a decisão anterior (acima, em "A ordem"); a linha `t,`
   sai só no julgamento.
 - **A pior amostra passa do orçamento de um período** (1,23 M de 960 000 ciclos, em
-  Debug), uma vez por segundo; a fila absorve e nada se perdeu. O firmware da release
-  (Release, serial padrão) não foi medido na placa. Ver
+  Debug), uma vez por segundo; a fila absorve e nada se perdeu. No firmware da release
+  (Release) a pior amostra cabe: 423 476 ciclos, pior volta de 16 ms. Ver
   [Firmware → Ciclos e orçamento](../../firmware/#ciclos-e-orçamento).
 - **Fora da v0.4.0:** display (PRs #121 e #122; `display_amostra()` e
   `display_servico()` ainda são vazias), SpO2 (#125, `spo2.valido` sempre falso) e

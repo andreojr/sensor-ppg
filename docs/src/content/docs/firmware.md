@@ -264,7 +264,11 @@ Antes de uma captura que vai valer (o passo 5 de um módulo), use
 do Python (a mesma conta do C, ver [Qualidade](../modulos/qualidade/)) e diz, uma
 vez por segundo, se o sinal está usável. Ajeite o dedo até ver `USAVEL` em
 verde por alguns segundos seguidos; se aparecer `placa reiniciou`, conte o
-tempo do roteiro a partir dali.
+tempo do roteiro a partir dali. Uma linha `b,` que a serial perde entra como a anterior
+repetida (a placa não perdeu a amostra); sem isso, a qualidade do Python recomeçava do
+zero a cada perda e mostrava ~5 s de "sem ritmo" que a placa não via. Na captura da
+v0.4.0 (abaixo), foram 10 quedas de usável para "sem ritmo" antes e 3 depois, as 3
+reais (dedo assentando, movimento e a amplitude do pulso caindo).
 
 ```bash
 uv run python -m analise.captura COM3 --segundos 60 --qualidade
@@ -565,13 +569,35 @@ acima, isso só é registrado: a volta coube em 26 ms, a fila chegou a 5 de 16 e
 se perdeu. Na bancada (vetor do PhysioNet na partida) a cadeia bateu com o Python em
 478 saídas, 0 fora da tolerância.
 
+**O firmware da release na placa** (23/11/2026, o `sensor-ppg.hex` da release v0.4.0:
+Release, sem bancada, serial padrão; dedo no sensor, ~3 min depois do reset):
+
+| Medida | Release | Orçamento | Debug (acima) |
+|---|---|---|---|
+| `# cadeia` média por amostra | 4 270 a 8 409 | 51 000 | 25 357 |
+| `# cadeia` pior amostra | 423 476 | 960 000 (cabe) | 1 229 429 (estoura) |
+| respiração / espectral, pior amostra | 308 575 / 99 870 | | 798 840 / 409 906 |
+| `# volta` pior volta | 1 535 236 (16 ms) | 3 600 000 (37,5 ms) | 2 491 743 (26 ms) |
+| `# leitura` maior intervalo | 42 ms | 80 ms | 42 ms |
+| `# laco` fila_max / fila_cheia / perdidas | 5 / 0 / 0 (182 s) | 16 / 0 / 0 | 5 / 0 / 0 |
+| `# taxa` | 99,79 amostras/s em 180 s | 100 | 99,9 |
+
+Cada módulo ficou no seu orçamento (médias: decimação 357, filtro 2 694, picos 159,
+qualidade 937, espectral 1 090, respiração 3 176; HRV 4 475 no pior batimento). Em
+Release, a pior amostra cabe no período. A pior volta (16 ms) é a amostra do espectro
+somada à leitura da FIFO pela I2C1 a 100 kHz.
+
+O `--replay` dessa captura deu 0 diferenças no espectral, na respiração, no HRV e nas
+telas. No picos, 35 de 276 batimentos têm a mesma decisão (`rr_valido`, `bpm_valido`) e
+só a fração do pico (até 0,28 amostra) e o `rr_ms` (até 3 ms) diferentes, todos perto de
+uma das 27 linhas `b,` que chegaram ao PC cortadas ou coladas (ex.
+`b,6526,130487.20,12799`). São bytes perdidos no meio da linha, no adaptador USB-serial:
+a placa, quando descarta, descarta a linha inteira.
+
 **O que não foi medido na placa** (ressalvas da v0.4.0):
 
-- O firmware da release é **Release, sem bancada e com a serial padrão**. As medidas
-  acima são de **Debug** com a bancada e a serial completa ligadas, uma captura de
-  3 min. O Release padrão compila, mas a volta, a fila e as perdidas dele não foram
-  medidas. Em Release o espectral cai de ~410 000 para ~101 000 ciclos no pior caso
-  (ver Bancada do espectral), então a folga deve ser maior, não menor.
+- O `rr_usado` do HRV no firmware da release: o `hrv --confere` precisa do filtrado,
+  que só sai com `-DSERIAL_COMPLETA=ON` (conferido na v0.3, PR #129).
 - A linha final da bancada da cadeia nessa medida não foi guardada (só "478 saídas, 0
   fora da tolerância"). Com o critério de então, ela teria saído `FALHOU` pelo max; o critério
   mudou depois (na pré-release da v0.4.0: o max acima de 960 000 só é registrado) e o
