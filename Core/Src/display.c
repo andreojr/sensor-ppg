@@ -1,8 +1,10 @@
 /* display: o SSD1306 na I2C3. Ver display.h. */
 #include "display.h"
 
+#include <math.h>
+
 #define ENDERECO_HAL (DISPLAY_ENDERECO << 1) /* a HAL quer o endereço já deslocado */
-#define TIMEOUT_MS 10u                       /* uma página leva ~3 ms; sobra pra um ACK lento */
+#define TIMEOUT_MS 10u /* uma página leva 3,1 ms (medido); sobra pra um ACK lento */
 #define FALHAS_SEGUIDAS_MAX 3u
 
 #define CTRL_COMANDOS 0x00u /* o que vem depois são comandos */
@@ -16,9 +18,22 @@ static uint32_t t_quadro;   /* ms do último quadro desenhado */
 static uint32_t t_inicio;   /* ms em que o display ligou */
 static bool quadro_pendente; /* o quadro desenhado ainda tem páginas por mandar */
 
+/* Barramento ocupado (SDA preso em baixo, por exemplo): a HAL esperaria 25 ms fixos pelo
+   BUSY antes de desistir, acima do TIMEOUT_MS. Aqui espera no máximo ~2 ms (o BUSY de um
+   envio que acabou de terminar some em microssegundos, depois do STOP) e conta como falha. */
+#define LIVRE_MS 2u
+static bool livre(void)
+{
+    uint32_t t0 = HAL_GetTick();
+    while (__HAL_I2C_GET_FLAG(i2c, I2C_FLAG_BUSY) != RESET)
+        if ((uint32_t)(HAL_GetTick() - t0) >= LIVRE_MS)
+            return false;
+    return true;
+}
+
 static bool comandos(const uint8_t *c, uint16_t n)
 {
-    return HAL_I2C_Mem_Write(i2c, ENDERECO_HAL, CTRL_COMANDOS, I2C_MEMADD_SIZE_8BIT,
+    return livre() && HAL_I2C_Mem_Write(i2c, ENDERECO_HAL, CTRL_COMANDOS, I2C_MEMADD_SIZE_8BIT,
                              (uint8_t *)(uintptr_t)c, n, TIMEOUT_MS) == HAL_OK;
 }
 
@@ -26,7 +41,7 @@ static bool comandos(const uint8_t *c, uint16_t n)
 static bool envia_pagina(uint8_t pagina, const uint8_t *dados)
 {
     const uint8_t pos[3] = {(uint8_t)(0xB0u | pagina), 0x00u, 0x10u};
-    return comandos(pos, sizeof pos) &&
+    return comandos(pos, sizeof pos) && livre() &&
            HAL_I2C_Mem_Write(i2c, ENDERECO_HAL, CTRL_DADOS, I2C_MEMADD_SIZE_8BIT,
                              (uint8_t *)(uintptr_t)dados, OLED_W, TIMEOUT_MS) == HAL_OK;
 }
@@ -80,8 +95,9 @@ bool display_init(I2C_HandleTypeDef *hi2c)
         0xA4,       /* mostra a memória */
         0xA6,       /* sem inverter */
         0x2E,       /* sem rolagem */
-        0xAF        /* display aceso */
     };
+    static const uint8_t ACENDE[] = {0xAF};
+    static const uint8_t ZEROS[OLED_W] = {0};
     i2c = hi2c;
     ativo = false;
     falhas = 0;
@@ -90,6 +106,12 @@ bool display_init(I2C_HandleTypeDef *hi2c)
     if (HAL_I2C_IsDeviceReady(i2c, ENDERECO_HAL, 3, TIMEOUT_MS) != HAL_OK)
         return false;
     if (!comandos(INICIO, sizeof INICIO))
+        return false;
+    /* Limpa a memória do chip antes de acender (senão aparece lixo do último uso). */
+    for (uint8_t p = 0; p < OLED_PAGINAS; p++)
+        if (!envia_pagina(p, ZEROS))
+            return false;
+    if (!comandos(ACENDE, sizeof ACENDE))
         return false;
     ativo = true;
     t_inicio = HAL_GetTick();
@@ -108,6 +130,8 @@ void display_tela_inicio(const oled_etapa_t etapas[3], bool aguarde)
         return;
     oled_tela_inicio(&oled, etapas, aguarde);
     envia_tudo();
+    if (aguarde)
+        t_inicio = HAL_GetTick(); /* o AGUARDE fica no ar DISPLAY_AGUARDE_MS a partir daqui */
 }
 
 void display_tela_erro(oled_erro_t erro)
@@ -120,6 +144,8 @@ void display_tela_erro(oled_erro_t erro)
 
 void display_amostra(float ir_filtrado)
 {
+    if (!isfinite(ir_filtrado))
+        return; /* um NaN travaria a escala da onda (max/min nunca mais saem dele) */
     oled_amostra(&oled, -ir_filtrado);
 }
 
