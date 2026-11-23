@@ -1,6 +1,6 @@
 /* spo2: a saída do C bate com a do protótipo Python (vetores de analise.spo2), e o módulo se
  * comporta nos casos que o Python também testa: R conhecido, canais trocados, sem pulso, NaN,
- * dedo que sai no meio da janela, saturação, reinício. */
+ * dedo que sai no meio da janela, limite em 100%, saturação, reinício. */
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -191,6 +191,15 @@ static void comportamento(void)
         if (o.amostra[i] >= 1000u && o.amostra[i] < 1000u + SPO2_JANELA - SPO2_HOP)
             depois = depois || o.valido[i];
     CHECA(!depois, "DC que varia demais entre os segundos é inválido");
+
+    /* SpO2 acima de 100%: R logo acima do R_MIN dá 110 - 25 * 0,21 = 104,75, que sai 100. */
+    sintetico(ir_s, vm_s, 2000, 0.21f, 80000.0f, 78000.0f);
+    spo2_init(&s);
+    roda(&s, ir_s, vm_s, 2000, &o);
+    bool cem = o.n > 0u;
+    for (uint32_t i = 0; i < o.n; i++)
+        cem = cem && o.valido[i] && o.spo2[i] == 100.0f;
+    CHECA(cem, "SpO2 acima de 100% é válida e limitada a 100");
 
     /* Saturação: o mesmo limite da qualidade, em qualquer um dos canais. */
     CHECA(SPO2_SATURA == QUALIDADE_SATURA, "SPO2_SATURA igual ao QUALIDADE_SATURA");
