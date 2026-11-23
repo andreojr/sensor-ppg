@@ -117,8 +117,9 @@ registro a partir de 30 s do bruto da fonte falsa (`uv run python -m analise.spo
   para uma diferença dessas. É movimento corrompendo o AC. Daí a regra de só mostrar com `qualidade.usavel`.
 - **Calibração:** pra ter exatidão, é preciso um oxímetro de referência com o sensor real e ajustar a curva (e
   provavelmente os coeficientes dependem do módulo MAX30102 e de como o dedo apoia).
-- O `ppg.h` não tem um campo "estimado" em `ppg_spo2_t`, e mudá-lo precisa do ok dos outros dois. Por ora, o
-  "estimado" está nesta página, no comentário do `spo2.h` e no cabeçalho da serial.
+- O `ppg.h` não tem um campo "estimado" em `ppg_spo2_t`, e mudá-lo precisa do ok dos outros dois. Por isso o
+  "estimado" fica fora do contrato: nesta página, no comentário do `spo2.h`, no cabeçalho da serial e no
+  display, onde o rótulo sai como `SPO2~` (o `~` é a marca de estimada; veja [OLED](../oled/)).
 
 ## Em C
 

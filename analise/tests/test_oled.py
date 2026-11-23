@@ -120,3 +120,22 @@ def test_ppg_de_exemplo_e_deterministico_e_tem_o_tamanho_pedido():
     assert len(a) == 256 and np.array_equal(a, b)
     assert not np.array_equal(a, oled.ppg(n=256, bpm=72, seed=11))
     assert 1.0 < a.max() < 1.4 and a.min() > -0.1  # o pulso sobe a ~1,1 e volta perto de 0
+
+
+def test_spo2_marcada_como_estimada_sem_encostar_no_vizinho():
+    """#27: sem oxímetro de referência, a SpO2 sai com '~' no rótulo nas duas telas, e o
+    rótulo mais comprido não encosta na respiração (pior caso: 3 algarismos)."""
+    assert "~" in oled.FONTE
+    linhas = [("X", "1")] * 6
+    so_spo2 = oled.Fb()
+    fim = so_spo2.text(0, 56, "SPO2~ 100")
+    resumo = oled.tela_resumo(linhas, "2/3", "100", "99")
+    inicio_resp = 128 - len("RESP 99") * 6 + 1
+    assert fim <= inicio_resp  # termina antes de começar o "RESP 99"
+    assert np.array_equal(resumo.p[56:, :fim], so_spo2.p[56:, :fim])
+
+    alvo = oled.tela_alvo("100", "99", "72", "82%", oled.ppg())
+    rotulo = oled.Fb()
+    fim = rotulo.text(40, 0, "SPO2~")
+    assert fim <= 100 - 2 * 12 + 2  # o "99" grande da respiração começa em x = 78
+    assert np.array_equal(alvo.p[:8, 40:fim], rotulo.p[:8, 40:fim])
