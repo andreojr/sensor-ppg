@@ -437,6 +437,46 @@ saída do Python e mede os ciclos por batimento com o contador do núcleo
 (DWT). O resultado sai em duas linhas `# bancada hrv: ...`. Sem a opção, nada
 disso entra no firmware. Procedimento e orçamento em [HRV](../modulos/hrv/).
 
+## Laço simples, sem RTOS
+
+**Decisão:** a cadeia roda num laço principal simples, com duas filas pequenas
+(sensor para cadeia, e cadeia para display). Não usamos RTOS: o curso não exige, e
+a medida na placa mostrou que ele não faz falta.
+
+**A pergunta:** se o display travar o laço por ~30 ms, o sensor perde amostras?
+O MAX30102 guarda até 32 amostras (80 ms a 400 Hz) e avisa pelo INT com 17, o que
+deixa **37,5 ms** de folga depois do aviso. A bancada do bloqueio parou o laço de
+propósito (espera ativa, sem ler o sensor) e mediu o maior intervalo entre duas
+leituras da FIFO com o DWT.
+
+Medido na placa (22/11/2026, 30 s por configuração, I2C3 a 400 kHz, resistor de
+2 kΩ no INT), **0 amostras perdidas em todas**:
+
+| Bloqueio / período | Maior intervalo entre leituras | Amostras na FIFO no pior caso (de 32) |
+|---|---|---|
+| 0 ms (linha de base) | 42,6 ms | 17 |
+| 3 ms a cada 10 ms (uma página do display) | 42,6 ms | 17 |
+| 30 ms a cada 50 ms (quadro inteiro) | 46,7 a 50 ms | 18 a 20 |
+| 30 ms a cada 20 ms (pior caso) | 72,6 ms | 29 |
+
+**Como ler:**
+
+- Um quadro inteiro de ~30 ms cabe, mas **apertado**: no pior caso sobram 3 vagas
+  (~7,5 ms). Bloqueios acima de ~37 ms depois do aviso perdem amostras.
+- Mandar **uma página (~3 ms) por volta do laço** não muda o intervalo: folga total.
+  É o que o display usa.
+- Isso vale com a I2C3 a **400 kHz**. A 100 kHz um quadro leva ~92 ms, passa dos
+  80 ms da FIFO e perde amostras com certeza.
+
+**Armadilha achada no caminho:** o INT do módulo fica em ~1,8 V (pull-up do módulo),
+no limite do que o STM32 lê como 1, e o clock do I2C vazava nele (~80 mil
+interrupções falsas por segundo, o que fazia o laço ler a FIFO a cada ~2 ms).
+Afastar os fios só reduziu pela metade, e trocar o pino (B5 por A1) não mudou nada.
+O que resolveu foi o resistor de 2 kΩ do INT para o 3V3 (ver "Resistores").
+
+A bancada ficou na branch `firmware/experimento-bloqueio-display` (só local, não
+entra na `main`); a decisão fica registrada aqui e na #17.
+
 ## Regras
 
 - Um PR de cada vez mexe no `.ioc`.
