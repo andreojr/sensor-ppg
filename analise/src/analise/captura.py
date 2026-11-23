@@ -232,15 +232,25 @@ MOTIVOS = (
 VERDE, VERMELHO, AMARELO, FIM = "\033[32m", "\033[31m", "\033[33m", "\033[0m"
 
 
+# Um n que pula mais que isso é linha embaralhada, não perda (igual a cadeia.SALTO_MAX).
+SALTO_MAX = 64
+
+
 class AoVivo:
     """Fonte que, a cada linha "b," lida, passa a amostra pela Qualidade e imprime
     o julgamento (1/s). Devolve as linhas sem mexer: a gravação continua igual.
-    O relógio é o do sinal: segundos desde a 1ª linha "b," (ou desde o reinício)."""
+    O relógio é o do sinal: segundos desde a 1ª linha "b," (ou desde o reinício).
+
+    A serial perde bytes de vez em quando e uma linha "b," some ou chega estragada. A
+    placa não perdeu a amostra, mas a qualidade do Python recomeçaria do zero (~5 s de
+    "sem ritmo"). Por isso a linha perdida entra como a anterior repetida, como no
+    replay (analise.cadeia), e um n que volta sem ser 0 é linha estragada: fica de fora."""
 
     def __init__(self, fonte: Fonte):
         self.fonte = fonte
         self._recomeca()
         self.ultimo: int | None = None
+        self.anterior = (0.0, 0.0)
 
     def _recomeca(self) -> None:
         self.q = ql.Qualidade()
@@ -256,12 +266,21 @@ class AoVivo:
         return linha
 
     def _julga(self, n: int, ir: float, vm: float) -> None:
-        if self.ultimo is not None and n < self.ultimo:  # o n voltou: a placa reiniciou
-            self._recomeca()
+        if self.ultimo is not None and n <= self.ultimo:
+            if n != 0:  # linha estragada pela serial ("b,419" que chegou "b,19")
+                return
+            self._recomeca()  # o n voltou a 0: a placa reiniciou
             print(f"{AMARELO}--- placa reiniciou: a gravacao vale daqui ---{FIM}", flush=True)
+        elif self.ultimo is not None and n - self.ultimo <= SALTO_MAX:
+            for k in range(self.ultimo + 1, n):  # linhas perdidas: repete a anterior
+                self._avalia(k, *self.anterior)
         self.ultimo = n
+        self.anterior = (ir, vm)
         if self.n0 is None:
             self.n0 = n
+        self._avalia(n, ir, vm)
+
+    def _avalia(self, n: int, ir: float, vm: float) -> None:
         s = self.q.processa(n, ir, vm)
         if s is None:
             return
