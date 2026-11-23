@@ -46,6 +46,11 @@ foreach(arquivo ${TESTES})
     add_test(NAME ${nome} COMMAND ${nome})
 endforeach()
 
+# Replay: as cruas de uma captura de novo pela cadeia (testes/cadeia/replay.h).
+add_executable(replay_cadeia cadeia/replay_cadeia.c)
+target_link_libraries(replay_cadeia PRIVATE pds)
+target_include_directories(replay_cadeia PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
 # Guarda: um arquivo que inclui HAL TEM que falhar ao compilar aqui.
 add_executable(guarda_sem_hal EXCLUDE_FROM_ALL guarda/inclui_hal.c)
 target_link_libraries(guarda_sem_hal PRIVATE pds)

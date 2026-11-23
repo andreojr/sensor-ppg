@@ -92,3 +92,88 @@ def _le_vetor(caminho: Path) -> dict[str, np.ndarray]:
                                   texto, re.DOTALL):
         arrays[nome] = np.array([float(v.rstrip("f")) for v in corpo.split(",") if v.strip()])
     return arrays
+
+
+# ---- Replay: as linhas que o PC refez contra os CSVs da captura ------------------
+
+LINHAS_PLACA = (
+    "b,0,100.00,200.00\n"
+    "p,120,0.2500,1,812.50,1,73.85\n"
+    "h,120,1,41.50,30.25,1\n"
+    "e,800,1,72.10\n"
+    "r,2400,15.20,1\n"
+    "t,99,1,7385\n"
+)
+
+
+def _captura(pasta: Path, linhas: str) -> Path:
+    """Grava os CSVs que o analise.captura gravaria com essas linhas da placa."""
+    from analise import captura
+
+    class Fonte:
+        def __init__(self):
+            self.resto = [ln.encode() for ln in linhas.splitlines()]
+
+        def readline(self) -> bytes:
+            if not self.resto:
+                raise KeyboardInterrupt
+            return self.resto.pop(0)
+
+    destino = pasta / "cap.csv"
+    captura.grava(Fonte(), destino)
+    return destino
+
+
+def test_compara_replay_igual(tmp_path):
+    destino = _captura(tmp_path, LINHAS_PLACA)
+    assert cadeia.compara_replay(destino, LINHAS_PLACA) == {
+        "bruto": 0, "picos": 0, "hrv": 0, "espectral": 0, "respiracao": 0, "tela": 0}
+
+
+def test_compara_replay_acusa_diferenca(tmp_path):
+    destino = _captura(tmp_path, LINHAS_PLACA)
+    trocado = LINHAS_PLACA.replace("p,120,0.2500,1", "p,121,0.2500,1")
+    assert cadeia.compara_replay(destino, trocado)["picos"] == 1
+
+
+def test_compara_replay_conta_linha_a_mais(tmp_path):
+    destino = _captura(tmp_path, LINHAS_PLACA)
+    a_mais = LINHAS_PLACA + "t,199,0,0\nt,299,0,0\n"
+    # A última pode faltar na captura (parou no meio de uma amostra); duas, não.
+    assert cadeia.compara_replay(destino, a_mais)["tela"] == 1
+
+
+def test_compara_replay_formato_diferente_conta_como_diferenca(tmp_path):
+    destino = _captura(tmp_path, LINHAS_PLACA)
+    hrv_antigo = cap_ponto(destino, "hrv")
+    hrv_antigo.write_text("n_pico,valido,sdnn_ms,rmssd_ms\n120,1,41.5,30.25\n", encoding="utf-8")
+    assert cadeia.compara_replay(destino, LINHAS_PLACA)["hrv"] == 1
+
+
+def test_replay_exige_captura_desde_o_reset(tmp_path):
+    cruas = tmp_path / "cap.csv"
+    cruas.write_text("n,ir,vermelho\n94248,1,2\n94249,1,2\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="reset"):
+        cadeia.replay(cruas, Path("/bin/true"))
+
+
+def test_main_sem_nada_pra_comparar_falha(tmp_path, capsys, monkeypatch):
+    cruas = tmp_path / "cap.csv"
+    cruas.write_text("n,ir,vermelho\n0,1,2\n", encoding="utf-8")
+    monkeypatch.setattr(cadeia, "replay", lambda *_: {})
+    cadeia.main(["--replay", str(cruas)])
+    assert "FALHOU" in capsys.readouterr().out
+
+
+def cap_ponto(destino: Path, ponto: str) -> Path:
+    from analise import captura
+
+    return captura.destino_ponto(destino, ponto)
+
+
+def test_compara_replay_so_depois_do_reset(tmp_path):
+    # A captura pega o fim da execução anterior (n alto) e o reset no meio.
+    antes = "t,99999,0,0\np,99990,0.1000,0,0.00,0,0.00\n"
+    destino = _captura(tmp_path, antes + LINHAS_PLACA)
+    assert cadeia.compara_replay(destino, LINHAS_PLACA)["tela"] == 0
+    assert cadeia.compara_replay(destino, LINHAS_PLACA)["picos"] == 0
