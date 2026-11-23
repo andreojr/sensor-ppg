@@ -2,9 +2,12 @@
  * fila.h: fila de amostras a PPG_FS_HZ entre quem lê o sensor (e decima) e a
  * cadeia. Anel de FILA_TAM posições, sem HAL.
  *
- * Uma leitura da FIFO do MAX30102 traz no máximo 32 amostras cruas = 8 decimadas;
- * 16 é o dobro. Cheia: a amostra nova é descartada e contada (cheia), pra o
- * monitor mostrar que não aconteceu.
+ * Uma leitura da FIFO do MAX30102 traz no máximo 32 amostras cruas e o sensor conta
+ * até 31 perdidas (que entram como a última repetida): 63 cruas, até 16 decimadas.
+ * Normalmente são 17 cruas = 4 ou 5 decimadas; 16 só no boot, depois das bancadas.
+ * Como o laço esvazia a fila a cada leitura, ela nunca enche: o contador cheia é
+ * sanidade. A prova de que nada se perdeu são as perdidas do sensor e o intervalo
+ * entre leituras (monitor.h).
  */
 #ifndef PDS_CADEIA_FILA_H
 #define PDS_CADEIA_FILA_H

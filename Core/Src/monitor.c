@@ -16,13 +16,23 @@ static volatile uint32_t tiques;
 static uint32_t proximo;    /* tique do próximo relato de 1 s */
 static uint32_t segundos;
 static uint32_t amostras;
+static uint32_t inicio;          /* tique do monitor_comeca() */
+static uint32_t total_amostras;  /* desde o monitor_comeca() */
 static ciclos_t volta;
 
 void monitor_init(TIM_HandleTypeDef *htim)
 {
     ciclos_liga();
-    proximo = TIQUES_SEGUNDO;
     HAL_TIM_Base_Start_IT(htim);
+}
+
+void monitor_comeca(void)
+{
+    inicio = tiques;
+    proximo = inicio + TIQUES_SEGUNDO;
+    segundos = 0;
+    amostras = 0;
+    total_amostras = 0;
 }
 
 void monitor_tique(void)
@@ -33,6 +43,7 @@ void monitor_tique(void)
 void monitor_conta_amostra(void)
 {
     amostras++;
+    total_amostras++;
 }
 
 void monitor_conta_volta(uint32_t ciclos)
@@ -53,12 +64,21 @@ static void relata_ciclos(cadeia_t *c, sensor_medidas_t *m)
     ciclos_relata(&k->qualidade, "qualidade", BANCADA_ORCAMENTO_QUALIDADE);
     ciclos_relata_max(&k->total, "cadeia", MONITOR_ORCAMENTO_CADEIA, MONITOR_ORCAMENTO_CADEIA_MAX);
     ciclos_relata(&volta, "volta", MONITOR_ORCAMENTO_VOLTA);
-    char linha[64];
+    char linha[80];
     uint32_t ms = m->maior_intervalo / (SystemCoreClock / 1000u);
     int tam = snprintf(linha, sizeof linha, "# leitura: maior intervalo %lu ms (limite %u)\n",
                        (unsigned long)ms, MONITOR_LIMITE_LEITURA_MS);
     serial_escreve(linha, (uint32_t)tam);
     m->maior_intervalo = 0;
+    /* A taxa de verdade é a média: as amostras chegam em lotes de 4 ou 5 (17 cruas a
+       cada 42,5 ms), e a janela de 1 s do TIM2 corta os lotes onde calhar (96 a 104). */
+    uint32_t decorridos = tiques - inicio;
+    uint32_t centesimos = (uint32_t)((uint64_t)total_amostras * TIQUES_SEGUNDO * 100u /
+                                     (decorridos ? decorridos : 1u));
+    tam = snprintf(linha, sizeof linha, "# taxa: %lu.%02lu amostras/s em %lu s (TIM2)\n",
+                   (unsigned long)(centesimos / 100u), (unsigned long)(centesimos % 100u),
+                   (unsigned long)(decorridos / TIQUES_SEGUNDO));
+    serial_escreve(linha, (uint32_t)tam);
 }
 
 void monitor_tarefa(fila_t *fila, cadeia_t *c)

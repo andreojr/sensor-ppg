@@ -95,6 +95,7 @@ void app_init(I2C_HandleTypeDef *sensor, I2C_HandleTypeDef *display, UART_Handle
         HAL_Delay(50);
         Error_Handler();
     }
+    monitor_comeca(); /* o TIM2 contou durante as bancadas: os relatos começam agora */
 }
 
 /* Esvazia a fila: cada bruto pela cadeia, as linhas na serial e a onda pro display. */

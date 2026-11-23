@@ -141,6 +141,7 @@ t,1199,1,6420
 # cadeia: ciclos med ... (orcamento 51000) max ... (orcamento 960000)
 # volta: ciclos med ... max ... (orcamento 3600000)
 # leitura: maior intervalo ... ms (limite 80)
+# taxa: 100.02 amostras/s em 10 s (TIM2)
 ```
 
 - `n` é o índice da amostra a 400 Hz desde o boot. Se o sensor descartar
@@ -490,14 +491,22 @@ manda
 # laco: amostras 100 fila_max 5 fila_cheia 0 perdidas 0
 ```
 
-- `amostras`: quantas saíram da cadeia naquele segundo. ~100 prova os 100 Hz (no
-  tempo do sensor; se o oscilador dele for 1% rápido, sai 101).
-- `fila_max`: o maior enchimento da fila (de 16) no segundo.
-- `fila_cheia`: amostras descartadas por fila cheia (tem que ser 0).
-- `perdidas`: amostras que o sensor descartou por FIFO cheia (tem que ser 0).
+- `amostras`: quantas saíram da cadeia naquele segundo. Oscila de 96 a 104 mesmo com
+  tudo certo: as amostras chegam em lotes de 4 ou 5 (17 cruas a cada 42,5 ms), e a
+  janela de 1 s do TIM2 corta os lotes onde calhar. O número que prova os 100 Hz é a
+  **média**, que sai a cada 10 s: `# taxa: 100.02 amostras/s em 600 s (TIM2)` (no
+  tempo do sensor; se o oscilador dele for 1% rápido, sai ~101).
+- `fila_max`: o maior enchimento da fila (de 16) no segundo. Normal: 4 ou 5.
+- `fila_cheia`: amostras descartadas por fila cheia. Sanidade: com a fila esvaziada a
+  cada leitura, não acontece (o pior caso é 16, ver abaixo).
+- `perdidas`: amostras que o sensor descartou por FIFO cheia. **Tem que ser 0** (fora
+  do primeiro segundo depois das bancadas, em que a FIFO encheu enquanto elas rodavam).
+  Junto com `# leitura: maior intervalo`, é a prova de que o laço leu o sensor a tempo.
 
 **A fila** guarda amostras **já decimadas** (`ppg_amostra_t`, `pds/cadeia/fila.h`).
-Uma leitura da FIFO traz no máximo 32 cruas = 8 decimadas; 16 é o dobro. Cheia, a
+Uma leitura normal traz 17 cruas = 4 ou 5 decimadas. O pior caso é o boot, depois
+das bancadas: 32 cruas mais 31 perdidas (o máximo que o sensor conta, que entram como
+a última repetida) = 63 cruas, até 16 decimadas. Por isso 16 posições. Cheia, a
 amostra nova é descartada e contada. A FIFO do sensor é quem segura as amostras
 enquanto o processador está ocupado: depois do INT ainda cabem 15 (37,5 ms).
 
