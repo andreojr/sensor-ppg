@@ -228,6 +228,31 @@ uv run python -m analise.filtro --confere dados/sensor_<data>_<hora>.csv
 uv run python -m analise.respiracao --confere dados/sensor_<data>_<hora>.csv
 ```
 
+Antes de uma captura que vai valer (o passo 5 de um módulo), use
+`--qualidade`: enquanto grava, a captura passa as linhas `b,` pela qualidade
+do Python (a mesma conta do C, ver [Qualidade](../modulos/qualidade/)) e diz, uma
+vez por segundo, se o sinal está usável. Ajeite o dedo até ver `USAVEL` em
+verde por alguns segundos seguidos; se aparecer `placa reiniciou`, conte o
+tempo do roteiro a partir dali.
+
+```bash
+uv run python -m analise.captura COM3 --segundos 60 --qualidade
+```
+
+```text
+   2.0 s  nao usavel: sem dedo  (pi 0.00%)
+   9.0 s  nao usavel: sem ritmo  (pi 0.84%)
+  12.0 s  USAVEL  (1 seguidos)
+  13.0 s  USAVEL  (2 seguidos)
+```
+
+O tempo é o do sinal (desde a 1ª linha `b,`). Os motivos são os bits da
+qualidade: `sem dedo`, `saturado (aperte menos)`, `pulso fraco`, `movimento`,
+`ruido` e `sem ritmo`; sem motivo e ainda não usável é `esperando 3 janelas
+boas`. O `pi` é o índice de perfusão (altura do pulso / DC): abaixo de
+0,05% é dedo sem pulso; acima de 5%, movimento. Precisa das linhas `b,` (o
+firmware manda por padrão).
+
 | Sintoma | Causa provável |
 |---|---|
 | `# erro: MAX30102 nao respondeu na I2C1` | VIN, GND, SCL ou SDA soltos (o SCL solto é o mais comum) |
