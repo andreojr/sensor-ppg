@@ -101,7 +101,7 @@ em regime (janela cheia, uma FFT por segundo), o `# espectral:` mostra média de
 sem mudar nada.
 
 **Com o sensor real (passo 5,** dedo do André parado, 60 s, 22/11/2026): o
-`main.c` passa o filtrado pelo espectral e manda `e,n,bpm_valido,bpm` a cada segundo.
+A cadeia (`pds/cadeia/`, chamada pelo `app.c`) passa o filtrado pelo espectral e manda `e,n,bpm_valido,bpm` a cada segundo.
 O Python rodou no mesmo filtrado que a placa mandou (linhas `f,`), janela a janela:
 
 | O quê | Resultado |

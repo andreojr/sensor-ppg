@@ -148,6 +148,9 @@ O que a cadeia integrada **não** prova, e precisa ser dito na apresentação:
   verde do MAX30102 não deixa o dedo encostar sem pressão, então o sinal varia com a
   força do dedo. Por isso a qualidade marca boa parte das capturas como "não usável"
   (ver [Picos](../picos/), [HRV](../hrv/) e [Qualidade](../qualidade/)).
+- **A cadeia integrada foi conferida na placa em duas capturas de 23/11** (o
+  `--replay` acima, antes e depois do laço novo). As capturas mais antigas são de
+  firmwares anteriores e validam os módulos, não a cadeia.
 - **Coleta com o nosso sensor só pelas capturas que já existem** (#29, escopo
   reduzido): metrônomo a 6, 10 e 15 rpm, repouso com o dedo parado e dedo solto ou em
   movimento. Não houve coleta com a câmera do celular nem dumps do relógio: a
@@ -156,7 +159,7 @@ O que a cadeia integrada **não** prova, e precisa ser dito na apresentação:
   referência de verdade continua sendo o ECG do PhysioNet.
 - **O BPM só aparece com a qualidade e o picos concordando** (linha `t,` e
   `bpm_picos.valido`). Na ficha do display, entre dois julgamentos, o número segue o
-  último batimento com a decisão anterior (acima, "O que o display lê"); a linha `t,`
+  último batimento com a decisão anterior (acima, em "A ordem"); a linha `t,`
   sai só no julgamento.
 - **A pior amostra passa do orçamento de um período** (1,23 M de 960 000 ciclos, em
   Debug), uma vez por segundo; a fila absorve e nada se perdeu. O firmware da release

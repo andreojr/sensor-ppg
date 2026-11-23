@@ -186,8 +186,35 @@ def test_main_sem_nada_pra_comparar_falha(tmp_path, capsys, monkeypatch):
     cruas = tmp_path / "cap.csv"
     cruas.write_text("n,ir,vermelho\n0,1,2\n", encoding="utf-8")
     monkeypatch.setattr(cadeia, "replay", lambda *_: {})
-    cadeia.main(["--replay", str(cruas)])
+    with pytest.raises(SystemExit) as fim:
+        cadeia.main(["--replay", str(cruas)])
+    assert fim.value.code == 1
     assert "FALHOU" in capsys.readouterr().out
+
+
+def test_main_codigo_de_saida_segue_o_resultado(tmp_path, monkeypatch):
+    cruas = tmp_path / "cap.csv"
+    cruas.write_text("n,ir,vermelho\n", encoding="utf-8")
+    monkeypatch.setattr(cadeia, "replay", lambda *_: {"picos": 0, "hrv": 0})
+    with pytest.raises(SystemExit) as fim:
+        cadeia.main(["--replay", str(cruas)])
+    assert fim.value.code == 0
+    monkeypatch.setattr(cadeia, "replay", lambda *_: {"picos": 1})
+    with pytest.raises(SystemExit) as fim:
+        cadeia.main(["--replay", str(cruas)])
+    assert fim.value.code == 1
+
+
+def test_main_sem_reset_explica_sem_traceback(tmp_path, monkeypatch):
+    cruas = tmp_path / "cap.csv"
+    cruas.write_text("n,ir,vermelho\n", encoding="utf-8")
+
+    def sem_reset(*_):
+        raise ValueError("a captura não pegou o reset da placa")
+
+    monkeypatch.setattr(cadeia, "replay", sem_reset)
+    with pytest.raises(SystemExit, match="FALHOU: .*reset"):
+        cadeia.main(["--replay", str(cruas)])
 
 
 def cadeia_ponto(destino: Path, ponto: str) -> Path:

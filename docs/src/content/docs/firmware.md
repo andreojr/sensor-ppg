@@ -243,7 +243,7 @@ do picos e do HRV precisam.
 
 Pra gravar em CSV e plotar, dentro de `analise/` (o CSV vai pra
 `analise/dados/`, que não entra no git). No fim, a captura mostra a taxa medida
-e quantas linhas se perderam (pelos saltos no `n` das cruas e das `b,`). As linhas `b,`, `f,`, `p,`, `h,`, `e,` e `r,` vão pra
+e quantas linhas se perderam (pelos saltos no `n` das cruas ou, sem elas, das `b,`). As linhas `b,`, `f,`, `p,`, `h,`, `e,` e `r,` vão pra
 `<nome>_bruto.csv`, `<nome>_filtrado.csv`, `<nome>_picos.csv`, `<nome>_hrv.csv`,
 `<nome>_espectral.csv` e `<nome>_respiracao.csv`, e cada
 `--confere` compara o módulo da placa com o do Python no mesmo sinal:
@@ -354,9 +354,9 @@ A emulação (`uv run testes/fft/ciclos/ciclos.py espectral`) estimava ~1 060 e 
 Com `-DBANCADA_RESPIRACAO=ON`: 5 min do bruto do `s1_sit` (o vetor de
 `testes/respiracao/vetores/s1_sit.h`, ~120 KB na flash), porque os 60 s da
 fonte falsa só enchem uma janela. Decimação, filtro e respiração juntas
-ocupam ~300 KB de flash. As 5 bancadas de módulo juntas ocupam ~360 KB (Release); somando a bancada da
-cadeia, a flash estoura os 512 KB do chip e o firmware não linka: ligue só as que
-for usar.
+ocupam ~300 KB de flash. As 5 bancadas de módulo juntas ocupam ~360 KB (Release), e com a da cadeia ~440 KB;
+com todas as 8 (somando HRV e qualidade) a flash estoura os 512 KB do chip e o
+firmware não linka: ligue só as que for usar.
 
 ```text
 # bancada respiracao: 299 estimativas (esperado 299), 0 diferentes, erro max 0 milesimos de rpm
@@ -596,8 +596,8 @@ depois (135 KB de flash com a bancada da cadeia). Em Debug, 78 788 / 37 040 B.
 
 ## Laço simples, sem RTOS
 
-**Decisão:** a cadeia roda num laço principal simples, com duas filas pequenas
-(sensor para cadeia, e cadeia para display). Não usamos RTOS: o curso não exige, e
+**Decisão:** a cadeia roda num laço principal simples, com uma fila pequena
+(sensor para cadeia); o display lê a ficha `ppg_resultados_t`, sem fila. Não usamos RTOS: o curso não exige, e
 a medida na placa mostrou que ele não faz falta.
 
 **A pergunta:** se o display travar o laço por ~30 ms, o sensor perde amostras?
