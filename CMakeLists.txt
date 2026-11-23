@@ -61,14 +61,26 @@ set_source_files_properties(${CMSIS_DSP_SOURCES} PROPERTIES COMPILE_OPTIONS "-w"
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
+    ${CMAKE_SOURCE_DIR}/Core/Src/app.c
+    ${CMAKE_SOURCE_DIR}/Core/Src/sensor.c
+    ${CMAKE_SOURCE_DIR}/Core/Src/monitor.c
     ${CMAKE_SOURCE_DIR}/Core/Src/max30102.c
     ${CMAKE_SOURCE_DIR}/Core/Src/serial.c
     ${CMAKE_SOURCE_DIR}/Core/Src/bancada.c
     ${CMAKE_SOURCE_DIR}/Core/Src/bancada_hrv.c
     ${CMAKE_SOURCE_DIR}/Core/Src/bancada_qualidade.c
+    ${CMAKE_SOURCE_DIR}/Core/Src/bancada_cadeia.c
     ${PDS_SOURCES}
     ${CMSIS_DSP_SOURCES}
 )
+
+# Serial completa: além dos resultados e do bruto (b,), as amostras cruas a 400 Hz
+# (n,ir,vermelho) e o filtrado (f,), pra conferir contra o Python.
+# cmake --preset Debug -DSERIAL_COMPLETA=ON
+option(SERIAL_COMPLETA "Manda as cruas e o filtrado pela serial" OFF)
+if(SERIAL_COMPLETA)
+    target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE SERIAL_COMPLETA)
+endif()
 
 # Bancadas: na partida, tocam a fonte falsa no módulo e conferem com o Python
 # (os vetores de testes/<módulo>/). cmake --preset Debug -DBANCADA_FILTRO=ON
@@ -112,6 +124,15 @@ endif()
 option(BANCADA_QUALIDADE "Confere a qualidade na placa e manda a do sensor pela serial" OFF)
 if(BANCADA_QUALIDADE)
     target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE BANCADA_QUALIDADE)
+    target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/testes)
+endif()
+
+# Bancada da cadeia: na partida, passa os 90 s do vetor do PhysioNet pela cadeia
+# inteira, confere com o Python e mede os ciclos (testes/cadeia/).
+# cmake --preset Debug -DBANCADA_CADEIA=ON
+option(BANCADA_CADEIA "Confere a cadeia inteira na placa com o vetor do PhysioNet" OFF)
+if(BANCADA_CADEIA)
+    target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE BANCADA_CADEIA)
     target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/testes)
 endif()
 

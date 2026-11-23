@@ -8,17 +8,17 @@ Código que usa HAL, em `Core/Inc` e `Core/Src` (fora de `pds/`).
 | Parte | Responsável | Estado |
 |---|---|---|
 | Leitura do MAX30102 (I2C1, FIFO, INT no PB5) | João | feita: `max30102.c` |
-| Serial pro PC (USART1 a 921600 com DMA, adaptador USB-serial) | João | feita: `serial.c`, manda o sinal cru e as saídas da cadeia (bruto, filtrado, batimentos, HRV, BPM do espectral e respiração) |
-| Decimação na placa (400 → 100 Hz) e ciclos (DWT) | João | feita: `main.c` e `bancada.c`; ver [Decimação](../modulos/decimacao/) |
-| Filtro na placa (bruto → filtrado) | João | feito: `main.c` e `bancada.c`; ver [Filtro](../modulos/filtro/) |
-| Picos na placa (filtrado → batimentos e BPM) | Celso / André | feito: `main.c` e `bancada.c`; ver [Picos](../modulos/picos/) |
-| HRV na placa (batimentos → SDNN e RMSSD) | André | feito: `main.c`, linhas `h,`, bate com o Python na placa; ver [HRV](../modulos/hrv/) |
-| Espectral na placa (filtrado → BPM pela FFT) | Celso | feito: `main.c`, linhas `e,`, bate com o Python na placa; ver [Espectral](../modulos/espectral/) e [FFT](../modulos/fft/) |
-| Respiração na placa (bruto → rpm, 1 por segundo) | João | feita: `main.c` e `bancada.c`; ver [Respiração](../modulos/respiracao/) |
+| Serial pro PC (USART1 a 921600 com DMA, adaptador USB-serial) | João | feita: `serial.c`; o texto das linhas em `pds/cadeia/linhas.c`. Padrão: bruto e resultados; `-DSERIAL_COMPLETA=ON` acrescenta o sinal cru e o filtrado |
+| Decimação na placa (400 → 100 Hz) e ciclos (DWT) | João | feita: `sensor.c` e `bancada.c`; ver [Decimação](../modulos/decimacao/) |
+| Filtro na placa (bruto → filtrado) | João | feito: `pds/cadeia/` e `bancada.c`; ver [Filtro](../modulos/filtro/) |
+| Picos na placa (filtrado → batimentos e BPM) | Celso / André | feito: `pds/cadeia/` e `bancada.c`; ver [Picos](../modulos/picos/) |
+| HRV na placa (batimentos → SDNN e RMSSD) | André | feito: `pds/cadeia/`, linhas `h,`, bate com o Python na placa; ver [HRV](../modulos/hrv/) |
+| Espectral na placa (filtrado → BPM pela FFT) | Celso | feito: `pds/cadeia/`, linhas `e,`, bate com o Python na placa; ver [Espectral](../modulos/espectral/) e [FFT](../modulos/fft/) |
+| Respiração na placa (bruto → rpm, 1 por segundo) | João | feita: `pds/cadeia/` e `bancada.c`; ver [Respiração](../modulos/respiracao/) |
 | Bancada do HRV na placa (`-DBANCADA_HRV=ON`) | André | feita: `bancada_hrv.c`, passou na placa; ver [HRV](../modulos/hrv/) |
 | Bancada da qualidade na placa (`-DBANCADA_QUALIDADE=ON`) | André | feita: `bancada_qualidade.c`, passou na placa (55/55, pior caso 2 149 ciclos no Debug); ver [Qualidade](../modulos/qualidade/) |
 | Fonte falsa (PhysioNet em flash) | André | a fazer |
-| Timer, filas e laço principal (TIM2 a 100 Hz já configurado) | André | a fazer |
+| Timer, filas e laço principal (#17) | André | feito e medido na placa (23/11): `app.c`, `sensor.c`, `monitor.c`, `pds/cadeia/`. Ver [Laço principal](#laço-principal) e [Cadeia](../modulos/cadeia/) |
 | Display OLED (I2C3) | Celso | a fazer |
 
 ## Pinagem
@@ -35,14 +35,14 @@ Código que usa HAL, em `Core/Inc` e `Core/Src` (fora de `pds/`).
 
 HSE 25 MHz → PLL (/25, ×192, /2) → **SYSCLK 96 MHz**. APB1 a 48 MHz
 (timers a 96 MHz), APB2 a 96 MHz. O TIM2 gera a interrupção de 100 Hz:
-96 MHz ÷ 9600 ÷ 100.
+96 MHz ÷ 9600 ÷ 100. Ela é a **régua de tempo** do laço (ver [Laço principal](#laço-principal)).
 
 ## Interrupções
 
 | Interrupção | Pra quê |
 |---|---|
 | EXTI9_5 (PB5, borda de descida, pull-up) | INT do MAX30102: FIFO com amostras |
-| TIM2 (100 Hz) | processamento periódico da cadeia |
+| TIM2 (100 Hz) | régua de tempo: só conta; o monitor relata a cada 1 s se a cadeia acompanhou os 100 Hz (não marca o passo da cadeia: quem marca é o sensor) |
 | DMA2 Stream 7 + USART1 | envio pela serial sem travar a CPU |
 
 ## Leitura do MAX30102 (`max30102.c`)
@@ -94,17 +94,27 @@ INT ficar baixo, não vem outra borda de descida, e sem isso a leitura travaria.
 
 ## Serial pro PC (`serial.c`)
 
-921600 8N1, texto, uma linha por amostra:
+921600 8N1, texto, uma linha por amostra. O texto das linhas sai de
+`pds/cadeia/linhas.c` (sem HAL: o replay no PC escreve o mesmo). Dois modos:
+
+- **Padrão:** o bruto (`b,`), os resultados (`p,` `h,` `e,` `r,` `t,`) e as
+  linhas `#`. É o que a aplicação usa; o `captura --qualidade` julga a qualidade no
+  PC a partir do `b,`.
+- **`-DSERIAL_COMPLETA=ON`:** acrescenta as cruas a 400 Hz (`n,ir,vermelho`) e o
+  filtrado (`f,`), pra captura e conferência contra o Python (`--confere` dos
+  módulos e `analise.cadeia --replay`).
 
 ```text
-# MAX30102 400 Hz: n,ir,vermelho
+# sensor-ppg: laco principal, serial completa
+# MAX30102 400 Hz: n,ir,vermelho (so na completa)
 # decimacao 100 Hz: b,n,ir,vermelho
-# filtro 100 Hz, atraso 100: f,n,ir,vermelho
+# filtro 100 Hz, atraso 100: f,n,ir,vermelho (so na completa)
 # picos: p,n_pico,fracao,rr_valido,rr_ms,bpm_valido,bpm
 # espectral: e,n,bpm_valido,bpm
 # hrv: h,n_pico,valido,sdnn,rmssd,rr_usado
 # respiracao 1 Hz: r,n,rpm,valido
 # tela 1 Hz: t,n,mostra,bpm x100
+# laco 1 Hz (TIM2): amostras, fila_max, fila_cheia, perdidas
 0,112034,98765
 1,112040,98771
 ...
@@ -119,6 +129,8 @@ e,799,1,73.85
 ...
 t,1199,1,6420
 ...
+# laco: amostras 100 fila_max 5 fila_cheia 0 perdidas 0
+...
 # decimacao: ciclos med ... max ... (orcamento 2400)
 # filtro: ciclos med ... max ... (orcamento 19200)
 # picos: ciclos med ... max ... (orcamento 9600)
@@ -126,6 +138,10 @@ t,1199,1,6420
 # hrv: ciclos med ... max ... (orcamento 20000)
 # respiracao: ciclos med ... max ... (orcamento 9600)
 # qualidade: ciclos med ... max ... (orcamento 3000)
+# cadeia: ciclos med ... (orcamento 51000) max ... (orcamento 960000)
+# volta: ciclos med ... max ... (orcamento 3600000)
+# leitura: maior intervalo ... ms (limite 80)
+# taxa: 100.02 amostras/s em 10 s (TIM2)
 ```
 
 - `n` é o índice da amostra a 400 Hz desde o boot. Se o sensor descartar
@@ -160,6 +176,7 @@ t,1199,1,6420
   uma por segundo, com o `n` do bruto que fechou a estimativa, as respirações
   por minuto e `valido` (0 ou 1). Nos primeiros 60 s (a janela enchendo), sai
   `valido` 0.
+- A cada 1 s do TIM2, `# laco: ...` (ver [Laço principal](#laço-principal)).
 - A cada 10 s, `# decimacao: ...`, `# filtro: ...`, `# picos: ...`,
   `# espectral: ...`, `# hrv: ...`, `# qualidade: ...` e
   `# respiracao: ciclos med X max Y` medem cada `_processa()`
@@ -170,14 +187,17 @@ t,1199,1,6420
   e 20 000 ciclos por batimento pro HRV (o da bancada do HRV). O espectral tem
   dois orçamentos: **média** de 9 600 ciclos por amostra (1%) e **pior caso** de
   960 000 (a amostra em que sai a FFT, uma por segundo, tem que caber num período de
-  amostra: 96 MHz / 100 Hz); `# espectral: ...` mostra os dois.
+  amostra: 96 MHz / 100 Hz); `# espectral: ...` mostra os dois. Depois vêm a
+  cadeia inteira por amostra, a volta do laço e o maior intervalo entre duas
+  leituras da FIFO (ver [Laço principal](#laço-principal)).
 - Linhas que começam com `#` são comentário. Se o sensor não responder no
   boot, sai `# erro: MAX30102 nao respondeu na I2C1` e a placa para. Se a
   taxa do sensor não tiver filtro de decimação, sai
   `# erro: decimacao sem filtro para essa taxa do MAX30102` e a placa para.
 
-São no máximo uns 25 bytes × 400 Hz + 2 × 30 bytes × 100 Hz ≈ 16 kB/s, cerca
-de 17% dos ~92 kB/s da serial. O envio usa DMA com buffer duplo: o laço preenche um buffer de 3 KiB
+No padrão são ~30 bytes × 100 Hz ≈ 3 kB/s mais os resultados. Na completa, no
+máximo uns 25 bytes × 400 Hz + 2 × 30 bytes × 100 Hz ≈ 16 kB/s, cerca de 17% dos
+~92 kB/s da serial. O envio usa DMA com buffer duplo: o laço preenche um buffer de 3 KiB
 (cabe a pior leitura: FIFO cheia, linhas `b,` e `f,` e o resumo dos ciclos) enquanto o DMA manda o outro.
 
 ## Rodar na placa e ver a leitura
@@ -407,7 +427,7 @@ Se o clock mudar, **o baud rate da USART1 e o TIM2 mudam junto**: recalcular.
 | Fast Mode Duty Cycle | Tlow/Thigh = 2 | padrão |
 | Pinos | PA8 = SCL, PB4 = SDA | |
 
-### TIM2: processamento a 100 Hz (Timers)
+### TIM2: régua de 100 Hz (Timers)
 
 | Campo | Valor | Por quê |
 |---|---|---|
@@ -436,6 +456,115 @@ mesmo vetor de `testes/hrv/vetores/`) no `hrv_processa()`, confere com a
 saída do Python e mede os ciclos por batimento com o contador do núcleo
 (DWT). O resultado sai em duas linhas `# bancada hrv: ...`. Sem a opção, nada
 disso entra no firmware. Procedimento e orçamento em [HRV](../modulos/hrv/).
+
+## Laço principal
+
+O `main.c` (CubeMX) só liga o hardware, destrava a I2C1 e chama `app_init()` uma
+vez e `app_laco()` pra sempre. A aplicação é um **superloop com tarefas
+cooperativas**: cada volta chama as tarefas em ordem, e cada uma faz pouco e
+devolve o controle, nunca espera nada. É isso que garante ler o sensor a tempo.
+
+```text
+ MAX30102 (400 Hz, relógio próprio, FIFO de 32, INT com 17)
+   │ INT (EXTI PB5): só levanta a bandeira
+   ▼
+ app_laco()  (app.c), a cada volta:
+   1. sensor_tarefa()   (sensor.c) bandeira ou PB5 baixo → lê a FIFO (~10 ms)
+                        → decimação (400 → 100 Hz) → FILA (16 amostras)
+   2. cadeia            esvazia a fila: cadeia_processa() (pds/cadeia/)
+                        → ficha ppg_resultados_t, linhas na serial, onda pro display
+   3. display           display_servico(): uma página (~3 ms) com a ficha
+   4. monitor_tarefa()  (monitor.c) a cada 1 s de TIM2: # laco; a cada 10 s: ciclos
+   5. serial_envia()    despacha o buffer por DMA
+
+ TIM2 (100 Hz, cristal): a interrupção só soma 1 num contador.
+```
+
+**Quem marca o passo é o sensor, não o TIM2.** O MAX30102 conta o tempo com um
+oscilador próprio, e o TIM2 conta pelo cristal da placa. Os dois nunca batem
+exatamente: se o TIM2 mandasse processar uma amostra a cada 10 ms, uma diferença de
+1% faria a fila ganhar ou perder uma amostra por segundo e estourar (ou secar) em
+segundos. Por isso o TIM2 é a **régua**: a cada 100 tiques (1 s de cristal) a placa
+manda
+
+```text
+# laco: amostras 100 fila_max 5 fila_cheia 0 perdidas 0
+```
+
+- `amostras`: quantas saíram da cadeia naquele segundo. Oscila de 96 a 104 mesmo com
+  tudo certo: as amostras chegam em lotes de 4 ou 5 (17 cruas a cada 42,5 ms), e a
+  janela de 1 s do TIM2 corta os lotes onde calhar. O número que prova os 100 Hz é a
+  **média**, que sai a cada 10 s: `# taxa: 100.02 amostras/s em 600 s (TIM2)` (no
+  tempo do sensor; se o oscilador dele for 1% rápido, sai ~101).
+- `fila_max`: o maior enchimento da fila (de 16) no segundo. Normal: 4 ou 5.
+- `fila_cheia`: amostras descartadas por fila cheia. Sanidade: com a fila esvaziada a
+  cada leitura, não acontece (o pior caso é 16, ver abaixo).
+- `perdidas`: amostras que o sensor descartou por FIFO cheia. **Tem que ser 0** (fora
+  do primeiro segundo depois das bancadas, em que a FIFO encheu enquanto elas rodavam).
+  Junto com `# leitura: maior intervalo`, é a prova de que o laço leu o sensor a tempo.
+
+**A fila** guarda amostras **já decimadas** (`ppg_amostra_t`, `pds/cadeia/fila.h`).
+Uma leitura normal traz 17 cruas = 4 ou 5 decimadas. O pior caso é o boot, depois
+das bancadas: 32 cruas mais 31 perdidas (o máximo que o sensor conta, que entram como
+a última repetida) = 63 cruas, até 16 decimadas. Por isso 16 posições. Cheia, a
+amostra nova é descartada e contada. A FIFO do sensor é quem segura as amostras
+enquanto o processador está ocupado: depois do INT ainda cabem 15 (37,5 ms).
+
+**O display** lê só a ficha `ppg_resultados_t`, que a cadeia sobrescreve (número só
+interessa o mais recente), e recebe a onda filtrada amostra a amostra
+(`display_amostra()`, o anel de 256 do módulo `oled/`). Enquanto o driver (#122)
+não entra, `display_amostra()` e `display_servico()` são funções vazias no `app.c`,
+com a mesma assinatura.
+
+### Ciclos e orçamento
+
+O DWT mede cada módulo, a cadeia inteira por amostra e a volta do laço. O
+orçamento de "3 000 ciclos por amostra" da #17 é o da qualidade sozinha; o da
+cadeia é a soma dos orçamentos dos módulos.
+
+| Medida | Orçamento | Por quê |
+|---|---|---|
+| Cadeia (`# cadeia`), média por amostra de 100 Hz | 51 000 | filtro 19 200 + picos 9 600 + espectral 9 600 + respiração 9 600 + qualidade 3 000 (a decimação, 2 400 por amostra do sensor, é medida à parte no `sensor.c`) |
+| Cadeia, pior amostra | 960 000 | um período (10 ms); a amostra em que a respiração (~0,8 milhão) e a FFT (~0,41 milhão) calculam o espectro pode ser a mesma: estoura (ver abaixo) |
+| Volta do laço (`# volta`) | 3 600 000 (37,5 ms) | a folga do sensor depois do INT |
+| Maior intervalo entre leituras da FIFO (`# leitura`) | 80 ms | 32 amostras a 400 Hz; normal ~42,5 ms |
+
+**Se estourar:** passar de 960 000 numa amostra não perde nada se a volta couber (a
+fila absorve): só registrar. Se aparecerem `perdidas`, medir em Release e, se não
+bastar, defasar o espectro da respiração em relação ao da FFT. Não cortar módulo.
+
+**Medidas na placa (23/11/2026, Debug, `-DBANCADA_CADEIA=ON -DSERIAL_COMPLETA=ON`,
+dedo no sensor, 3 min depois do reset):**
+
+| Medida | Placa | Orçamento |
+|---|---|---|
+| `# cadeia` média por amostra | 25 357 | 51 000 |
+| `# cadeia` pior amostra | 1 229 429 | 960 000 (estoura) |
+| `# volta` pior volta | 2 491 743 (26 ms) | 3 600 000 (37,5 ms) |
+| `# leitura` maior intervalo | 42 ms | 80 ms |
+| `# laco` fila_max / fila_cheia / perdidas | 5 / 0 / 0 | 16 / 0 / 0 |
+| `# taxa` | 99,9 amostras/s | 100 |
+
+A pior amostra estoura porque a respiração (798 840) e o espectral (409 906)
+calculam o espectro na mesma amostra. Pela regra acima, isso só é registrado: a
+volta coube em 26 ms, a fila chegou a 5 de 16 e nada se perdeu. Na bancada (vetor do
+PhysioNet na partida) a cadeia bateu com o Python em 478 saídas, 0 fora da
+tolerância.
+
+### Testar
+
+- **PC:** `ctest` roda o `teste_cadeia` (90 s do PhysioNet contra a referência em
+  Python, `analise/src/analise/cadeia.py`), o `teste_linhas`, o `teste_fila` e o
+  `teste_replay`.
+- **Placa, fonte falsa:** `-DBANCADA_CADEIA=ON` passa o mesmo vetor pela cadeia na
+  partida e mede os ciclos.
+- **Placa, sensor:** comece a captura e aperte o reset;
+  `uv run python -m analise.cadeia --replay dados/<captura>.csv` refaz no PC, a
+  partir do bruto que a placa mandou, todas as linhas de resultado e confere que são
+  iguais às da placa (ver [Cadeia → Replay](../modulos/cadeia/#replay-a-prova-de-que-nada-mudou)).
+
+Flash/RAM (Release): 52 724 / 35 288 B antes do laço novo, 54 080 / 36 680 B
+depois (135 KB de flash com a bancada da cadeia).
 
 ## Laço simples, sem RTOS
 
@@ -475,7 +604,8 @@ Afastar os fios só reduziu pela metade, e trocar o pino (B5 por A1) não mudou 
 O que resolveu foi o resistor de 2 kΩ do INT para o 3V3 (ver "Resistores").
 
 A bancada ficou na branch `firmware/experimento-bloqueio-display` (só local, não
-entra na `main`); a decisão fica registrada aqui e na #17.
+entra na `main`); a decisão fica registrada aqui e na #17. O laço que saiu dela
+está em [Laço principal](#laço-principal).
 
 ## Regras
 
