@@ -44,7 +44,7 @@ import serial
 from analise import qualidade as ql
 
 SENSOR_FS_HZ = 400  # igual a MAX30102_FS_HZ em Core/Inc/max30102.h
-BAUD = 921600
+BAUD = 460800  # igual a huart1.Init.BaudRate (main.c); ver firmware.md, "Por que 460800"
 DADOS = Path(__file__).resolve().parents[2] / "dados"
 COLUNAS = ("n", "ir", "vermelho")
 # prefixo da linha -> (ponto da cadeia na placa, colunas do CSV)
