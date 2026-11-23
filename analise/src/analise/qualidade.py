@@ -287,6 +287,76 @@ def bpm_confiavel(usavel: bool, bpm_valido: bool, tem_batimento: bool, n: int,
     return usavel and bpm_valido and tem_batimento and idade <= BATIMENTO_VALE
 
 
+# O HRV só com RR de trecho usável: o RR entra se o julgamento da qualidade de
+# antes da soltura do batimento e o de depois disserem usável (ver qualidade.h).
+# O de antes vale por um bloco: mais velho = a qualidade recomeçou e não julgou.
+JULGAMENTO_VALE = BLOCO
+FILA = 8  # batimentos esperando o julgamento de depois (8 em 2 s com RR de 300 ms)
+
+
+def batimento_usavel(usavel: bool, tem_julgamento: bool, n_julgamento: int, n: int) -> bool:
+    """qualidade_batimento_usavel: o julgamento de antes, no instante n em que o
+    batimento sai, vale se disse usável e é recente. Idade em uint32, como no C."""
+    idade = (n - n_julgamento) % 2**32
+    return usavel and tem_julgamento and idade <= JULGAMENTO_VALE
+
+
+class Fila:
+    """qualidade_fila_t: os batimentos esperando o julgamento de depois."""
+
+    def __init__(self) -> None:
+        self.itens: list[tuple[object, bool]] = []  # (batimento, julgamento de antes)
+
+    def poe(self, b, antes: bool):
+        """Guarda o batimento. Fila cheia: devolve o mais antigo, que vai pro HRV
+        com o RR de fora; senão None."""
+        velho = self.itens.pop(0)[0] if len(self.itens) == FILA else None
+        self.itens.append((b, antes))
+        return velho
+
+    def tira(self, usavel: bool) -> list[tuple[object, bool]]:
+        """A qualidade julgou: todos os da fila, com "o RR entra" = rr_valido do
+        picos e antes e o julgamento de agora."""
+        saida = [(b, bool(b.rr_valido and antes and usavel)) for b, antes in self.itens]
+        self.itens = []
+        return saida
+
+
+def rr_entrou_no_hrv(bruto: np.ndarray, filtrado: np.ndarray, com_rr_valido: bool = False) -> dict:
+    """Refaz a decisão do laço da placa a partir de uma captura desde o boot: o picos
+    do Python no filtrado, a qualidade no bruto e a fila, na mesma ordem do main.c
+    (em cada amostra, o picos antes da qualidade). Devolve n_pico -> o RR entrou (com
+    com_rr_valido, n_pico -> (o RR entrou, o picos tinha aceitado o RR, o julgamento de
+    antes, o de depois); depois = None se o batimento saiu pela fila cheia).
+
+    bruto e filtrado: colunas n, ir, vermelho (o _bruto.csv e o _filtrado.csv)."""
+    from analise.picos import Picos
+
+    filt = dict(zip(filtrado[:, 0].astype(int).tolist(), filtrado[:, 1].tolist(), strict=True))
+    q, p, fila = Qualidade(), Picos(), Fila()
+    julg: tuple[int, bool] | None = None
+    entrou: dict = {}
+    for n, ir, vm in zip(bruto[:, 0].astype(int).tolist(), bruto[:, 1].tolist(),
+                         bruto[:, 2].tolist(), strict=True):
+        if n in filt:
+            b = p.processa(float(filt[n]), n)
+            if b is not None:
+                antes = julg is not None and batimento_usavel(julg[1], True, julg[0], n)
+                velho = fila.poe(b, antes)
+                # Fila cheia: não acontece numa captura desde o boot com o n contínuo (sem teste).
+                if velho is not None:
+                    entrou[velho.n_pico] = ((False, velho.rr_valido, None, None) if com_rr_valido
+                                            else False)
+        s = q.processa(n, float(ir), float(vm))
+        if s is not None:
+            julg = (n, s.usavel)
+            antes_de = [a for _, a in fila.itens]
+            for (b, entra), antes in zip(fila.tira(s.usavel), antes_de, strict=True):
+                entrou[b.n_pico] = ((entra, b.rr_valido, antes, s.usavel) if com_rr_valido
+                                    else entra)
+    return entrou
+
+
 def roda(ir: np.ndarray, vm: np.ndarray, n: np.ndarray | None = None,
          lim: Limiares = LIMIARES) -> list[Saida]:
     """Passa o sinal todo pelo detector e devolve as saídas."""

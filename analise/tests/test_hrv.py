@@ -163,8 +163,11 @@ def test_hrv_janela_ignora_rr_fora_da_faixa():
     assert np.allclose(r, 0.0)
 
 
-def _placa_hrv(segundos: float = 240, rr_medio: float = 0.85):
-    """Batimentos e saída do HRV como a placa manda (rr_ms e HRV com 2 casas)."""
+def _placa_hrv(segundos: float = 240, rr_medio: float = 0.85, ruim: tuple = ()):
+    """Batimentos e saída do HRV como a placa manda (rr_ms e HRV com 2 casas).
+
+    ruim: trechos (início_s, fim_s) em que a qualidade disse não usável: a placa deixa
+    o RR de fora do HRV e manda rr_usado = 0 na linha h,."""
     from analise.hrv import Batimento, Hrv
 
     rng = np.random.default_rng(1)
@@ -176,9 +179,10 @@ def _placa_hrv(segundos: float = 240, rr_medio: float = 0.85):
         rr = 0.0 if ant is None else round((n_pico + fracao - ant) * 10.0, 2)
         valido_rr = ant is not None
         ant = n_pico + fracao
+        usado = not any(a <= t < b for a, b in ruim)
         p.append((n_pico, fracao, int(valido_rr), rr, 0, 0.0))
-        s = estado.processa(Batimento(True, n_pico, fracao, valido_rr, rr))
-        h.append((n_pico, int(s.valido), round(s.sdnn_ms, 2), round(s.rmssd_ms, 2)))
+        s = estado.processa(Batimento(True, n_pico, fracao, valido_rr and usado, rr))
+        h.append((n_pico, int(s.valido), round(s.sdnn_ms, 2), round(s.rmssd_ms, 2), int(usado)))
     return np.array(p), np.array(h)
 
 
@@ -207,3 +211,221 @@ def test_confere_par_cortado_nas_pontas_e_sem_validos():
     assert confere_placa(p, h[:-1])["ok"]  # parou entre o último p, e o h,
     assert confere_placa(p[11:], h[10:])["ok"]  # começou entre um p, e o h,
     assert not confere_placa(p[:30], h[:30])["ok"]  # 30 batimentos: nenhum HRV válido
+
+
+def test_confere_placa_com_rr_fora_por_qualidade():
+    """A placa deixa de fora o RR dos trechos não usáveis; o Python segue o rr_usado."""
+    from analise.hrv import confere_placa
+
+    p, h = _placa_hrv(ruim=((100, 110), (150, 152)))
+    assert (h[:, 4] == 0).sum() > 5
+    r = confere_placa(p, h)
+    assert r["ok"] and r["validos"] > 50, r
+    sem_regra = h.copy()
+    sem_regra[:, 4] = 1
+    assert not confere_placa(p, sem_regra)["ok"]  # ignorando o rr_usado, não bate
+
+
+def _captura_com_qualidade(segundos: int = 120, so_antes: bool = False, ruido: bool = True,
+                           com_picos: bool = False):
+    """Captura desde o boot como a placa mandaria, com a qualidade escolhendo o RR:
+    bruto, filtrado (2 casas) e o _hrv.csv com rr_usado. Ruído de 10 s no meio.
+    so_antes: uma placa com erro, que ignora o julgamento de depois."""
+    from analise import filtro
+    from analise.hrv import Batimento, Hrv
+    from analise.picos import Picos
+    from analise.qualidade import Fila, Qualidade, batimento_usavel
+
+    rng = np.random.default_rng(5)
+    t = np.arange(segundos * FS_HZ) / FS_HZ
+    ac = np.sin(2 * np.pi * 1.15 * t) + 0.3 * np.sin(4 * np.pi * 1.15 * t + 1)
+    ir = 100_000.0 * (1 + 0.008 / 2.6 * ac) + rng.normal(0, 2, len(t))
+    if ruido:
+        ir[60 * FS_HZ:70 * FS_HZ] += rng.normal(0, 600, 10 * FS_HZ)
+    vm = 1.05 * ir
+    n = np.arange(len(t))
+    fi, fv = np.round(filtro.filtra(ir), 2), np.round(filtro.filtra(vm), 2)
+    q, p, fila, h = Qualidade(), Picos(), Fila(), Hrv()
+    julg, linhas, ps = None, [], []
+
+    def hrv(b, entra):
+        s = h.processa(Batimento(True, b.n_pico, b.fracao, entra, b.rr_ms))
+        linhas.append((b.n_pico, int(s.valido), round(s.sdnn_ms, 2), round(s.rmssd_ms, 2), int(entra)))
+
+    for k in n.tolist():
+        b = p.processa(float(fi[k]), k)
+        if b is not None:
+            ps.append((b.n_pico, b.fracao, int(b.rr_valido), round(b.rr_ms, 2), 0, 0.0))
+            velho = fila.poe(b, julg is not None and batimento_usavel(julg[1], True, julg[0], k))
+            if velho is not None:
+                hrv(velho, False)
+        s = q.processa(k, float(ir[k]), float(vm[k]))
+        if s is not None:
+            julg = (k, s.usavel)
+            for bb, e in fila.tira(True if so_antes else s.usavel):
+                hrv(bb, e)
+    saida = (np.column_stack([n, ir, vm]), np.column_stack([n, fi, fv]), np.array(linhas, float))
+    return (*saida, np.array(ps, float)) if com_picos else saida
+
+
+def test_confere_rr_usado_refaz_a_decisao_da_placa():
+    from analise.hrv import confere_rr_usado
+
+    bruto, filtrado, h = _captura_com_qualidade()
+    r = confere_rr_usado(bruto, filtrado, h)
+    assert r["ok"] and r["barrados"] > 3 and r["perto_de_buraco"] == 0, r
+
+    errado = h.copy()
+    k = int(np.flatnonzero((errado[:, 4] == 1) & (errado[:, 0] < 100 * FS_HZ))[-1])
+    errado[k, 4] = 0  # a placa teria deixado um RR bom de fora
+    assert not confere_rr_usado(bruto, filtrado, errado)["ok"]
+
+
+def test_confere_rr_usado_ignora_o_trecho_de_uma_linha_perdida():
+    """Uma linha perdida na serial faz a qualidade do Python recomeçar; a da placa não."""
+    from analise.hrv import confere_rr_usado
+
+    bruto, filtrado, h = _captura_com_qualidade()
+    buraco = 30 * FS_HZ
+    sem = np.ones(len(bruto), bool)
+    sem[buraco:buraco + 2] = False
+    r = confere_rr_usado(bruto[sem], filtrado[sem], h)
+    assert r["ok"] and r["perto_de_buraco"] > 2, r
+
+
+def test_confere_nao_compara_captura_que_nao_comeca_no_boot():
+    from analise.hrv import confere_rr_usado
+
+    bruto, filtrado, h = _captura_com_qualidade()
+    r = confere_rr_usado(bruto[50:], filtrado[50:], h)
+    assert not r["ok"] and r["inicio"] == 50 and "comparados" not in r
+
+
+def test_confere_placa_retoma_depois_de_uma_linha_perdida():
+    """Uma p, ou h, perdida no meio (ou a primeira): pula uma janela e volta a comparar."""
+    from analise.hrv import confere_placa
+
+    p, h = _placa_hrv()
+    inteiro = confere_placa(p, h)
+    assert inteiro["linhas_perdidas"] == 0 and inteiro["pulados"] == 0
+    for pp, hh in ((np.delete(p, 150, axis=0), h), (p, np.delete(h, 150, axis=0)),
+                   (p[1:], h), (p, h[1:])):
+        r = confere_placa(pp, hh)
+        # A primeira p, perdida não aparece como perda: a captura vira "no meio".
+        assert r["ok"] and r["linhas_perdidas"] <= 1, r
+        assert 0 < r["batimentos"] < inteiro["batimentos"], r
+    errado = h.copy()
+    errado[-5, 2] += 0.2  # um SDNN errado depois da linha perdida ainda é pego
+    assert not confere_placa(np.delete(p, 150, axis=0), errado)["ok"]
+
+
+def test_confere_rr_usado_tolera_perder_as_primeiras_linhas():
+    from analise.hrv import confere_rr_usado
+
+    bruto, filtrado, h = _captura_com_qualidade()
+    r = confere_rr_usado(bruto[3:], filtrado, h)
+    assert r["ok"] and r["inicio"] == 3, r
+
+
+def test_confere_rr_usado_exige_os_casos_que_distinguem_a_regra():
+    """Barrado nos dois julgamentos (o começo da captura) não distingue nada: o aceite
+    pede o sinal piorando e melhorando perto de um pulso, e pega a placa que só olha o
+    julgamento de antes."""
+    from analise.hrv import confere_rr_usado
+
+    bruto, filtrado, h = _captura_com_qualidade()
+    r = confere_rr_usado(bruto, filtrado, h)
+    assert r["ok"] and r["sai"] > 0 and r["volta"] > 0, r
+
+    so_antes = _captura_com_qualidade(so_antes=True)
+    assert not confere_rr_usado(*so_antes)["ok"]
+
+    limpa = _captura_com_qualidade(40, ruido=False)  # só o começo: barrados, mas nenhum "sai"
+    r = confere_rr_usado(*limpa)
+    assert r["barrados"] > 0 and r["sai"] == 0, r
+
+
+def test_confere_rr_usado_casa_com_uma_amostra_de_folga_e_usa_o_rr_da_placa():
+    """O Python acha o pico no filtrado com 2 casas: o mesmo pulso pode cair uma amostra
+    ao lado, e um RR na borda da faixa pode sair diferente. Nada disso é erro da placa."""
+    from analise.hrv import confere_rr_usado
+
+    bruto, filtrado, h, p = _captura_com_qualidade(com_picos=True)
+    k = int(np.flatnonzero((h[:, 4] == 1) & (h[:, 0] < 100 * FS_HZ))[-1])
+    h2, p2 = h.copy(), p.copy()
+    h2[k, 0] += 1  # a placa achou o pico uma amostra depois
+    p2[p2[:, 0] == h[k, 0], 0] += 1
+    assert confere_rr_usado(bruto, filtrado, h2, p2)["ok"]
+
+    h3, p3 = h.copy(), p.copy()
+    p3[p3[:, 0] == h[k, 0], 2] = 0  # a placa recusou o RR (borda); o rr_usado sai 0
+    h3[k, 4] = 0
+    assert confere_rr_usado(bruto, filtrado, h3, p3)["ok"]
+    assert not confere_rr_usado(bruto, filtrado, h3)["ok"]  # sem a p, da placa, diverge
+
+
+_R_OK = {"batimentos": 200, "validos": 100, "ok": True}
+_RR_OK = {"comparados": 150, "diferentes": 0, "sem_par": 0, "sem_h": 0, "sem_h_barrados": 0,
+          "pouco": False, "sai": 2, "volta": 3}
+
+
+@pytest.mark.parametrize("r, rr, aceite, trecho", [
+    (_R_OK, _RR_OK, True, "batem"),
+    (_R_OK, None, False, "não foi conferido"),
+    (_R_OK, {"ok": False, "inicio": 50}, False, "não foi conferido"),
+    (_R_OK, {**_RR_OK, "diferentes": 1}, False, "firmware errado"),
+    (_R_OK, {**_RR_OK, "sem_par": 1}, False, "não achou"),
+    (_R_OK, {**_RR_OK, "sem_h": 4, "sem_h_barrados": 4}, False, "barrados ao HRV"),
+    (_R_OK, {**_RR_OK, "sem_h": 4, "sem_h_barrados": 1}, False, "perdidas na serial"),
+    (_R_OK, {**_RR_OK, "sem_h": 3, "sem_h_barrados": 3}, True, "batem"),
+    (_R_OK, {**_RR_OK, "pouco": True}, False, "menos da metade"),
+    (_R_OK, {**_RR_OK, "sai": 0}, False, "não exercitou"),
+    (_R_OK, {**_RR_OK, "volta": 0}, False, "não exercitou"),
+    ({**_R_OK, "validos": 0, "ok": False}, _RR_OK, False, "mais tempo parado"),
+    ({**_R_OK, "ok": False}, _RR_OK, False, "HRV da placa não bateu"),
+])
+def test_veredito_um_caso_por_ramo(r, rr, aceite, trecho):
+    from analise.hrv import veredito
+
+    sim, motivo = veredito(r, rr, "faltam os arquivos")
+    assert sim is aceite and trecho in motivo, motivo
+
+
+def _grava_captura(pasta, bruto, filtrado, h, p):
+    """Grava os CSVs como a analise.captura grava; devolve o caminho da captura."""
+    from analise import captura
+
+    def grava(sufixo, x, colunas, fmt):
+        np.savetxt(pasta / f"c{sufixo}.csv", x, delimiter=",", header=",".join(colunas),
+                   comments="", fmt=fmt)
+
+    grava("", bruto, captura.COLUNAS, "%g")
+    grava("_bruto", bruto, captura.COLUNAS, "%g")
+    grava("_filtrado", filtrado, captura.COLUNAS, "%.2f")
+    grava("_picos", p, captura.COLUNAS_PICOS, "%g")
+    grava("_hrv", h, captura.COLUNAS_HRV, "%g")
+    return pasta / "c.csv"
+
+
+def test_confere_de_ponta_a_ponta(tmp_path, monkeypatch, capsys):
+    """O comando inteiro (python -m analise.hrv --confere), como depois da captura na placa:
+    lê os CSVs, imprime o relatório e termina com a linha ACEITE e o exit code dela."""
+    bruto, filtrado, h, p = _captura_com_qualidade(com_picos=True)
+
+    monkeypatch.setattr("sys.argv", ["hrv", "--confere", str(_grava_captura(tmp_path, bruto,
+                                                                             filtrado, h, p))])
+    hrv.main()  # sem SystemExit: exit code 0
+    assert capsys.readouterr().out.splitlines()[-1].startswith("ACEITE: sim")
+
+    errado = h.copy()
+    k = int(np.flatnonzero((errado[:, 4] == 1) & (errado[:, 0] < 100 * FS_HZ))[-1])
+    errado[k, 4] = 0  # a placa teria deixado um RR bom de fora
+    _grava_captura(tmp_path, bruto, filtrado, errado, p)
+    with pytest.raises(SystemExit) as fim:
+        hrv.main()
+    assert fim.value.code == 1
+    assert capsys.readouterr().out.splitlines()[-1].startswith("ACEITE: não")
+
+    (tmp_path / "c_hrv.csv").unlink()
+    with pytest.raises(SystemExit, match="sem c_hrv.csv"):
+        hrv.main()

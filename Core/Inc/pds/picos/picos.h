@@ -57,7 +57,7 @@ void picos_init(picos_t *p);
 bool picos_processa(picos_t *p, const ppg_amostra_t *filtrado, ppg_batimento_t *saida);
 
 /*
- * BPM sobre os últimos RR válidos. valido = há RR válidos suficientes E o ritmo é regular: nos últimos
+ * BPM sobre os últimos RR válidos. valido = o ritmo é regular: nos últimos
  * 8 batimentos, pelo menos 6 são "bons" (RR válido e a menos de 15% da mediana dos RR válidos). Sinal sem
  * pulso (dedo mal apoiado) gera "batimentos" com RR de 300 a 1500 ms que passam um a um pelo rr_valido mas
  * não formam um ritmo: com isso o valido fica false. Com arritmia de verdade o valido também desliga.

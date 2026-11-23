@@ -111,9 +111,9 @@ def test_saida_do_hrv_vai_pro_csv_do_hrv(tmp_path):
     serial_falsa = io.BytesIO(
         b"0,100,200\n"
         b"p,1234,0.2500,1,812.50,1,73.85\n"
-        b"h,1234,0,0.00,0.00\n"
-        b"h,1314,1,48.27,33.10\n"
-        b"h,1,x,0,0\n"
+        b"h,1234,0,0.00,0.00,0\n"
+        b"h,1314,1,48.27,33.10,1\n"
+        b"h,1,x,0,0,1\n"
     )
     destino = tmp_path / "x.csv"
     resumo = captura.grava(serial_falsa, destino, segundos=0.1)
@@ -122,6 +122,7 @@ def test_saida_do_hrv_vai_pro_csv_do_hrv(tmp_path):
     assert list(hrv.columns) == list(captura.COLUNAS_HRV)
     assert hrv["valido"].tolist() == [0, 1]
     assert hrv["sdnn_ms"].tolist() == [0.0, 48.27]
+    assert hrv["rr_usado"].tolist() == [0, 1]
 
 
 def test_qualidade_vai_pro_terceiro_csv(tmp_path):

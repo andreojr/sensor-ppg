@@ -156,4 +156,44 @@ bool qualidade_processa(qualidade_t *q, const ppg_amostra_t *bruto, ppg_qualidad
 bool qualidade_bpm_confiavel(const ppg_qualidade_t *q, const ppg_bpm_t *b, bool tem_batimento,
                              uint32_t n, uint32_t n_ultimo_pico);
 
+/*
+ * O HRV só com RR de trecho usável (o ppg.h: com usavel false, o laço descarta os
+ * batimentos do trecho). O RR de um batimento entra só se dois julgamentos da
+ * qualidade disserem usável: o último antes de o picos soltar o batimento e o
+ * primeiro depois. O picos solta o batimento ~1,3 s depois do pulso; a janela
+ * julgada depois cobre o pulso e o lado direito do filtro (+1 s), e cada "usável"
+ * já vale por 3 janelas boas seguidas (4 s), então os dois juntos cobrem também o
+ * começo do RR (até 2 s antes do pulso).
+ *
+ * qualidade_batimento_usavel: o julgamento de antes, no instante n em que o
+ * batimento sai. Vale se disse usável e tem no máximo QUALIDADE_JULGAMENTO_VALE
+ * amostras (um bloco: mais velho = a qualidade recomeçou e ainda não julgou).
+ * Idade em uint32, como em qualidade_bpm_confiavel.
+ */
+#define QUALIDADE_JULGAMENTO_VALE QUALIDADE_BLOCO
+bool qualidade_batimento_usavel(const ppg_qualidade_t *q, bool tem_julgamento,
+                                uint32_t n_julgamento, uint32_t n);
+
+/*
+ * A fila dos batimentos que esperam o julgamento de depois: até 1 s normalmente (até
+ * ~3 s se a qualidade recomeçou no meio de um bloco). Os 8 lugares cobrem 2 s a 300 ms
+ * de RR; se encher, os excedentes saem com o RR de fora, que já seria o resultado (logo
+ * depois de um recomeço, o julgamento de depois nunca é usável).
+ * qualidade_fila_poe: guarda o batimento com o julgamento de antes. Fila cheia: o
+ * mais antigo sai em *velho com rr_valido falso (devolve true; mande-o pro HRV).
+ * qualidade_fila_tira: a qualidade julgou (q); tira o mais antigo com rr_valido =
+ * rr_valido do picos && antes && q->usavel. Chamar até devolver false.
+ */
+#define QUALIDADE_FILA 8u
+typedef struct {
+    ppg_batimento_t b[QUALIDADE_FILA];
+    bool antes[QUALIDADE_FILA];
+    uint32_t conta;
+} qualidade_fila_t;
+
+void qualidade_fila_init(qualidade_fila_t *f);
+bool qualidade_fila_poe(qualidade_fila_t *f, const ppg_batimento_t *b, bool usavel_antes,
+                        ppg_batimento_t *velho);
+bool qualidade_fila_tira(qualidade_fila_t *f, const ppg_qualidade_t *q, ppg_batimento_t *saida);
+
 #endif /* PDS_QUALIDADE_QUALIDADE_H */
