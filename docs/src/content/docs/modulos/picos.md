@@ -196,6 +196,54 @@ ECG**, e o erro do RMSSD fica entre −0,2 e 4,2 ms. O teste
 retirado, sinal parado). Quem põe o "--" no display nesse caso é a decisão do BPM
 confiável (`qualidade_bpm_confiavel()`): o último batimento tem que ter no máximo 3 s.
 
+### Picos × FFT, contra o ECG
+
+Os dois módulos recebem o mesmo `filtrado_ir` (os mesmos 15 registros, 60 s a partir
+de 30 s) e são lidos nos mesmos instantes: os do [espectral](../espectral/), um por
+segundo, no fim de cada janela de 8 s (com o `PPG_ATRASO_AMOSTRAS` descontado). O
+`bpm_picos` é o último que o módulo tinha emitido até ali (média dos 8 últimos RR
+válidos, segurada entre batimentos); o do ECG é `60 / média dos RR` na mesma janela de
+8 s. Reproduzir, de `analise/`: `uv run python -m analise.comparacao_bpm` (tabela por
+registro) e `--figura` (a figura abaixo).
+
+![BPM por picos e pela FFT contra o ECG em s1_sit, s1_run e s2_walk, com o erro de cada um](../../../assets/comparacao_bpm.png)
+
+Mediana dos registros de cada atividade (5 por atividade), **picos / FFT**:
+
+| Atividade | Erro mediano (bpm) | Erro p95 (bpm) | Atraso (s) | Estabilidade (bpm) | Válidos (%) |
+|---|---|---|---|---|---|
+| Sentado | 0,30 / 0,73 | 1,08 / 2,59 | 3,5 / 4,0 | 0,57 / 0,84 | 100 / 100 |
+| Andando | 0,86 / 1,02 | 2,20 / 3,22 | 3,5 / 4,0 | 0,84 / 0,81 | 94 / 100 |
+| Correndo | 0,72 / 0,82 | 2,60 / 2,69 | 4,0 / 4,0 | 0,75 / 0,77 | 100 / 100 |
+| **Todos (15)** | **0,71 / 0,84** | **2,13 / 2,91** | **3,5 / 4,0** | **0,70 / 0,81** | **100 / 100** |
+
+- **Erro:** \|BPM − BPM do ECG na janela\|. Sentado, o picos erra menos da metade do que
+  a FFT (0,30 contra 0,73 bpm): ele mede intervalos de verdade, e a FFT é uma estimativa
+  por interpolação sobre bins de 7,5 bpm. Em movimento os dois ficam em ~1 bpm.
+- **Atraso:** quantos segundos antes do fim da janela o BPM mais combina com a
+  frequência cardíaca instantânea do ECG (passo de 0,5 s). O da FFT é metade da janela
+  (4 s). O do picos é parecido (~3,5 s): ele é a média dos 8 últimos RR. **Não é o atraso
+  que separa os dois.** O do picos varia mais de um registro para outro (de 2,5 a 8 s;
+  o de 8 s é o `s2_run`, onde ele erra).
+- **Estabilidade:** mediana de \|BPM[k] − BPM[k−1]\| entre saídas de 1 s. O próprio ECG,
+  na mesma janela, varia 0,53 bpm de um segundo para o outro; o picos fica em 0,70 e a
+  FFT em 0,81, ou seja, as duas tremem pouco além do coração.
+- **Válidos:** o picos só dá BPM com ritmo regular (6 de 8 RR bons); a FFT dá sempre que
+  o pico concentra 30% da potência da banda. Em movimento o picos fica sem BPM em parte
+  do tempo (`s2_walk` 23%, `s3_run` 75%, `s3_walk` 79%); a FFT, em 94% ou mais.
+  Os primeiros instantes também entram: o picos precisa de 8 batimentos regulares.
+
+**O que a média esconde:** em `s2_walk` a FFT dá BPM válido o tempo quase todo e erra
+feio quando o artefato de movimento passa o pulso (45 a 85 bpm contra ~135 do ECG,
+p95 de 49,7 bpm). O picos, nessa hora, recusa o ritmo (`valido = false`) e fica sem
+número; o que sobra tem p95 de 8,3 bpm. **Ficar sem resposta é melhor que dar a
+errada**, e a regularidade do picos faz isso de graça; a prominência da FFT não.
+
+**Conclusão:** o `bpm_picos` fica como o BPM do produto (a tela só o mostra quando a
+`qualidade` concorda): mais exato parado, igual ao da FFT em movimento, e sabe dizer
+quando não sabe. A FFT fica como segunda opinião independente, que não depende de
+achar cada batimento.
+
 ### Placa com a fonte falsa
 
 ```bash
