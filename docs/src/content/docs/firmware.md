@@ -280,7 +280,9 @@ do módulo). O módulo tem os pull-ups na plaquinha e funciona a 3,3 V, no mesmo
 - **Resultados:** o `app.c` passa a ficha da cadeia (`cadeia_resultados()`) e a onda filtrada
   (`display_amostra()`, uma amostra por saída da cadeia, 100 Hz). O BPM segue a regra do BPM confiável:
   aparece só quando `bpm_picos.valido`, que a cadeia liga com `qualidade_bpm_confiavel()` (a mesma decisão
-  da linha `t,`), senão `--`. O SpO2 ainda não existe e sai sempre `--`.
+  da linha `t,`), senão `--`. A SpO2 (**estimada**) aparece quando `spo2.valido` (a última saída do
+  `spo2_processa()`, a mesma da linha `s,`), senão `--`; com a qualidade julgando sem dedo ou `!usavel`, a tela
+  inteira vira SEM DEDO ou SINAL RUIM.
 
 ### Bancada do display (demonstração)
 

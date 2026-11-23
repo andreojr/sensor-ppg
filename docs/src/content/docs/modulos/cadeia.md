@@ -23,7 +23,7 @@ PDS própria: é a "cola" que antes ficava no `main.c`.
 |---|---|
 | 1. Python (os módulos que já existem, na ordem da placa) | feito: `analise.cadeia.roda()` |
 | 2. C sem HAL | feito: `cadeia.h`, `cadeia.c`, `linhas.c`, `fila.h` |
-| 3. Teste no PC contra o vetor | feito: `testes/cadeia/`, no CI (90 s do PhysioNet, 478 saídas iguais) |
+| 3. Teste no PC contra o vetor | feito: `testes/cadeia/`, no CI (90 s do PhysioNet, 561 saídas iguais: as 478 de antes e as 83 da SpO2) |
 | 4. Placa com o vetor | feito (23/11): `-DBANCADA_CADEIA=ON`, 478 saídas, 0 fora da tolerância |
 | 5. Sensor real | feito (23/11): `analise.cadeia --replay` numa captura de ~2 min (abaixo); usa só as linhas `b,` e as de resultado, então não precisa de `-DSERIAL_COMPLETA` |
 
@@ -33,9 +33,9 @@ Por amostra do bruto (a decimação fica antes, no `sensor.c`):
 
 ```text
 bruto ─► filtro ─► picos ─► espectral ─► respiração ─► spo2 ─► qualidade
-          │         │                                    │
-          │         └─ batimento: fila do HRV ◄──────────┘ julgamento: esvazia a fila
-          │                                                no HRV e decide o BPM da tela
+          │         │                                              │
+          │         └─ batimento: fila do HRV ◄────────────────────┘ julgamento: esvazia a fila
+          │                                                          no HRV e decide o BPM da tela
           └─ filtrado (onda do display)
 ```
 

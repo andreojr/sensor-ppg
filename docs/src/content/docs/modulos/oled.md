@@ -138,7 +138,8 @@ ocupa o barramento ~18 ms a cada 50 ms (~36%).
 ## Pendente
 
 - **Botão** pra trocar de tela, se o rodízio por tempo não servir: depende de configurar um pino no `.ioc`.
-- **SpO2:** o display já lê `spo2` em `ppg_resultados_t` e mostra `--` enquanto não houver módulo.
+- **SpO2:** o display lê `spo2` em `ppg_resultados_t`, que a cadeia preenche com o módulo
+  [SpO2](../spo2/) (uma estimativa, sem calibração); mostra `--` enquanto `spo2.valido` for falso.
 - **Rodízio:** a fase vem de `agora_ms % ciclo`, e o ciclo muda de 12 s pra 16 s quando a tela alvo entra
   ou sai (SpO2 ou respiração mudam de válido). Nessa troca a tela pode pular de uma pra outra antes do tempo.
 - O desenho foi medido no ARM emulado em `-Os`; na placa, em Debug (`-O0`), a pior chamada medida foi 4,8 ms.

@@ -38,22 +38,42 @@ oxigênio absorve o vermelho e o infravermelho de jeitos diferentes, e a **razã
 1. **AC e DC por canal.** Cada canal passa por um passa-altas de 1ª ordem (média exponencial,
    `ALFA = 0,02`, corte ~0,3 Hz): `dc = dc + ALFA * (x - dc)` e `ac = x - dc`. É a mesma ideia do
    módulo qualidade. Tira o DC e a deriva, e deixa só o que pulsa.
-2. **Janela de 8 s, uma saída por segundo.** Cada segundo (bloco) acumula a soma de `x` e de `ac²`; a
-   janela são os últimos 8 blocos. O **DC** é a média de `x`; o **AC** é o RMS (a raiz da média de `ac²`),
-   que não depende de achar picos nem de o pulso ter boa forma.
+2. **Janela de 8 s, uma saída por segundo.** Cada segundo (bloco) acumula a soma de `x` e de `ac²` e guarda
+   a maior amostra dos dois canais; a janela são os últimos 8 blocos. O **DC** é a média de `x`; o **AC** é o
+   RMS (a raiz da média de `ac²`), que não depende de achar picos nem de o pulso ter boa forma.
 3. **R = (AC_vermelho / DC_vermelho) / (AC_ir / DC_ir)**, e **SpO2 = 110 − 25·R**, limitada a 0 a 100%.
 4. **`valido`**: a janela encheu; o DC dos dois canais passa de 10 000 contagens em **cada segundo** da janela
-   (tem dedo o tempo todo); o DC não varia mais que 1,5× entre os segundos; o AC do IR é maior que zero; e R está
-   entre 0,2 e 1,6 (a faixa que a fisiologia permite: 105% a 70%). Inválido sai com `spo2_pct = 0`, como o
-   `picos_bpm()` (o display mostra `--`).
+   (tem dedo o tempo todo); o DC não varia mais que 1,5× entre os segundos; nenhuma amostra de nenhum canal chega
+   a 250 000 (a saturação, abaixo); o AC do IR é maior que zero; e R está entre 0,2 e 1,6 (a faixa que a
+   fisiologia permite: 105% a 70%). Inválido sai com `spo2_pct = 0`, como o `picos_bpm()` (o display mostra `--`).
+
+**R entre 0,2 e 0,4 sai válido e cortado em 100%.** A reta dá 105% a 100% nessa faixa; o módulo aceita a janela
+(o R está na faixa) e limita a SpO2 em 100%. Não é raro: no `s1_walk` o R médio é 0,399, e 28 das 53 janelas saem
+"100%" por esse corte (8 de 53 no `s4_sit`, 11 de 53 no `s4_walk`). Fica assim de propósito (o `R_MIN` não mudou):
+sem calibração não dá pra dizer se esses R baixos são a reta errada ou o sinal, e 100% é plausível para quem
+é saudável. Mas um "100%" na tela pode ser um R abaixo do que a reta cobre, não uma medida de 100%.
+
+**Saturação.** Com o dedo apertado ou o LED forte, o DC sobe perto do topo do ADC de 18 bits (262 143) e o pulso é
+cortado: o AC encolhe, o R sai errado e nada mais na janela avisa (o DC é alto e estável). Por isso cada bloco de
+1 s guarda a maior amostra dos dois canais (um `float` por bloco, sem buffer de amostras), e a janela é inválida se
+algum bloco chega a **250 000** contagens, o mesmo limite do módulo qualidade (`QUALIDADE_SATURA`, ~95% do topo;
+`SPO2_SATURA` no C). Basta um segundo saturado em um canal para invalidar as 8 janelas que o contêm. Os
+registros do PhysioNet (no nível do sensor) não chegam perto disso: os vetores e a validação não mudaram.
+
+**O AC é o RMS de um passa-altas de 1ª ordem, sem passa-baixa.** Tudo acima de ~0,3 Hz entra no AC: o pulso,
+mas também o ruído de banda larga do sensor e o movimento. O ruído soma energia ao AC dos dois canais e puxa o
+R: quanto mais ele pesa, mais o R reflete a razão entre os ruídos relativos dos canais, e não a oxigenação. Um passa-faixa (por exemplo, 0,5 a 5 Hz) ou
+usar o filtrado do `filtro` para o AC é uma opção futura; hoje a defesa é a qualidade (só mostrar com
+`usavel`).
 
 **Por que a defesa do DC por segundo.** A primeira versão olhava só o DC médio da janela. Quando o dedo sai
 **no meio** da janela, o degrau do DC vira um AC enorme nos dois canais com razão ~1, o R fica perto de 1 e o
 módulo devolvia `valido = true` com SpO2 ~85%: um valor plausível e errado. O teste pegou isso, e a defesa
 (DC alto em todos os segundos e estável) corrigiu. Nos 15 registros reais, ela não rejeita nada (100% válidos).
 
-O módulo **não** olha movimento nem ruído: quem decide se o trecho presta é o módulo `qualidade`. O laço
-principal só deve mostrar o SpO2 com `qualidade.usavel`.
+O módulo **não** olha movimento nem ruído: quem decide se o trecho presta é o módulo `qualidade`, que já está
+na `main`. O display (`oled_escolhe()`) troca a tela inteira para **SEM DEDO** ou **SINAL RUIM** quando a qualidade
+julga sem dedo ou `!usavel`, então a SpO2 só aparece com sinal usável.
 
 **Parâmetros:** janela de 8 s e passo de 1 s (uma saída por segundo, como o espectral); `ALFA = 0,02`; reta
 `110 − 25·R` (a linear usual). Uma curva quadrática, como a dos exemplos da Maxim, é a outra opção comum e não
@@ -70,17 +90,23 @@ janelas válidas, inválidas e as de transição).
 referência"). O que dá para conferir sem oxímetro, em 5 pessoas × (sentado, andando, correndo), 60 s de cada
 registro a partir de 30 s do bruto da fonte falsa (`uv run python -m analise.spo2_validacao`):
 
-| Atividade | R médio | Desvio do R dentro do registro (mediana) | SpO2 estimada (média e faixa) | Janelas válidas |
-|---|---|---|---|---|
-| sentado | 0,487 | 0,012 | 97,8% (96,4 a 99,3) | 100% |
-| andando | 0,438 | 0,010 | 99,0% (97,7 a 99,9) | 100% |
-| correndo | 0,562 | 0,028 | 95,9% (94,4 a 97,6) | 100% |
+| Atividade | R médio | Desvio do R, janelas a cada 1 s (mediana) | Desvio do R, janelas sem sobreposição (mediana e máx.) | SpO2 estimada (média e faixa) | Janelas válidas |
+|---|---|---|---|---|---|
+| sentado | 0,487 | 0,012 | 0,011 (0,041) | 97,8% (96,4 a 99,3) | 100% |
+| andando | 0,438 | 0,010 | 0,011 (0,077) | 99,0% (97,7 a 99,9) | 100% |
+| correndo | 0,562 | 0,028 | 0,034 (0,067) | 95,9% (94,4 a 97,6) | 100% |
 
-- **R estável entre janelas** (o critério da #27): desvio de 0,004 a 0,077 por registro, mediana de 0,01 a 0,03.
+- **R estável entre janelas** (o critério da #27). As saídas saem a cada 1 s sobre 8 s de dados, então duas
+  seguidas dividem 7 s e variam pouco por construção: desvio de 0,004 a 0,077 por registro, mediana de 0,01 a
+  0,03. O critério de verdade é entre janelas **sem sobreposição** (8 s, passo de 8 s: 7 janelas por registro de
+  60 s): desvio de 0,003 a 0,077 por registro, mediana de 0,011 a 0,034. Dá praticamente o mesmo, então a
+  estabilidade não é efeito da sobreposição. Um desvio de 0,077 no R é ~1,9 ponto de SpO2 pela reta.
 - **Valores plausíveis** para pessoas saudáveis: 94 a 100%.
 - **Canais trocados:** com vermelho e IR invertidos, R vira ~1/R (perto de 2), fora da faixa: **0% das janelas
-  ficam válidas** sentado e andando (e 18% correndo). A atribuição dos canais faz diferença, e o `R_MAX` protege
-  contra LEDs trocados no sensor.
+  ficam válidas** sentado e andando. Correndo, 18% em média e **até 45% num registro** (`s1_run`; 19% no `s2_run`,
+  28% no `s4_run`): com movimento, o R dos canais trocados cai pra dentro da faixa em quase metade das janelas.
+  A atribuição dos canais faz diferença, e o `R_MAX` protege contra LEDs trocados no sensor parado, **não** com
+  movimento; aí depende de a qualidade marcar o trecho como não usável.
 
 **O que isso NÃO prova.**
 
@@ -96,7 +122,8 @@ registro a partir de 30 s do bruto da fonte falsa (`uv run python -m analise.spo
 
 ## Em C
 
-`spo2_t` guarda o DC de cada canal, o bloco em andamento e os últimos 8 blocos (**~170 B de RAM**, sem `malloc`).
+`spo2_t` guarda o DC de cada canal, o bloco em andamento e os últimos 8 blocos, cada um com a maior amostra
+(**208 B de RAM**, sem `malloc`).
 `spo2_processa()` devolve `true` uma vez por segundo, a partir da amostra 800. Amostra com NaN ou infinito é
 descartada. O C faz as mesmas contas do Python, na mesma ordem e em `float`: no teste (`testes/spo2/teste_spo2.c`,
 sobre os dois vetores, 33 saídas cada) o resultado sai **idêntico (erro 0)**; reiniciar dá o mesmo resultado. O
@@ -105,21 +132,27 @@ valor errado de até 85,8 de diferença.
 
 Casos de comportamento: o R conhecido (0,4 a 1,4) e a reta, primeira saída na amostra 800 e uma por segundo, canais
 trocados, R abaixo do mínimo, sem dedo, sem pulso (sem divisão por zero), dedo que sai no meio, DC que cai pela
-metade e NaN.
+metade, NaN, SpO2 acima de 100% limitada a 100 (tirar o corte reprova), IR ou vermelho saturado e um segundo só
+saturado (tirar a guarda reprova os três).
+
+Na cadeia (`testes/cadeia/`), o vetor de 90 s do PhysioNet também confere as 83 saídas da SpO2 (`n`, `valido`,
+`spo2`, `r`) e a ficha (`cadeia_resultados()->spo2` igual à última saída): passar o filtrado em vez do bruto ou
+não atualizar a ficha reprova o teste. O `analise.cadeia --replay` compara as linhas `s,` da placa.
 
 ## Custo
 
-Firmware compilado com o `arm-none-eabi-gcc` 14.2.1, sem avisos. Release (`-Os`), sobre a `main`:
+Firmware compilado com o `arm-none-eabi-gcc` 16.2.0, sem avisos. Release (`-Os`), sobre a `main` (o resumo do
+linker):
 
 | | Flash | RAM |
 |---|---|---|
-| `main` | 21.796 B | 16.792 B |
-| com o SpO2 na cadeia | 22.796 B (**+1.000 B**) | 16.984 B (**+192 B**) |
-| com a bancada (`-DBANCADA_SPO2=ON`) | 55.948 B (o vetor de 32 KB) | 17.152 B |
+| `main` | 60.084 B | 40.152 B |
+| com o SpO2 na cadeia | 61.232 B (**+1.148 B**) | 40.392 B (**+240 B**) |
+| com a bancada (`-DBANCADA_SPO2=ON`) | 94.240 B (o vetor de 32 KB) | 40.600 B |
 
 **Ciclos** (código ARM emulado, modelo simples do Cortex-M4F, **sem** a espera da flash; `uv run
-testes/spo2/ciclos/ciclos.py`, precisa do `arm-none-eabi-gcc`): média de **186 ciclos por amostra** e pior caso
-de **1.559** (16 µs), a amostra que fecha o segundo, contra o orçamento de 9 600 (1% da CPU por amostra). As saídas
+testes/spo2/ciclos/ciclos.py`, precisa do `arm-none-eabi-gcc`): média de **197 ciclos por amostra** e pior caso
+de **1.701** (17,7 µs), a amostra que fecha o segundo, contra o orçamento de 9 600 (1% da CPU por amostra). As saídas
 do código ARM emulado também batem com as do Python (33 de 33).
 
 ## Pendente
@@ -128,4 +161,4 @@ do código ARM emulado também batem com as do Python (33 de 33).
 - **Calibrar com um oxímetro de referência.** Sem isso o resultado continua "estimado".
 - **Conferir a ordem dos LEDs** do módulo MAX30102 real (vermelho e IR podem vir trocados): o `R_MAX` derruba os
   valores se estiverem, mas o certo é conferir.
-- **Mostrar só com `qualidade.usavel`** no laço principal, quando o módulo qualidade (PR aberto) for mergeado.
+- **Passa-faixa no AC** (ou o AC do filtrado), para o ruído de banda larga e o movimento puxarem menos o R.
