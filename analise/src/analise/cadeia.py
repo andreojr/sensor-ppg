@@ -218,17 +218,30 @@ def _le_csv(caminho: Path) -> list[tuple[float, ...]]:
     return [tuple(float(v) for v in ln) for ln in linhas]
 
 
-def _depois_do_reset(linhas: list[tuple[float, ...]]) -> list[tuple[float, ...]]:
-    """As linhas depois do último reset (o n da 1ª coluna volta), como picos.depois_do_reset."""
-    voltas = [i for i in range(1, len(linhas)) if linhas[i][0] < linhas[i - 1][0]]
-    return linhas[voltas[-1]:] if voltas else linhas
+def _diferentes(a: list[tuple[float, ...]], b: list[tuple[float, ...]]) -> int:
+    return sum(1 for x, y in zip(a, b, strict=True)
+               if len(x) != len(y) or not np.allclose(x, y, rtol=0, atol=1e-9))
+
+
+def _compara_pelo_fim(captura: list[tuple[float, ...]], refeito: list[tuple[float, ...]]) -> int:
+    """Linhas diferentes, alinhando pelo fim: o refeito começa no último reset, então é o
+    final da captura (que tem antes o que a placa mandou antes do reset). A última linha
+    do refeito pode faltar na captura (ela para no meio de uma amostra): só quando a
+    última da captura é a penúltima refeita."""
+    b = refeito
+    if (len(b) >= 2 and captura and _diferentes(captura[-1:], b[-1:])
+            and not _diferentes(captura[-1:], b[-2:-1])):
+        b = b[:-1]
+    if len(b) > len(captura):
+        return _diferentes(captura, b[len(b) - len(captura):]) + len(b) - len(captura)
+    return _diferentes(captura[len(captura) - len(b):], b)
 
 
 def compara_replay(captura: Path, linhas: str) -> dict[str, int]:
     """Linhas diferentes por tipo, entre os CSVs da captura e as linhas refeitas no PC.
 
-    Só os tipos que a captura tem, e só depois do último reset da placa. A última linha de cada tipo pode faltar na captura
-    (ela para no meio de uma amostra), então uma linha a mais no fim não conta."""
+    linhas: o que o replay_cadeia escreveu a partir das cruas desde o último reset
+    (cruas_desde_o_reset). Só os tipos que a captura tem."""
     from analise import captura as cap
 
     with tempfile.TemporaryDirectory() as pasta:
@@ -239,29 +252,30 @@ def compara_replay(captura: Path, linhas: str) -> dict[str, int]:
             original = cap.destino_ponto(captura, ponto)
             if not original.exists():
                 continue
-            a = _depois_do_reset(_le_csv(original))
             novo = cap.destino_ponto(refeito, ponto)
-            b = _depois_do_reset(_le_csv(novo)) if novo.exists() else []
-            comum = min(len(a), len(b))
-            erradas = sum(1 for x, y in zip(a[:comum], b[:comum], strict=True)
-                          if len(x) != len(y) or not np.allclose(x, y, rtol=0, atol=1e-9))
-            diferencas[ponto] = erradas + max(0, abs(len(a) - len(b)) - 1)
+            b = _le_csv(novo) if novo.exists() else []
+            diferencas[ponto] = _compara_pelo_fim(_le_csv(original), b)
     return diferencas
 
 
-def replay(captura: Path, binario: Path = REPLAY_BIN) -> dict[str, int]:
-    """Roda o replay_cadeia nas cruas da captura e compara (ver compara_replay).
+def cruas_desde_o_reset(captura: Path) -> str:
+    """As cruas (n,ir,vermelho) a partir do último reset da placa (o último n = 0).
 
-    A captura tem que pegar o reset da placa (um n = 0): o estado dos módulos depende
-    de tudo desde o boot. Comece a captura e aperte o reset."""
+    O estado dos módulos depende de tudo desde o boot: o replay só reproduz a placa a
+    partir de um reset. Comece a captura e aperte o reset."""
     with captura.open(encoding="utf-8") as f:
-        tem_reset = any(ln.startswith("0,") for ln in f)
-    if not tem_reset:
+        linhas = [ln for ln in f if ln[:1].isdigit()]
+    inicio = next((i for i in range(len(linhas) - 1, -1, -1) if linhas[i].startswith("0,")), None)
+    if inicio is None:
         raise ValueError(f"{captura}: a captura não pegou o reset da placa (nenhum n = 0); "
                          "comece a captura e aperte o reset")
-    with captura.open("rb") as entrada:
-        texto = subprocess.run([str(binario)], stdin=entrada, capture_output=True, check=True,
-                               text=True).stdout
+    return "".join(linhas[inicio:])
+
+
+def replay(captura: Path, binario: Path = REPLAY_BIN) -> dict[str, int]:
+    """Roda o replay_cadeia nas cruas desde o reset e compara (ver compara_replay)."""
+    texto = subprocess.run([str(binario)], input=cruas_desde_o_reset(captura),
+                           capture_output=True, check=True, text=True).stdout
     return compara_replay(captura, texto)
 
 

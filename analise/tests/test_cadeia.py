@@ -138,9 +138,9 @@ def test_compara_replay_acusa_diferenca(tmp_path):
 
 def test_compara_replay_conta_linha_a_mais(tmp_path):
     destino = _captura(tmp_path, LINHAS_PLACA)
-    a_mais = LINHAS_PLACA + "t,199,0,0\nt,299,0,0\n"
     # A última pode faltar na captura (parou no meio de uma amostra); duas, não.
-    assert cadeia.compara_replay(destino, a_mais)["tela"] == 1
+    assert cadeia.compara_replay(destino, LINHAS_PLACA + "t,199,0,0\n")["tela"] == 0
+    assert cadeia.compara_replay(destino, LINHAS_PLACA + "t,199,0,0\nt,299,0,0\n")["tela"] > 0
 
 
 def test_compara_replay_formato_diferente_conta_como_diferenca(tmp_path):
@@ -177,3 +177,37 @@ def test_compara_replay_so_depois_do_reset(tmp_path):
     destino = _captura(tmp_path, antes + LINHAS_PLACA)
     assert cadeia.compara_replay(destino, LINHAS_PLACA)["tela"] == 0
     assert cadeia.compara_replay(destino, LINHAS_PLACA)["picos"] == 0
+
+
+def test_cruas_desde_o_reset_corta_execucao_anterior(tmp_path):
+    cruas = tmp_path / "cap.csv"
+    cruas.write_text("n,ir,vermelho\n5000,1,2\n5001,1,2\n0,3,4\n1,3,4\n", encoding="utf-8")
+    assert cadeia.cruas_desde_o_reset(cruas) == "0,3,4\n1,3,4\n"
+
+
+def test_cruas_desde_o_reset_com_reset_cedo(tmp_path):
+    # Reset 2 s depois de começar a captura (o n de antes não passa de 800): o corte
+    # tem que ser no último reset, e não nada ser cortado.
+    antes = "".join(f"{n},1,2\n" for n in range(800))
+    depois = "".join(f"{n},3,4\n" for n in range(900))
+    cruas = tmp_path / "cap.csv"
+    cruas.write_text("n,ir,vermelho\n" + antes + depois, encoding="utf-8")
+    assert cadeia.cruas_desde_o_reset(cruas) == depois
+
+
+def test_cruas_desde_o_reset_sem_reset_recusa(tmp_path):
+    cruas = tmp_path / "cap.csv"
+    cruas.write_text("n,ir,vermelho\n7,1,2\n8,1,2\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="reset"):
+        cadeia.cruas_desde_o_reset(cruas)
+
+
+def test_compara_replay_reset_cedo_na_captura(tmp_path):
+    # 1,5 s antes do reset: a tela de antes (n 99) tem o mesmo n da primeira de depois.
+    antes = "t,99,0,0\n"
+    depois = "t,99,1,7385\nt,199,1,7390\n"
+    destino = _captura(tmp_path, antes + depois)
+    assert cadeia.compara_replay(destino, depois)["tela"] == 0
+    # E a última da captura pode faltar (parou no meio de uma amostra).
+    destino = _captura(tmp_path, antes + "t,99,1,7385\n")
+    assert cadeia.compara_replay(destino, depois)["tela"] == 0
