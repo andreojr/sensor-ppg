@@ -94,7 +94,7 @@ def _le_vetor(caminho: Path) -> dict[str, np.ndarray]:
     return arrays
 
 
-# ---- Replay: as linhas que o PC refez contra os CSVs da captura ------------------
+# ---- Replay: a cadeia refeita no PC a partir do bruto da placa -------------------
 
 LINHAS_PLACA = (
     "b,0,100.00,200.00\n"
@@ -104,57 +104,82 @@ LINHAS_PLACA = (
     "r,2400,15.20,1\n"
     "t,99,1,7385\n"
 )
+TIPOS = {"picos": 0, "hrv": 0, "espectral": 0, "respiracao": 0, "tela": 0}
 
 
 def _captura(pasta: Path, linhas: str) -> Path:
     """Grava os CSVs que o analise.captura gravaria com essas linhas da placa."""
     from analise import captura
 
-    class Fonte:
-        def __init__(self):
-            self.resto = [ln.encode() for ln in linhas.splitlines()]
-
-        def readline(self) -> bytes:
-            if not self.resto:
-                raise KeyboardInterrupt
-            return self.resto.pop(0)
-
     destino = pasta / "cap.csv"
-    captura.grava(Fonte(), destino)
+    captura.grava(cadeia._Texto(linhas), destino)
     return destino
 
 
 def test_compara_replay_igual(tmp_path):
     destino = _captura(tmp_path, LINHAS_PLACA)
-    assert cadeia.compara_replay(destino, LINHAS_PLACA) == {
-        "bruto": 0, "picos": 0, "hrv": 0, "espectral": 0, "respiracao": 0, "tela": 0}
+    assert cadeia.compara_replay(destino, LINHAS_PLACA) == TIPOS
 
 
-def test_compara_replay_acusa_diferenca(tmp_path):
+def test_compara_replay_decisao_diferente(tmp_path):
     destino = _captura(tmp_path, LINHAS_PLACA)
-    trocado = LINHAS_PLACA.replace("p,120,0.2500,1", "p,121,0.2500,1")
+    trocado = LINHAS_PLACA.replace("p,120,0.2500,1,", "p,120,0.2500,0,")
     assert cadeia.compara_replay(destino, trocado)["picos"] == 1
 
 
-def test_compara_replay_conta_linha_a_mais(tmp_path):
+def test_compara_replay_numero_na_tolerancia(tmp_path):
+    # O bruto da linha b, tem 2 casas: o número refeito pode mudar um pouco.
     destino = _captura(tmp_path, LINHAS_PLACA)
-    # A última pode faltar na captura (parou no meio de uma amostra); duas, não.
-    assert cadeia.compara_replay(destino, LINHAS_PLACA + "t,199,0,0\n")["tela"] == 0
-    assert cadeia.compara_replay(destino, LINHAS_PLACA + "t,199,0,0\nt,299,0,0\n")["tela"] > 0
+    perto = LINHAS_PLACA.replace("812.50", "812.55").replace("0.2500", "0.2560")
+    assert cadeia.compara_replay(destino, perto)["picos"] == 0
+    longe = LINHAS_PLACA.replace("812.50", "813.50")
+    assert cadeia.compara_replay(destino, longe)["picos"] == 1
 
 
-def test_compara_replay_formato_diferente_conta_como_diferenca(tmp_path):
+def test_compara_replay_conta_o_que_falta_na_captura(tmp_path):
     destino = _captura(tmp_path, LINHAS_PLACA)
-    hrv_antigo = cap_ponto(destino, "hrv")
-    hrv_antigo.write_text("n_pico,valido,sdnn_ms,rmssd_ms\n120,1,41.5,30.25\n", encoding="utf-8")
+    assert cadeia.compara_replay(destino, LINHAS_PLACA + "t,199,0,0\n")["tela"] == 1
+
+
+def test_compara_replay_pre_reset_com_mesmo_n(tmp_path):
+    # Antes do reset, uma tela no mesmo n: vale a de depois (a última no arquivo).
+    destino = _captura(tmp_path, "t,99,0,0\np,120,0.1000,0,0.00,0,0.00\n" + LINHAS_PLACA)
+    assert cadeia.compara_replay(destino, LINHAS_PLACA) == TIPOS
+
+
+def test_compara_replay_formato_diferente(tmp_path):
+    destino = _captura(tmp_path, LINHAS_PLACA)
+    cadeia_ponto(destino, "hrv").write_text(
+        "n_pico,valido,sdnn_ms,rmssd_ms\n120,1,41.5,30.25\n", encoding="utf-8")
     assert cadeia.compara_replay(destino, LINHAS_PLACA)["hrv"] == 1
 
 
-def test_replay_exige_captura_desde_o_reset(tmp_path):
-    cruas = tmp_path / "cap.csv"
-    cruas.write_text("n,ir,vermelho\n94248,1,2\n94249,1,2\n", encoding="utf-8")
+def _bruto(pasta: Path, linhas: str) -> Path:
+    destino = pasta / "cap.csv"
+    destino.write_text("n,ir,vermelho\n", encoding="utf-8")
+    cadeia_ponto(destino, "bruto").write_text("n,ir,vermelho\n" + linhas, encoding="utf-8")
+    return destino
+
+
+def test_bruto_desde_o_reset_corta_e_preenche(tmp_path):
+    destino = _bruto(tmp_path, "4000,9,9\n4001,9,9\n0,1.5,2.5\n1,3.0,4.0\n3,5.0,6.0\n")
+    # A linha 2 a serial perdeu: entra a anterior repetida (como a placa faz com as perdidas).
+    assert cadeia.bruto_desde_o_reset(destino) == [
+        (0, 1.5, 2.5), (1, 3.0, 4.0), (2, 3.0, 4.0), (3, 5.0, 6.0)]
+
+
+def test_bruto_desde_o_reset_ignora_linha_embaralhada(tmp_path):
+    # "419,..." que chegou como "19,..." (visto na captura da #17): o n volta sem ser
+    # reset (não vem 20 depois), então é lixo; e um salto além de SALTO_MAX também.
+    linhas = "".join(f"{n},{n},{n}\n" for n in range(418)) + "19,7,7\n418,1,1\n9999,5,5\n419,2,2\n"
+    destino = _bruto(tmp_path, linhas)
+    assert [r[0] for r in cadeia.bruto_desde_o_reset(destino)] == list(range(420))
+
+
+def test_bruto_desde_o_reset_sem_reset_recusa(tmp_path):
+    destino = _bruto(tmp_path, "7,1,2\n8,1,2\n")
     with pytest.raises(ValueError, match="reset"):
-        cadeia.replay(cruas, Path("/bin/true"))
+        cadeia.bruto_desde_o_reset(destino)
 
 
 def test_main_sem_nada_pra_comparar_falha(tmp_path, capsys, monkeypatch):
@@ -165,49 +190,7 @@ def test_main_sem_nada_pra_comparar_falha(tmp_path, capsys, monkeypatch):
     assert "FALHOU" in capsys.readouterr().out
 
 
-def cap_ponto(destino: Path, ponto: str) -> Path:
+def cadeia_ponto(destino: Path, ponto: str) -> Path:
     from analise import captura
 
     return captura.destino_ponto(destino, ponto)
-
-
-def test_compara_replay_so_depois_do_reset(tmp_path):
-    # A captura pega o fim da execução anterior (n alto) e o reset no meio.
-    antes = "t,99999,0,0\np,99990,0.1000,0,0.00,0,0.00\n"
-    destino = _captura(tmp_path, antes + LINHAS_PLACA)
-    assert cadeia.compara_replay(destino, LINHAS_PLACA)["tela"] == 0
-    assert cadeia.compara_replay(destino, LINHAS_PLACA)["picos"] == 0
-
-
-def test_cruas_desde_o_reset_corta_execucao_anterior(tmp_path):
-    cruas = tmp_path / "cap.csv"
-    cruas.write_text("n,ir,vermelho\n5000,1,2\n5001,1,2\n0,3,4\n1,3,4\n", encoding="utf-8")
-    assert cadeia.cruas_desde_o_reset(cruas) == "0,3,4\n1,3,4\n"
-
-
-def test_cruas_desde_o_reset_com_reset_cedo(tmp_path):
-    # Reset 2 s depois de começar a captura (o n de antes não passa de 800): o corte
-    # tem que ser no último reset, e não nada ser cortado.
-    antes = "".join(f"{n},1,2\n" for n in range(800))
-    depois = "".join(f"{n},3,4\n" for n in range(900))
-    cruas = tmp_path / "cap.csv"
-    cruas.write_text("n,ir,vermelho\n" + antes + depois, encoding="utf-8")
-    assert cadeia.cruas_desde_o_reset(cruas) == depois
-
-
-def test_cruas_desde_o_reset_sem_reset_recusa(tmp_path):
-    cruas = tmp_path / "cap.csv"
-    cruas.write_text("n,ir,vermelho\n7,1,2\n8,1,2\n", encoding="utf-8")
-    with pytest.raises(ValueError, match="reset"):
-        cadeia.cruas_desde_o_reset(cruas)
-
-
-def test_compara_replay_reset_cedo_na_captura(tmp_path):
-    # 1,5 s antes do reset: a tela de antes (n 99) tem o mesmo n da primeira de depois.
-    antes = "t,99,0,0\n"
-    depois = "t,99,1,7385\nt,199,1,7390\n"
-    destino = _captura(tmp_path, antes + depois)
-    assert cadeia.compara_replay(destino, depois)["tela"] == 0
-    # E a última da captura pode faltar (parou no meio de uma amostra).
-    destino = _captura(tmp_path, antes + "t,99,1,7385\n")
-    assert cadeia.compara_replay(destino, depois)["tela"] == 0

@@ -543,10 +543,10 @@ Medidas na placa: **a medir** (`-DBANCADA_CADEIA=ON` e o sensor com
   `teste_replay`.
 - **Placa, fonte falsa:** `-DBANCADA_CADEIA=ON` passa o mesmo vetor pela cadeia na
   partida e mede os ciclos.
-- **Placa, sensor:** com `-DSERIAL_COMPLETA=ON`, comece a captura e aperte o reset;
+- **Placa, sensor:** comece a captura e aperte o reset;
   `uv run python -m analise.cadeia --replay dados/<captura>.csv` refaz no PC, a
-  partir das cruas, todas as linhas de resultado e confere que são iguais às da
-  placa.
+  partir do bruto que a placa mandou, todas as linhas de resultado e confere que são
+  iguais às da placa (ver [Cadeia → Replay](../modulos/cadeia/#replay-a-prova-de-que-nada-mudou)).
 
 Flash/RAM (Release): 52 724 / 35 288 B antes do laço novo, 54 080 / 36 680 B
 depois (135 KB de flash com a bancada da cadeia).

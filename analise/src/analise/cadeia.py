@@ -18,10 +18,12 @@ Uso:
     uv run python -m analise.cadeia --vetores   # gera testes/cadeia/vetores/physionet.h
     uv run python -m analise.cadeia --replay dados/captura.csv
 
---replay passa as cruas de uma captura (feita com as cruas ligadas, apertando o
-reset da placa depois de começar a captura) pelo replay_cadeia (o C da cadeia, no PC) e confere, linha a linha, se
-os resultados batem com o que a placa mandou. É a prova de que reorganizar o
-firmware não mudou nenhum número.
+--replay passa o bruto que a placa mandou (linhas b,, desde o reset: comece a captura
+e aperte o reset) pelo replay_cadeia (o C da cadeia, no PC) e confere, linha a linha,
+se os resultados batem com os da placa: decisões iguais e números dentro de
+COLUNAS_NUMERO. Com uma captura da versão anterior, é a prova de que reorganizar o
+firmware não mudou nenhum resultado. A entrada é o bruto, e não as cruas, porque a
+serial perde ~0,1% das cruas a 400 Hz (e a placa usou a amostra verdadeira).
 """
 
 from __future__ import annotations
@@ -194,9 +196,19 @@ def gera_vetores(testes: Path | None = None) -> list[Path]:
     ]
 
 
-# Tipo de linha -> CSV que o analise.captura grava ao lado do principal.
-PONTOS_REPLAY = ("bruto", "filtrado", "picos", "hrv", "espectral", "respiracao", "tela")
+# Tipos comparados e, em cada um, as colunas de número (com a tolerância); as outras
+# (n, válidos, rr_usado, mostra) têm que ser iguais. A tolerância cobre o bruto da
+# linha b, ter 2 casas (a placa passa o valor inteiro na cadeia): na captura de
+# regressão da #17, a maior diferença foi 0,06 ms num rr_ms.
+COLUNAS_NUMERO = {
+    "picos": {1: 0.01, 3: 0.1, 5: 0.1},   # fracao, rr_ms, bpm
+    "hrv": {2: 0.1, 3: 0.1},              # sdnn, rmssd
+    "espectral": {2: 0.1},                # bpm
+    "respiracao": {1: 0.1},               # rpm
+    "tela": {2: 0.1},                     # bpm
+}
 REPLAY_BIN = Path(__file__).resolve().parents[3] / "build" / "testes" / "replay_cadeia"
+SALTO_MAX = 64  # um n que pula mais que isso (ou volta sem ser reset) é linha embaralhada
 
 
 class _Texto:
@@ -218,64 +230,68 @@ def _le_csv(caminho: Path) -> list[tuple[float, ...]]:
     return [tuple(float(v) for v in ln) for ln in linhas]
 
 
-def _diferentes(a: list[tuple[float, ...]], b: list[tuple[float, ...]]) -> int:
-    return sum(1 for x, y in zip(a, b, strict=True)
-               if len(x) != len(y) or not np.allclose(x, y, rtol=0, atol=1e-9))
-
-
-def _compara_pelo_fim(captura: list[tuple[float, ...]], refeito: list[tuple[float, ...]]) -> int:
-    """Linhas diferentes, alinhando pelo fim: o refeito começa no último reset, então é o
-    final da captura (que tem antes o que a placa mandou antes do reset). A última linha
-    do refeito pode faltar na captura (ela para no meio de uma amostra): só quando a
-    última da captura é a penúltima refeita."""
-    b = refeito
-    if (len(b) >= 2 and captura and _diferentes(captura[-1:], b[-1:])
-            and not _diferentes(captura[-1:], b[-2:-1])):
-        b = b[:-1]
-    if len(b) > len(captura):
-        return _diferentes(captura, b[len(b) - len(captura):]) + len(b) - len(captura)
-    return _diferentes(captura[len(captura) - len(b):], b)
+def _igual(ponto: str, a: tuple[float, ...], b: tuple[float, ...]) -> bool:
+    if len(a) != len(b):
+        return False
+    tol = COLUNAS_NUMERO[ponto]
+    return all(abs(x - y) <= tol.get(i, 0.0) for i, (x, y) in enumerate(zip(a, b, strict=True)))
 
 
 def compara_replay(captura: Path, linhas: str) -> dict[str, int]:
-    """Linhas diferentes por tipo, entre os CSVs da captura e as linhas refeitas no PC.
+    """Linhas refeitas que não batem com a captura, por tipo.
 
-    linhas: o que o replay_cadeia escreveu a partir das cruas desde o último reset
-    (cruas_desde_o_reset). Só os tipos que a captura tem."""
+    Cada linha refeita é procurada na captura pela 1ª coluna (n ou n_pico), na última
+    vez que ela aparece (a de depois do reset). Conta como diferente se faltar na
+    captura ou se uma decisão mudar ou um número passar da tolerância. Linhas da
+    captura sem par no refeito (antes do reset, ou depois do fim do bruto) não contam."""
     from analise import captura as cap
 
     with tempfile.TemporaryDirectory() as pasta:
         refeito = Path(pasta) / "replay.csv"
         cap.grava(_Texto(linhas), refeito)
         diferencas = {}
-        for ponto in PONTOS_REPLAY:
+        for ponto in COLUNAS_NUMERO:
             original = cap.destino_ponto(captura, ponto)
             if not original.exists():
                 continue
+            ultima = {int(r[0]): r for r in _le_csv(original)}
             novo = cap.destino_ponto(refeito, ponto)
             b = _le_csv(novo) if novo.exists() else []
-            diferencas[ponto] = _compara_pelo_fim(_le_csv(original), b)
+            diferencas[ponto] = sum(1 for r in b
+                                    if int(r[0]) not in ultima or not _igual(ponto, ultima[int(r[0])], r))
     return diferencas
 
 
-def cruas_desde_o_reset(captura: Path) -> str:
-    """As cruas (n,ir,vermelho) a partir do último reset da placa (o último n = 0).
+def bruto_desde_o_reset(captura: Path) -> list[tuple[int, float, float]]:
+    """O bruto (linhas b,) que a placa mandou, a partir do último reset.
 
-    O estado dos módulos depende de tudo desde o boot: o replay só reproduz a placa a
-    partir de um reset. Comece a captura e aperte o reset."""
-    with captura.open(encoding="utf-8") as f:
-        linhas = [ln for ln in f if ln[:1].isdigit()]
-    inicio = next((i for i in range(len(linhas) - 1, -1, -1) if linhas[i].startswith("0,")), None)
-    if inicio is None:
-        raise ValueError(f"{captura}: a captura não pegou o reset da placa (nenhum n = 0); "
-                         "comece a captura e aperte o reset")
-    return "".join(linhas[inicio:])
+    Linha que a serial perdeu entra como a anterior repetida (o que a placa faz com as
+    perdidas do sensor); linha embaralhada (n fora de sequência) é descartada."""
+    from analise import captura as cap
+
+    caminho = cap.destino_ponto(captura, "bruto")
+    linhas = _le_csv(caminho) if caminho.exists() else []
+    n = [int(r[0]) for r in linhas]
+    resets = [k for k in range(len(n)) if n[k] == 0 and (k + 1 == len(n) or n[k + 1] == 1)]
+    if not resets:
+        raise ValueError(f"{captura}: a captura não pegou o reset da placa (nenhum n = 0 no "
+                         "bruto); comece a captura e aperte o reset")
+    saida: list[tuple[int, float, float]] = []
+    for r in linhas[resets[-1]:]:
+        k = int(r[0])
+        if saida and not saida[-1][0] < k <= saida[-1][0] + SALTO_MAX:
+            continue
+        while saida and k > saida[-1][0] + 1:
+            saida.append((saida[-1][0] + 1, saida[-1][1], saida[-1][2]))
+        saida.append((k, r[1], r[2]))
+    return saida
 
 
 def replay(captura: Path, binario: Path = REPLAY_BIN) -> dict[str, int]:
-    """Roda o replay_cadeia nas cruas desde o reset e compara (ver compara_replay)."""
-    texto = subprocess.run([str(binario)], input=cruas_desde_o_reset(captura),
-                           capture_output=True, check=True, text=True).stdout
+    """Passa o bruto da placa (desde o reset) pela cadeia em C no PC e compara."""
+    entrada = "".join(f"{n},{ir!r},{vm!r}\n" for n, ir, vm in bruto_desde_o_reset(captura))
+    texto = subprocess.run([str(binario), "--bruto"], input=entrada, capture_output=True,
+                           check=True, text=True).stdout
     return compara_replay(captura, texto)
 
 

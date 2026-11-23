@@ -109,15 +109,26 @@ ctest --test-dir build/testes --output-on-failure
 
 ### Replay: a prova de que nada mudou
 
-`build/testes/replay_cadeia` lê as cruas de uma captura (o `<nome>.csv` do
-`analise.captura`) e refaz, no PC, as linhas que a placa mandaria.
-`analise.cadeia --replay` compara com os CSVs da captura, tipo a tipo, depois do
-último reset:
+`analise.cadeia --replay` pega o bruto que a placa mandou (linhas `b,`, a partir do
+último reset), passa pela cadeia em C no PC (`build/testes/replay_cadeia --bruto`) e
+confere cada linha de resultado contra a captura: decisões (`n`, válidos, `rr_usado`,
+`mostra`) iguais e números dentro de uma tolerância pequena (0,01 na `fracao`, 0,1 em
+ms, bpm e rpm), porque a linha `b,` tem 2 casas e a placa passa o valor inteiro.
 
 ```bash
-uv run python -m analise.captura COM3 --segundos 300 -o dados/regressao_17.csv   # e aperte o reset
-uv run python -m analise.cadeia --replay dados/regressao_17.csv
+uv run python -m analise.captura /dev/ttyUSB0 --segundos 330 -o dados/regressao.csv   # e aperte o reset
+uv run python -m analise.cadeia --replay dados/regressao.csv
 ```
 
-Com uma captura da versão anterior (que manda as cruas por padrão), isso prova que
-a reorganização não mudou nenhum resultado.
+A entrada é o bruto, e não as cruas, porque a serial perde ~0,1% das linhas cruas a
+400 Hz (e embaralha algumas): a placa usou a amostra verdadeira, e o replay a partir das
+cruas divergia depois da primeira perda. Linha `b,` perdida entra como a anterior
+repetida; linha embaralhada (n que volta sem ser reset) é descartada.
+
+O `replay_cadeia` sem `--bruto` ainda refaz tudo a partir das cruas (decimação incluída);
+o `teste_replay` usa isso pra conferir a decimação, o preenchimento das perdidas e o reset.
+
+**Resultado (23/11/2026):** captura com o firmware anterior (c6727a2), ~2,3 min depois do
+reset, dedo sem suporte (sinal "não usável" na maior parte): **0 diferenças** em 155
+batimentos, 155 saídas de HRV, 135 do espectral, 142 da respiração e 141 telas. A maior
+diferença de número foi 0,06 ms num `rr_ms`.
