@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from analise import cadeia, espectral, filtro, picos, qualidade, respiracao, vetores
+from analise import cadeia, espectral, filtro, picos, qualidade, respiracao, spo2, vetores
 
 FS = 100
 
@@ -73,6 +73,14 @@ def test_espectral_e_respiracao_iguais_aos_modulos(caso):
     resp = respiracao.estima(ir)
     assert [(r.n, r.valido, r.rpm) for r in s.respiracao] == [
         (int(i), bool(v), float(rpm)) for i, v, rpm, _ in resp]
+
+
+def test_spo2_igual_ao_modulo_no_bruto(caso):
+    """A SpO2 roda sobre o bruto (com DC), IR e vermelho; no n da amostra que fechou a janela."""
+    ir, vm, s = caso
+    esperado = spo2.estima(ir, vm)
+    assert len(s.spo2) > 50 and any(o.valido for o in s.spo2)
+    assert [tuple(o) for o in s.spo2] == [(e.n, e.valido, e.spo2, e.r) for e in esperado]
 
 
 def test_vetor_em_dia():

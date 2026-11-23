@@ -22,6 +22,8 @@ static int32_t hrv_n_pico[MAX], hrv_valido[MAX], hrv_rr_usado[MAX];
 static float hrv_sdnn[MAX], hrv_rmssd[MAX];
 static int32_t resp_n[MAX], resp_valido[MAX];
 static float resp_rpm[MAX];
+static int32_t spo2_n[MAX], spo2_valido[MAX];
+static float spo2_pct[MAX], spo2_r_[MAX];
 static int32_t tela_n[MAX], tela_mostra[MAX];
 static float tela_bpm[MAX];
 
@@ -45,7 +47,7 @@ static int vetor(void)
         printf("cadeia_init falhou\n");
         return 1;
     }
-    uint32_t nb = 0, ne = 0, nh = 0, nr = 0, nt = 0, hrv_juntos = 0;
+    uint32_t nb = 0, ne = 0, nh = 0, nr = 0, no = 0, nt = 0, hrv_juntos = 0;
     int fora_de_ordem = 0;
     for (uint32_t i = 0; i < PHYSIONET_IR_N; i++) {
         ppg_amostra_t bruto = {i, physionet_ir[i], physionet_vermelho[i]};
@@ -88,6 +90,13 @@ static int vetor(void)
             resp_rpm[nr] = s.respiracao.rpm;
             nr++;
         }
+        if (s.oxigenou && POE(no)) {
+            spo2_n[no] = (int32_t)i;
+            spo2_valido[no] = s.spo2.valido;
+            spo2_pct[no] = s.spo2.spo2_pct;
+            spo2_r_[no] = s.spo2_r;
+            no++;
+        }
         if (s.julgou && POE(nt)) {
             tela_n[nt] = (int32_t)i;
             tela_mostra[nt] = s.mostra;
@@ -107,6 +116,7 @@ static int vetor(void)
     TAMANHO("espectral", ne, PHYSIONET_ESP_N_N)
     TAMANHO("hrv", nh, PHYSIONET_HRV_N_PICO_N)
     TAMANHO("respiracao", nr, PHYSIONET_RESP_N_N)
+    TAMANHO("spo2", no, PHYSIONET_SPO2_N_N)
     TAMANHO("tela", nt, PHYSIONET_TELA_N_N)
     if (f)
         return f;
@@ -128,13 +138,22 @@ static int vetor(void)
     f += confere_int("resp_n", resp_n, physionet_resp_n, nr);
     f += confere_int("resp_valido", resp_valido, physionet_resp_valido, nr);
     f += confere_float("resp_rpm", resp_rpm, physionet_resp_rpm, nr, tol);
+    f += confere_int("spo2_n", spo2_n, physionet_spo2_n, no);
+    f += confere_int("spo2_valido", spo2_valido, physionet_spo2_valido, no);
+    f += confere_float("spo2_pct", spo2_pct, physionet_spo2_pct, no, tol);
+    f += confere_float("spo2_r", spo2_r_, physionet_spo2_r, no, tol);
     f += confere_int("tela_n", tela_n, physionet_tela_n, nt);
     f += confere_int("tela_mostra", tela_mostra, physionet_tela_mostra, nt);
     f += confere_float("tela_bpm", tela_bpm, physionet_tela_bpm, nt, tol);
 
     /* Ficha: o display lê o último BPM e a última decisão da regra. */
     const ppg_resultados_t *r = cadeia_resultados(&cadeia);
-    /* A spo2 da ficha não tem referência neste vetor (só o IR do PhysioNet): vale o spo2.c. */
+    /* A spo2 da ficha é a última que saiu (o vetor tem o vermelho do PhysioNet). */
+    if (r->spo2.valido != (spo2_valido[no - 1u] != 0) || r->spo2.spo2_pct != spo2_pct[no - 1u]) {
+        printf("ficha: spo2 %d %.3f (última saída %d %.3f)\n", r->spo2.valido,
+               (double)r->spo2.spo2_pct, spo2_valido[no - 1u], (double)spo2_pct[no - 1u]);
+        f++;
+    }
     if (r->bpm_picos.valido != (tela_mostra[nt - 1u] != 0)) {
         printf("ficha: bpm_picos.valido %d (última tela %d)\n", r->bpm_picos.valido,
                tela_mostra[nt - 1u]);
@@ -174,7 +193,7 @@ static int ciclos(void)
     int f = 0;
     if (c->filtro.conta != amostras || c->picos.conta != amostras ||
         c->espectral.conta != amostras || c->respiracao.conta != amostras ||
-        c->qualidade.conta != amostras || c->total.conta != amostras) {
+        c->spo2.conta != amostras || c->qualidade.conta != amostras || c->total.conta != amostras) {
         printf("contas: filtro %lu total %lu (esperado %lu)\n", (unsigned long)c->filtro.conta,
                (unsigned long)c->total.conta, (unsigned long)amostras);
         f++;

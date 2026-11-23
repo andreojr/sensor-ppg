@@ -12,6 +12,9 @@
  *  - julgamento da qualidade: esvazia a fila no HRV e decide o BPM da tela
  *    (qualidade_bpm_confiavel).
  *
+ * A respiração e a spo2 recebem o bruto (com DC), não o filtrado; a spo2 usa o IR e o
+ * vermelho e não depende dos outros módulos.
+ *
  * A decimação fica fora (quem lê o sensor decima e entrega o bruto aqui).
  *
  * Sem HAL: os ciclos de cada módulo são medidos por um relógio que quem chama passa
