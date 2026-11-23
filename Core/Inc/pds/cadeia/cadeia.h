@@ -92,7 +92,8 @@ bool cadeia_init(cadeia_t *c, cadeia_relogio_t relogio);
 
 /* Uma amostra do bruto pela cadeia; *s diz o que saiu. A ficha é atualizada aqui:
    bpm_picos.bpm acompanha o último batimento, e bpm_picos.valido é a última decisão
-   de qualidade_bpm_confiavel (muda só quando a qualidade julga). */
+   de qualidade_bpm_confiavel (acende só quando a qualidade julga; apaga também num
+   batimento com BPM inválido). */
 void cadeia_processa(cadeia_t *c, const ppg_amostra_t *bruto, cadeia_saida_t *s);
 
 /* A ficha, só leitura. spo2 fica inválido (não há módulo ainda). */

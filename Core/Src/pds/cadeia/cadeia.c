@@ -67,6 +67,10 @@ void cadeia_processa(cadeia_t *c, const ppg_amostra_t *bruto, cadeia_saida_t *s)
         c->n_ultimo_pico = s->batimento.n_pico;
         c->ficha.ultimo_batimento = s->batimento;
         c->ficha.bpm_picos.bpm = s->bpm.bpm;
+        /* BPM inválido (bpm 0) não pode ficar "válido" até o próximo julgamento; um
+           válido novo espera a regra (no julgamento) pra acender. */
+        if (!s->bpm.valido)
+            c->ficha.bpm_picos.valido = false;
         /* O picos roda antes da qualidade nesta amostra: o julgamento "de antes" é o
            anterior; o desta amostra, se houver, é o "de depois". */
         bool antes = qualidade_batimento_usavel(&c->julgamento, c->tem_julgamento,

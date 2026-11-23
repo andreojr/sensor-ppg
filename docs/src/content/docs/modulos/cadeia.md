@@ -65,7 +65,7 @@ mais recente):
 |---|---|
 | `ultimo_batimento` | a cada batimento |
 | `bpm_picos.bpm` | a cada batimento (o BPM cru do picos) |
-| `bpm_picos.valido` | a cada julgamento: a decisão de `qualidade_bpm_confiavel` |
+| `bpm_picos.valido` | acende só no julgamento (a decisão de `qualidade_bpm_confiavel`); apaga também num batimento com BPM inválido |
 | `bpm_espectral` | a cada saída do espectral (1 por segundo) |
 | `hrv` | a cada saída do HRV |
 | `respiracao` | a cada estimativa (1 por segundo) |
@@ -73,7 +73,8 @@ mais recente):
 | `spo2` | nunca: `valido = false` até a #125 |
 
 Entre dois julgamentos, `bpm_picos.valido` mantém a última decisão e o número
-acompanha o último batimento. A regra recebe sempre o BPM cru, guardado à parte (a
+acompanha o último batimento; se esse batimento vier com BPM inválido (o picos perdeu o
+ritmo, `bpm` 0), a ficha apaga na hora, pra o display nunca mostrar "0" como válido. A regra recebe sempre o BPM cru, guardado à parte (a
 ficha nunca realimenta a regra). O display não precisa repetir a regra.
 
 ## Ciclos

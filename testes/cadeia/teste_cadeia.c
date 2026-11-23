@@ -214,9 +214,45 @@ static int comparador(void)
     return (fc != 0u) + (fe != 1u) + (certo.saidas == 0u);
 }
 
+/* Se o picos perde o ritmo, o próximo batimento sai com BPM inválido
+   (bpm 0): a ficha não pode mostrar esse 0 como válido até o próximo julgamento. */
+static int ficha_sem_bpm_zero_valido(void)
+{
+    printf("-- ficha: BPM inválido não fica válido\n");
+    if (!cadeia_init(&cadeia, NULL))
+        return 1;
+    int f = 0;
+    bool reiniciou = false;
+    uint32_t vistos = 0;
+    for (uint32_t i = 0; i < PHYSIONET_IR_N; i++) {
+        ppg_amostra_t bruto = {i, physionet_ir[i], physionet_vermelho[i]};
+        cadeia_saida_t s;
+        cadeia_processa(&cadeia, &bruto, &s);
+        const ppg_resultados_t *r = cadeia_resultados(&cadeia);
+        if (!reiniciou && s.julgou && r->bpm_picos.valido) {
+            /* O picos esquece o ritmo (como depois de um trecho irregular): o próximo
+               batimento, ~1 s depois, sai com BPM inválido. */
+            cadeia.picos.n_hist = 0;
+            cadeia.picos.n_rrs = 0;
+            reiniciou = true;
+        }
+        if (reiniciou && s.bateu && !s.bpm.valido)
+            vistos++;
+        if (r->bpm_picos.valido && !(r->bpm_picos.bpm > 0.0f)) {
+            if (f < 3)
+                printf("n %lu: ficha válida com bpm %.2f\n", (unsigned long)i,
+                       (double)r->bpm_picos.bpm);
+            f++;
+        }
+    }
+    printf("batimentos com BPM inválido depois do reinício: %lu\n", (unsigned long)vistos);
+    return f + (vistos == 0u);
+}
+
 int main(void)
 {
     int f = vetor();
+    f += ficha_sem_bpm_zero_valido();
     f += ciclos();
     f += comparador();
     printf("%s\n", f ? "FALHOU" : "OK");
