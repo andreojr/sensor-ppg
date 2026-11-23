@@ -116,7 +116,7 @@ confere cada linha de resultado contra a captura: decisões (`n`, válidos, `rr_
 ms, bpm e rpm), porque a linha `b,` tem 2 casas e a placa passa o valor inteiro.
 
 ```bash
-uv run python -m analise.captura /dev/ttyUSB0 --segundos 330 -o dados/regressao.csv   # e aperte o reset
+uv run python -m analise.captura /dev/ttyUSB0 --segundos 130 -o dados/regressao.csv   # e aperte o reset
 uv run python -m analise.cadeia --replay dados/regressao.csv
 ```
 
@@ -132,3 +132,10 @@ o `teste_replay` usa isso pra conferir a decimação, o preenchimento das perdid
 reset, dedo sem suporte (sinal "não usável" na maior parte): **0 diferenças** em 155
 batimentos, 155 saídas de HRV, 135 do espectral, 142 da respiração e 141 telas. A maior
 diferença de número foi 0,06 ms num `rr_ms`.
+
+**Resultado com o laço novo (23/11/2026):** firmware da #17, ~2 min depois do reset,
+dedo no sensor: 193 batimentos, 192 HRV, 120 espectral, 127 respiração e 126 telas.
+Só **1 linha diferente**: o pico 3521, com `rr_ms` 572,74 na placa e 572,61 no
+replay. A serial perdeu a linha `b,` de n = 3492, 29 amostras antes; o replay
+repetiu a anterior no lugar dela, e o filtro do PC saiu um pouco do da placa. Não é
+erro da cadeia: o resto, depois disso, bateu.

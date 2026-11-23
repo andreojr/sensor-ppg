@@ -18,7 +18,7 @@ Código que usa HAL, em `Core/Inc` e `Core/Src` (fora de `pds/`).
 | Bancada do HRV na placa (`-DBANCADA_HRV=ON`) | André | feita: `bancada_hrv.c`, passou na placa; ver [HRV](../modulos/hrv/) |
 | Bancada da qualidade na placa (`-DBANCADA_QUALIDADE=ON`) | André | feita: `bancada_qualidade.c`, passou na placa (55/55, pior caso 2 149 ciclos no Debug); ver [Qualidade](../modulos/qualidade/) |
 | Fonte falsa (PhysioNet em flash) | André | a fazer |
-| Timer, filas e laço principal (#17) | André | feito no PC e compilado: `app.c`, `sensor.c`, `monitor.c`, `pds/cadeia/`; falta medir na placa. Ver [Laço principal](#laço-principal) e [Cadeia](../modulos/cadeia/) |
+| Timer, filas e laço principal (#17) | André | feito e medido na placa (23/11): `app.c`, `sensor.c`, `monitor.c`, `pds/cadeia/`. Ver [Laço principal](#laço-principal) e [Cadeia](../modulos/cadeia/) |
 | Display OLED (I2C3) | Celso | a fazer |
 
 ## Pinagem
@@ -525,7 +525,7 @@ cadeia é a soma dos orçamentos dos módulos.
 | Medida | Orçamento | Por quê |
 |---|---|---|
 | Cadeia (`# cadeia`), média por amostra de 100 Hz | 51 000 | filtro 19 200 + picos 9 600 + espectral 9 600 + respiração 9 600 + qualidade 3 000 (a decimação, 2 400 por amostra do sensor, é medida à parte no `sensor.c`) |
-| Cadeia, pior amostra | 960 000 | um período (10 ms); a amostra em que a respiração (~0,8 milhão) e a FFT (~0,1 milhão) calculam o espectro pode ser a mesma: apertado |
+| Cadeia, pior amostra | 960 000 | um período (10 ms); a amostra em que a respiração (~0,8 milhão) e a FFT (~0,41 milhão) calculam o espectro pode ser a mesma: estoura (ver abaixo) |
 | Volta do laço (`# volta`) | 3 600 000 (37,5 ms) | a folga do sensor depois do INT |
 | Maior intervalo entre leituras da FIFO (`# leitura`) | 80 ms | 32 amostras a 400 Hz; normal ~42,5 ms |
 
@@ -533,8 +533,23 @@ cadeia é a soma dos orçamentos dos módulos.
 fila absorve): só registrar. Se aparecerem `perdidas`, medir em Release e, se não
 bastar, defasar o espectro da respiração em relação ao da FFT. Não cortar módulo.
 
-Medidas na placa: **a medir** (`-DBANCADA_CADEIA=ON` e o sensor com
-`-DSERIAL_COMPLETA=ON`).
+**Medidas na placa (23/11/2026, Debug, `-DBANCADA_CADEIA=ON -DSERIAL_COMPLETA=ON`,
+dedo no sensor, 3 min depois do reset):**
+
+| Medida | Placa | Orçamento |
+|---|---|---|
+| `# cadeia` média por amostra | 25 357 | 51 000 |
+| `# cadeia` pior amostra | 1 229 429 | 960 000 (estoura) |
+| `# volta` pior volta | 2 491 743 (26 ms) | 3 600 000 (37,5 ms) |
+| `# leitura` maior intervalo | 42 ms | 80 ms |
+| `# laco` fila_max / fila_cheia / perdidas | 5 / 0 / 0 | 16 / 0 / 0 |
+| `# taxa` | 99,9 amostras/s | 100 |
+
+A pior amostra estoura porque a respiração (798 840) e o espectral (409 906)
+calculam o espectro na mesma amostra. Pela regra acima, isso só é registrado: a
+volta coube em 26 ms, a fila chegou a 5 de 16 e nada se perdeu. Na bancada (vetor do
+PhysioNet na partida) a cadeia bateu com o Python em 478 saídas, 0 fora da
+tolerância.
 
 ### Testar
 
