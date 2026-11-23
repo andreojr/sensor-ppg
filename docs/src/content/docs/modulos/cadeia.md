@@ -25,7 +25,7 @@ PDS própria: é a "cola" que antes ficava no `main.c`.
 | 2. C sem HAL | feito: `cadeia.h`, `cadeia.c`, `linhas.c`, `fila.h` |
 | 3. Teste no PC contra o vetor | feito: `testes/cadeia/`, no CI (90 s do PhysioNet, 478 saídas iguais) |
 | 4. Placa com o vetor | feito (23/11): `-DBANCADA_CADEIA=ON`, 478 saídas, 0 fora da tolerância |
-| 5. Sensor real | feito (23/11): `analise.cadeia --replay` numa captura de ~2 min (abaixo); usa só as linhas `b,` e as de resultado, sem `-DSERIAL_COMPLETA` |
+| 5. Sensor real | feito (23/11): `analise.cadeia --replay` numa captura de ~2 min (abaixo); usa só as linhas `b,` e as de resultado, então não precisa de `-DSERIAL_COMPLETA` |
 
 ## A ordem
 
@@ -138,7 +138,8 @@ dedo no sensor: 193 batimentos, 192 HRV, 120 espectral, 127 respiração e 126 t
 Só **1 linha diferente**: o pico 3521, com `rr_ms` 572,74 na placa e 572,61 no
 replay. A serial perdeu a linha `b,` de n = 3492, 29 amostras antes; o replay
 repetiu a anterior no lugar dela, e o filtro do PC saiu um pouco do da placa. Não é
-erro da cadeia: o resto, depois disso, bateu.
+erro da cadeia: o resto, depois disso, bateu. Por essa linha, o `--replay` dessa
+captura termina em `FALHOU` (código de saída 1).
 
 ## Limitações da v0.4.0
 

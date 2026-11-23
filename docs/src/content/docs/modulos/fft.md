@@ -119,7 +119,7 @@ o caso passou a usar a entrada normalizada pra amplitude 1, como os outros.
 
 ## Flash e RAM
 
-**Hoje**, com o espectral na cadeia (Release, `arm-none-eabi-gcc` 16.2.0, sem aviso):
+**Quando o espectral entrou** (antes da cadeia da #17; Release, `arm-none-eabi-gcc` 16.2.0, sem aviso):
 o firmware fica em **49.980 B de flash e 33.828 B de RAM**, contra 23.864 B e 19.132 B
 da `main` (com a respiração, #110): **+26.116 B de flash e +14.696 B de RAM** pelo espectral e pela FFT
 juntos. Os 14.680 B do `espectral_t` são quase toda a RAM. As tabelas de 256 e 512 pontos

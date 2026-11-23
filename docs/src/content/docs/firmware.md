@@ -573,7 +573,9 @@ se perdeu. Na bancada (vetor do PhysioNet na partida) a cadeia bateu com o Pytho
   medidas. Em Release o espectral cai de ~410 000 para ~101 000 ciclos no pior caso
   (ver Bancada do espectral), então a folga deve ser maior, não menor.
 - A linha final da bancada da cadeia nessa medida não foi guardada (só "478 saídas, 0
-  fora da tolerância").
+  fora da tolerância"). Com o critério de então, ela teria saído `FALHOU` pelo max; o critério
+  mudou depois (na pré-release da v0.4.0: o max acima de 960 000 só é registrado) e o
+  novo só foi compilado, não rodado na placa.
 - Uma linha que a placa não consegue pôr no buffer da serial (cheio) é descartada sem
   contagem; no PC isso aparece como linha perdida, igual a uma perda no adaptador.
 - O `--replay` só confere numa direção: cada linha refeita no PC tem que existir na
