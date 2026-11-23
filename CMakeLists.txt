@@ -70,6 +70,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/Core/Src/bancada_hrv.c
     ${CMAKE_SOURCE_DIR}/Core/Src/bancada_qualidade.c
     ${CMAKE_SOURCE_DIR}/Core/Src/bancada_cadeia.c
+    ${CMAKE_SOURCE_DIR}/Core/Src/display.c
     ${PDS_SOURCES}
     ${CMSIS_DSP_SOURCES}
 )
@@ -89,6 +90,7 @@ option(BANCADA_FILTRO "Confere o filtro na placa com a fonte falsa" OFF)
 option(BANCADA_PICOS "Confere o picos na placa com a fonte falsa" OFF)
 option(BANCADA_ESPECTRAL "Confere o espectral na placa com a fonte falsa" OFF)
 option(BANCADA_RESPIRACAO "Confere a respiração na placa com 5 min do PhysioNet" OFF)
+option(BANCADA_DISPLAY "Demonstração das telas do display com dados de mentira (não volta)" OFF)
 if(BANCADA_DECIMACAO)
     target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE BANCADA_DECIMACAO)
 endif()
@@ -103,6 +105,9 @@ if(BANCADA_ESPECTRAL)
 endif()
 if(BANCADA_RESPIRACAO)
     target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE BANCADA_RESPIRACAO)
+endif()
+if(BANCADA_DISPLAY)
+    target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE BANCADA_DISPLAY)
 endif()
 if(BANCADA_DECIMACAO OR BANCADA_FILTRO OR BANCADA_PICOS OR BANCADA_ESPECTRAL OR BANCADA_RESPIRACAO)
     target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/testes)

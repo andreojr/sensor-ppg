@@ -20,24 +20,15 @@ static sensor_medidas_t medidas;
 static bool leu;                            /* já houve uma leitura (pro intervalo) */
 static uint32_t t_leitura;                  /* DWT da última leitura */
 
-static void erro(const char *msg, uint32_t tam)
+sensor_erro_t sensor_init(I2C_HandleTypeDef *hi2c, fila_t *f)
 {
-    serial_escreve(msg, tam);
-    serial_envia();
-    HAL_Delay(50); /* o DMA termina antes de parar */
-    Error_Handler();
-}
-
-void sensor_init(I2C_HandleTypeDef *hi2c, fila_t *f)
-{
-    static const char sem_sensor[] = "# erro: MAX30102 nao respondeu na I2C1\n";
-    static const char sem_filtro[] = "# erro: decimacao sem filtro para essa taxa do MAX30102\n";
     fila = f;
     fila_init(fila);
     if (max30102_init(hi2c) != HAL_OK)
-        erro(sem_sensor, sizeof sem_sensor - 1u);
+        return SENSOR_ERRO_SEM_RESPOSTA;
     if (!decimacao_init(&decimacao, MAX30102_FS_HZ))
-        erro(sem_filtro, sizeof sem_filtro - 1u);
+        return SENSOR_ERRO_SEM_FILTRO;
+    return SENSOR_OK;
 }
 
 void sensor_int(void)
