@@ -18,7 +18,8 @@ feito por nós**, rodando em tempo real numa STM32.
 | STM32F411 (Black Pill) | Roda a cadeia de PDS amostra a amostra. |
 | OLED SSD1306 (I2C3) | Mostra a onda e os resultados. |
 
-Dedo em repouso, sensor fixo na protoboard.
+Dedo em repouso, sensor fixo na protoboard, sem suporte de dedo. O que a versão
+atual não cobre está em [Cadeia → Limitações](modulos/cadeia/#limitações-da-v040).
 
 ## A cadeia de processamento
 

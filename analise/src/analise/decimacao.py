@@ -35,7 +35,7 @@ from pathlib import Path
 import numpy as np
 from scipy import signal
 
-from analise import FS_HZ
+from analise import FS_HZ, serial_completa
 
 TAXAS_HZ = (400, 500)  # placa (MAX30102_FS_HZ) e PhysioNet
 PASSA_HZ = 20.0
@@ -338,8 +338,7 @@ def main(argv: list[str] | None = None) -> None:
         return
     if args.confere:
         bruto = args.confere.with_name(args.confere.stem + "_bruto.csv")
-        r = confere_placa(np.loadtxt(args.confere, delimiter=",", skiprows=1),
-                          np.loadtxt(bruto, delimiter=",", skiprows=1))
+        r = confere_placa(serial_completa.carrega(args.confere), serial_completa.carrega(bruto))
         ok = max(r["erro_max_ir"], r["erro_max_vermelho"]) <= TOL_COUNTS * 10
         print(f"{r['saidas']} saídas comparadas; erro máximo IR {r['erro_max_ir']:.3f}, "
               f"vermelho {r['erro_max_vermelho']:.3f} contagens: {'OK' if ok else 'DIVERGE'}")

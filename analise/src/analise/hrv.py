@@ -653,7 +653,7 @@ def main() -> None:
         bruto, filtrado = (base.with_name(f"{base.stem}_{x}.csv") for x in ("bruto", "filtrado"))
         rr, porque = None, ""
         if not (bruto.exists() and filtrado.exists()):
-            porque = "faltam o _bruto.csv e o _filtrado.csv"
+            porque = "faltam o _bruto.csv e o _filtrado.csv (o filtrado só sai com -DSERIAL_COMPLETA=ON)"
         else:
             rr = confere_rr_usado(
                 *(np.loadtxt(x, delimiter=",", skiprows=1, ndmin=2) for x in (bruto, filtrado, arqs[1])),

@@ -234,7 +234,7 @@ que um candidato faz a parábola ou um batimento sai.
 O firmware passa cada filtrado pelo picos e, a cada batimento, manda uma linha
 `p,n_pico,fracao,rr_valido,rr_ms,bpm_valido,bpm`. A captura grava essas linhas
 em `_picos.csv`, e o Python roda o mesmo detector sobre o `_filtrado.csv` da
-placa e compara:
+placa e compara. O `_filtrado.csv` só sai com `-DSERIAL_COMPLETA=ON`:
 
 ```bash
 uv run python -m analise.captura COM3 --segundos 60   # e aperte o reset da placa

@@ -17,9 +17,9 @@ Código que usa HAL, em `Core/Inc` e `Core/Src` (fora de `pds/`).
 | Respiração na placa (bruto → rpm, 1 por segundo) | João | feita: `pds/cadeia/` e `bancada.c`; ver [Respiração](../modulos/respiracao/) |
 | Bancada do HRV na placa (`-DBANCADA_HRV=ON`) | André | feita: `bancada_hrv.c`, passou na placa; ver [HRV](../modulos/hrv/) |
 | Bancada da qualidade na placa (`-DBANCADA_QUALIDADE=ON`) | André | feita: `bancada_qualidade.c`, passou na placa (55/55, pior caso 2 149 ciclos no Debug); ver [Qualidade](../modulos/qualidade/) |
-| Fonte falsa (PhysioNet em flash) | André | a fazer |
+| Fonte falsa (PhysioNet em flash) | André | feita: os vetores do PhysioNet das bancadas (`-DBANCADA_*`) |
 | Timer, filas e laço principal (#17) | André | feito e medido na placa (23/11): `app.c`, `sensor.c`, `monitor.c`, `pds/cadeia/`. Ver [Laço principal](#laço-principal) e [Cadeia](../modulos/cadeia/) |
-| Display OLED (I2C3) | Celso | a fazer |
+| Display OLED (I2C3) | Celso | fora da v0.4.0 (PRs #121 e #122); no `app.c`, `display_amostra()` e `display_servico()` são vazias |
 
 ## Pinagem
 
@@ -232,17 +232,26 @@ STM32_Programmer_CLI -c port=SWD -w build/Debug/sensor-ppg.elf -v -rst
 Pra ver a leitura, abra um terminal serial a 921600 na porta do adaptador:
 `python -m serial.tools.miniterm COM3 921600` (pyserial), ou o Serial Monitor
 do VS Code com `"vscode-serial-monitor.customBaudRates": [921600]` nas
-configurações. Sem dedo, IR e vermelho ficam na casa de 1 000; com o dedo,
-passam de 100 000 e oscilam ~1% com o pulso.
+configurações. Nas linhas `b,` (bruto), sem dedo IR e vermelho ficam na casa
+de 1 000; com o dedo, passam de 100 000 e oscilam ~1% com o pulso.
+
+**O que a serial manda.** No firmware padrão (o da release), só o bruto a 100 Hz
+(`b,`), os resultados (`p,`, `h,`, `e,`, `r,`, `t,`) e as linhas `#`. O sinal cru
+a 400 Hz (`n,ir,vermelho`) e o filtrado (`f,`) só saem com
+`-DSERIAL_COMPLETA=ON`, e são eles que os `--confere` da decimação, do filtro,
+do picos e do HRV precisam.
 
 Pra gravar em CSV e plotar, dentro de `analise/` (o CSV vai pra
 `analise/dados/`, que não entra no git). No fim, a captura mostra a taxa medida
-e quantas amostras se perderam. As linhas `b,`, `f,`, `p,`, `h,`, `e,` e `r,` vão pra
+e quantas linhas se perderam (pelos saltos no `n` das cruas e das `b,`). As linhas `b,`, `f,`, `p,`, `h,`, `e,` e `r,` vão pra
 `<nome>_bruto.csv`, `<nome>_filtrado.csv`, `<nome>_picos.csv`, `<nome>_hrv.csv`,
 `<nome>_espectral.csv` e `<nome>_respiracao.csv`, e cada
 `--confere` compara o módulo da placa com o do Python no mesmo sinal:
 
 ```bash
+cmake --preset Debug -DSERIAL_COMPLETA=ON   # cruas e f, para os --confere
+cmake --build --preset Debug
+STM32_Programmer_CLI -c port=SWD -w build/Debug/sensor-ppg.elf -v -rst
 uv run python -m analise.captura COM3 --segundos 30
 uv run python -m analise.plota dados/sensor_<data>_<hora>.csv
 uv run python -m analise.decimacao --confere dados/sensor_<data>_<hora>.csv
@@ -345,8 +354,9 @@ A emulação (`uv run testes/fft/ciclos/ciclos.py espectral`) estimava ~1 060 e 
 Com `-DBANCADA_RESPIRACAO=ON`: 5 min do bruto do `s1_sit` (o vetor de
 `testes/respiracao/vetores/s1_sit.h`, ~120 KB na flash), porque os 60 s da
 fonte falsa só enchem uma janela. Decimação, filtro e respiração juntas
-ocupam ~300 KB de flash. Com todas as bancadas ligadas juntas, a flash passa de 400 KB
-(dos 512 KB do chip): ligue só as que for usar.
+ocupam ~300 KB de flash. As 5 bancadas de módulo juntas ocupam ~360 KB (Release); somando a bancada da
+cadeia, a flash estoura os 512 KB do chip e o firmware não linka: ligue só as que
+for usar.
 
 ```text
 # bancada respiracao: 299 estimativas (esperado 299), 0 diferentes, erro max 0 milesimos de rpm
@@ -520,18 +530,22 @@ com a mesma assinatura.
 
 O DWT mede cada módulo, a cadeia inteira por amostra e a volta do laço. O
 orçamento de "3 000 ciclos por amostra" da #17 é o da qualidade sozinha; o da
-cadeia é a soma dos orçamentos dos módulos.
+cadeia é a soma dos orçamentos dos módulos. O HRV roda dentro da medida da cadeia,
+mas fica fora da soma: só calcula a cada batimento (orçamento de 20 000 ciclos, ~1
+por segundo, ou ~200 por amostra na média).
 
 | Medida | Orçamento | Por quê |
 |---|---|---|
 | Cadeia (`# cadeia`), média por amostra de 100 Hz | 51 000 | filtro 19 200 + picos 9 600 + espectral 9 600 + respiração 9 600 + qualidade 3 000 (a decimação, 2 400 por amostra do sensor, é medida à parte no `sensor.c`) |
-| Cadeia, pior amostra | 960 000 | um período (10 ms); a amostra em que a respiração (~0,8 milhão) e a FFT (~0,41 milhão) calculam o espectro pode ser a mesma: estoura (ver abaixo) |
+| Cadeia, pior amostra | 960 000 | um período (10 ms); a respiração (~0,8 milhão) e a FFT (~0,41 milhão) calculam o espectro **sempre na mesma amostra**, uma vez por segundo (a de `n` terminado em 99): estoura (ver abaixo) |
 | Volta do laço (`# volta`) | 3 600 000 (37,5 ms) | a folga do sensor depois do INT |
 | Maior intervalo entre leituras da FIFO (`# leitura`) | 80 ms | 32 amostras a 400 Hz; normal ~42,5 ms |
 
 **Se estourar:** passar de 960 000 numa amostra não perde nada se a volta couber (a
 fila absorve): só registrar. Se aparecerem `perdidas`, medir em Release e, se não
-bastar, defasar o espectro da respiração em relação ao da FFT. Não cortar módulo.
+bastar, defasar o espectro da respiração em relação ao da FFT (hoje os dois saem na
+mesma amostra, a cada segundo). Não cortar módulo. A bancada da cadeia segue a mesma
+regra: o max acima de 960 000 não reprova, só sai registrado na linha final.
 
 **Medidas na placa (23/11/2026, Debug, `-DBANCADA_CADEIA=ON -DSERIAL_COMPLETA=ON`,
 dedo no sensor, 3 min depois do reset):**
@@ -546,10 +560,24 @@ dedo no sensor, 3 min depois do reset):**
 | `# taxa` | 99,9 amostras/s | 100 |
 
 A pior amostra estoura porque a respiração (798 840) e o espectral (409 906)
-calculam o espectro na mesma amostra. Pela regra acima, isso só é registrado: a
-volta coube em 26 ms, a fila chegou a 5 de 16 e nada se perdeu. Na bancada (vetor do
-PhysioNet na partida) a cadeia bateu com o Python em 478 saídas, 0 fora da
-tolerância.
+calculam o espectro na mesma amostra, o que acontece uma vez por segundo. Pela regra
+acima, isso só é registrado: a volta coube em 26 ms, a fila chegou a 5 de 16 e nada
+se perdeu. Na bancada (vetor do PhysioNet na partida) a cadeia bateu com o Python em
+478 saídas, 0 fora da tolerância.
+
+**O que não foi medido na placa** (ressalvas da v0.4.0):
+
+- O firmware da release é **Release, sem bancada e com a serial padrão**. As medidas
+  acima são de **Debug** com a bancada e a serial completa ligadas, uma captura de
+  3 min. O Release padrão compila, mas a volta, a fila e as perdidas dele não foram
+  medidas. Em Release o espectral cai de ~410 000 para ~101 000 ciclos no pior caso
+  (ver Bancada do espectral), então a folga deve ser maior, não menor.
+- A linha final da bancada da cadeia nessa medida não foi guardada (só "478 saídas, 0
+  fora da tolerância").
+- Uma linha que a placa não consegue pôr no buffer da serial (cheio) é descartada sem
+  contagem; no PC isso aparece como linha perdida, igual a uma perda no adaptador.
+- O `--replay` só confere numa direção: cada linha refeita no PC tem que existir na
+  captura, mas uma linha a mais na placa não seria vista.
 
 ### Testar
 
@@ -563,8 +591,8 @@ tolerância.
   partir do bruto que a placa mandou, todas as linhas de resultado e confere que são
   iguais às da placa (ver [Cadeia → Replay](../modulos/cadeia/#replay-a-prova-de-que-nada-mudou)).
 
-Flash/RAM (Release): 52 724 / 35 288 B antes do laço novo, 54 080 / 36 680 B
-depois (135 KB de flash com a bancada da cadeia).
+Flash/RAM (Release): 52 724 / 35 288 B antes do laço novo, 54 284 / 37 032 B
+depois (135 KB de flash com a bancada da cadeia). Em Debug, 78 788 / 37 040 B.
 
 ## Laço simples, sem RTOS
 

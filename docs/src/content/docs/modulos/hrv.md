@@ -248,9 +248,9 @@ até ~1 s depois, `h,n_pico,valido,sdnn,rmssd,rr_usado` (a saída do HRV, em ms 
 [Qualidade](../qualidade/#o-hrv-só-com-batimentos-usáveis), ou RR já recusado pelo picos).
 O `--confere` usa o
 `rr_usado` pra refazer o HRV e, com `_bruto.csv` e `_filtrado.csv` de uma captura desde o
-boot, refaz também a decisão no Python e compara.
-**Ainda não conferido na placa com o `rr_usado`** (#128): a captura de baixo é de antes,
-quando todo RR entrava.
+boot, refaz também a decisão no Python e compara. O `_filtrado.csv` só sai com
+`-DSERIAL_COMPLETA=ON`. Conferido na placa com o `rr_usado` na pré-release da v0.3
+(PR #129, `ACEITE: sim`); a captura de baixo é de antes, quando todo RR entrava.
 A captura grava as duas em `_picos.csv` e `_hrv.csv`, e o Python passa os
 mesmos batimentos pelo HRV dele e compara:
 

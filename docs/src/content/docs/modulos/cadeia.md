@@ -24,8 +24,8 @@ PDS própria: é a "cola" que antes ficava no `main.c`.
 | 1. Python (os módulos que já existem, na ordem da placa) | feito: `analise.cadeia.roda()` |
 | 2. C sem HAL | feito: `cadeia.h`, `cadeia.c`, `linhas.c`, `fila.h` |
 | 3. Teste no PC contra o vetor | feito: `testes/cadeia/`, no CI (90 s do PhysioNet, 478 saídas iguais) |
-| 4. Placa com o vetor | compilado: `-DBANCADA_CADEIA=ON`; falta rodar |
-| 5. Sensor real | falta: `-DSERIAL_COMPLETA=ON` e `analise.cadeia --replay` |
+| 4. Placa com o vetor | feito (23/11): `-DBANCADA_CADEIA=ON`, 478 saídas, 0 fora da tolerância |
+| 5. Sensor real | feito (23/11): `analise.cadeia --replay` numa captura de ~2 min (abaixo); usa só as linhas `b,` e as de resultado, sem `-DSERIAL_COMPLETA` |
 
 ## A ordem
 
@@ -82,7 +82,7 @@ ficha nunca realimenta a regra). O display não precisa repetir a regra.
 A cadeia mede cada módulo com um relógio que quem chama passa
 (`cadeia_init(c, relogio)`): na placa, `ciclos_agora` (DWT); no PC, `NULL` (não
 mede). Assim ela mede sem incluir HAL. Os orçamentos estão em
-[Firmware → Laço principal](../../firmware/#ciclos-e-orçamento).
+[Firmware → Ciclos e orçamento](../../firmware/#ciclos-e-orçamento).
 
 ## Linhas da serial
 
@@ -139,3 +139,29 @@ Só **1 linha diferente**: o pico 3521, com `rr_ms` 572,74 na placa e 572,61 no
 replay. A serial perdeu a linha `b,` de n = 3492, 29 amostras antes; o replay
 repetiu a anterior no lugar dela, e o filtro do PC saiu um pouco do da placa. Não é
 erro da cadeia: o resto, depois disso, bateu.
+
+## Limitações da v0.4.0
+
+O que a cadeia integrada **não** prova, e precisa ser dito na apresentação:
+
+- **Sem suporte de dedo.** Decisão do grupo (falta de tempo e de material): o módulo
+  verde do MAX30102 não deixa o dedo encostar sem pressão, então o sinal varia com a
+  força do dedo. Por isso a qualidade marca boa parte das capturas como "não usável"
+  (ver [Picos](../picos/), [HRV](../hrv/) e [Qualidade](../qualidade/)).
+- **Coleta com o nosso sensor só pelas capturas que já existem** (#29, escopo
+  reduzido): metrônomo a 6, 10 e 15 rpm, repouso com o dedo parado e dedo solto ou em
+  movimento. Não houve coleta com a câmera do celular nem dumps do relógio: a
+  comparação com uma referência externa é só o BPM de um relógio anotado à mão
+  (tabelas de [Qualidade](../qualidade/)), qualitativa e com poucos pontos. A
+  referência de verdade continua sendo o ECG do PhysioNet.
+- **O BPM só aparece com a qualidade e o picos concordando** (linha `t,` e
+  `bpm_picos.valido`). Na ficha do display, entre dois julgamentos, o número segue o
+  último batimento com a decisão anterior (acima, "O que o display lê"); a linha `t,`
+  sai só no julgamento.
+- **A pior amostra passa do orçamento de um período** (1,23 M de 960 000 ciclos, em
+  Debug), uma vez por segundo; a fila absorve e nada se perdeu. O firmware da release
+  (Release, serial padrão) não foi medido na placa. Ver
+  [Firmware → Ciclos e orçamento](../../firmware/#ciclos-e-orçamento).
+- **Fora da v0.4.0:** display (PRs #121 e #122; `display_amostra()` e
+  `display_servico()` ainda são vazias), SpO2 (#125, `spo2.valido` sempre falso) e
+  LF/HF do HRV (#115).

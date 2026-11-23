@@ -35,7 +35,7 @@ from pathlib import Path
 import numpy as np
 from scipy import signal
 
-from analise import FS_HZ, decimacao, fonte_falsa
+from analise import FS_HZ, decimacao, fonte_falsa, serial_completa
 
 N_COEF = 201
 BANDA_HZ = fonte_falsa.BANDA_HZ  # (0,5, 4): mesma banda da referência
@@ -265,8 +265,8 @@ def main(argv: list[str] | None = None) -> None:
     if args.confere:
         lado = args.confere.with_name
         r = confere_placa(
-            np.loadtxt(lado(args.confere.stem + "_bruto.csv"), delimiter=",", skiprows=1),
-            np.loadtxt(lado(args.confere.stem + "_filtrado.csv"), delimiter=",", skiprows=1))
+            serial_completa.carrega(lado(args.confere.stem + "_bruto.csv")),
+            serial_completa.carrega(lado(args.confere.stem + "_filtrado.csv")))
         ok = max(r["erro_max_ir"], r["erro_max_vermelho"]) <= 0.5
         print(f"{r['saidas']} saídas comparadas; erro máximo IR {r['erro_max_ir']:.3f}, "
               f"vermelho {r['erro_max_vermelho']:.3f} contagens: {'OK' if ok else 'DIVERGE'}")

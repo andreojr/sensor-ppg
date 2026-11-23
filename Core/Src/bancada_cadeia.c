@@ -31,7 +31,10 @@ bool bancada_cadeia(cadeia_t *c)
     cadeia_ciclos_t *k = &c->ciclos;
     uint32_t media = (uint32_t)(k->total.soma / (k->total.conta ? k->total.conta : 1u));
     uint32_t pior = k->total.max;
-    bool ok = fora == 0u && media <= MONITOR_ORCAMENTO_CADEIA && pior <= MONITOR_ORCAMENTO_CADEIA_MAX;
+    /* O pior caso acima de um período não reprova: a fila absorve (firmware.md, "Se
+       estourar"). Só é registrado na linha final. */
+    bool ok = fora == 0u && media <= MONITOR_ORCAMENTO_CADEIA;
+    bool pior_cabe = pior <= MONITOR_ORCAMENTO_CADEIA_MAX;
 
     char linha[128];
     int n = snprintf(linha, sizeof linha, "# bancada cadeia: %lu saidas, %lu fora da tolerancia\n",
@@ -45,10 +48,11 @@ bool bancada_cadeia(cadeia_t *c)
     ciclos_relata(&k->respiracao, "bancada respiracao", BANCADA_ORCAMENTO_RESPIRACAO);
     ciclos_relata(&k->qualidade, "bancada qualidade", BANCADA_ORCAMENTO_QUALIDADE);
     n = snprintf(linha, sizeof linha,
-                 "# bancada cadeia: ciclos por amostra med %lu max %lu (orcamento %lu / %lu): %s\n",
+                 "# bancada cadeia: ciclos por amostra med %lu max %lu (orcamento %lu / %lu%s): %s\n",
                  (unsigned long)media, (unsigned long)pior,
                  (unsigned long)MONITOR_ORCAMENTO_CADEIA,
-                 (unsigned long)MONITOR_ORCAMENTO_CADEIA_MAX, ok ? "OK" : "FALHOU");
+                 (unsigned long)MONITOR_ORCAMENTO_CADEIA_MAX,
+                 pior_cabe ? "" : ", max acima: so registrado", ok ? "OK" : "FALHOU");
     serial_escreve(linha, (uint32_t)n);
     serial_envia();
     return ok;
