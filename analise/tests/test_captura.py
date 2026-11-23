@@ -221,3 +221,39 @@ def test_resumo_sem_cruas_conta_pelas_linhas_b(tmp_path):
     texto = "\n".join(resumo.texto())
     assert "SERIAL_COMPLETA" in texto and "1 linhas perdidas" in texto
     assert "0 amostras" not in texto
+
+
+def _julgamentos(saida: str) -> list[str]:
+    """As linhas de julgamento do AoVivo, sem a cor."""
+    import re
+
+    return [re.sub(r"\033\[\d+m", "", x) for x in saida.splitlines() if " s  " in x]
+
+
+def test_qualidade_ao_vivo_preenche_linha_b_perdida(tmp_path, capsys):
+    # A serial perdeu a b, de n = 650: a placa não perdeu nada, então o julgamento ao
+    # vivo tem que seguir usável, sem recomeçar (antes: ~5 s de "sem ritmo").
+    linhas = _linhas_b(0, 12, 130_000.0, 0.005).split(b"\n")
+    inteiro = io.BytesIO(b"\n".join(linhas))
+    del linhas[650]
+    furado = io.BytesIO(b"\n".join(linhas))
+    captura.grava(captura.AoVivo(inteiro), tmp_path / "a.csv", segundos=0.5)
+    esperado = _julgamentos(capsys.readouterr().out)
+    captura.grava(captura.AoVivo(furado), tmp_path / "b.csv", segundos=0.5)
+    obtido = _julgamentos(capsys.readouterr().out)
+    assert [x.split("(")[0] for x in obtido] == [x.split("(")[0] for x in esperado]
+    assert "USAVEL" in obtido[-1]
+
+
+def test_qualidade_ao_vivo_ignora_n_embaralhado(tmp_path, capsys):
+    # "b,419,..." que chegou como "b,19,...": não é reset (só n = 0 é).
+    linhas = _linhas_b(0, 8, 130_000.0, 0.005).split(b"\n")
+    linhas.insert(420, b"b,19,130000.00,136500.00")
+    captura.grava(captura.AoVivo(io.BytesIO(b"\n".join(linhas))), tmp_path / "x.csv", segundos=0.5)
+    assert "placa reiniciou" not in capsys.readouterr().out
+
+
+def test_salto_max_igual_ao_do_replay():
+    from analise import cadeia
+
+    assert captura.SALTO_MAX == cadeia.SALTO_MAX
