@@ -8,6 +8,7 @@
 #include <stdio.h>
 
 #include "cadeia/cadeia.h"
+#include "cadeia/compara_cadeia.h"
 #include "confere.h"
 #include "vetores/physionet.h"
 
@@ -185,10 +186,39 @@ static int ciclos(void)
     return f;
 }
 
+/* O comparador da bancada (compara_cadeia.h) aceita a cadeia de verdade e acusa uma
+   saída alterada. */
+static int comparador(void)
+{
+    printf("-- comparador da bancada\n");
+    compara_cadeia_t certo, errado;
+    compara_cadeia_init(&certo);
+    compara_cadeia_init(&errado);
+    if (!cadeia_init(&cadeia, NULL))
+        return 1;
+    bool alterou = false;
+    for (uint32_t i = 0; i < PHYSIONET_IR_N; i++) {
+        ppg_amostra_t bruto = {i, physionet_ir[i], physionet_vermelho[i]};
+        cadeia_saida_t s;
+        cadeia_processa(&cadeia, &bruto, &s);
+        compara_cadeia_amostra(&certo, &s);
+        if (s.julgou && !alterou) { /* a primeira tela, trocada */
+            s.mostra = !s.mostra;
+            alterou = true;
+        }
+        compara_cadeia_amostra(&errado, &s);
+    }
+    uint32_t fc = compara_cadeia_fim(&certo), fe = compara_cadeia_fim(&errado);
+    printf("certo: %lu fora; alterado: %lu fora; saídas %lu\n", (unsigned long)fc,
+           (unsigned long)fe, (unsigned long)certo.saidas);
+    return (fc != 0u) + (fe != 1u) + (certo.saidas == 0u);
+}
+
 int main(void)
 {
     int f = vetor();
     f += ciclos();
+    f += comparador();
     printf("%s\n", f ? "FALHOU" : "OK");
     return f ? 1 : 0;
 }

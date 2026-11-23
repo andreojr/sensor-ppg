@@ -4,6 +4,7 @@
 #include <stdio.h>
 
 #include "bancada.h"
+#include "bancada_cadeia.h"
 #include "bancada_hrv.h"
 #include "bancada_qualidade.h"
 #include "cadeia/cadeia.h"
@@ -84,6 +85,9 @@ void app_init(I2C_HandleTypeDef *sensor, I2C_HandleTypeDef *display, UART_Handle
 #ifdef BANCADA_RESPIRACAO
     (void)bancada_respiracao();
 #endif
+#ifdef BANCADA_CADEIA
+    (void)bancada_cadeia(&cadeia); /* a cadeia é reiniciada logo abaixo */
+#endif
     if (!cadeia_init(&cadeia, ciclos_agora)) {
         static const char erro[] = "# erro: FFT de 1024 pontos nao compilada (espectral)\n";
         serial_escreve(erro, sizeof erro - 1u);
@@ -98,7 +102,7 @@ static void cadeia_tarefa(void)
 {
     ppg_amostra_t bruto;
     while (fila_tira(&fila, &bruto)) {
-        cadeia_saida_t s;
+        static cadeia_saida_t s; /* ~340 B: fora da pilha (mínima de 1 KiB) */
         cadeia_processa(&cadeia, &bruto, &s);
         monitor_conta_amostra();
         display_amostra(s.filtrado.ir);

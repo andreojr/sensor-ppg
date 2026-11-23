@@ -69,6 +69,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/Core/Src/bancada.c
     ${CMAKE_SOURCE_DIR}/Core/Src/bancada_hrv.c
     ${CMAKE_SOURCE_DIR}/Core/Src/bancada_qualidade.c
+    ${CMAKE_SOURCE_DIR}/Core/Src/bancada_cadeia.c
     ${PDS_SOURCES}
     ${CMSIS_DSP_SOURCES}
 )
@@ -123,6 +124,15 @@ endif()
 option(BANCADA_QUALIDADE "Confere a qualidade na placa e manda a do sensor pela serial" OFF)
 if(BANCADA_QUALIDADE)
     target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE BANCADA_QUALIDADE)
+    target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/testes)
+endif()
+
+# Bancada da cadeia: na partida, passa os 90 s do vetor do PhysioNet pela cadeia
+# inteira, confere com o Python e mede os ciclos (testes/cadeia/).
+# cmake --preset Debug -DBANCADA_CADEIA=ON
+option(BANCADA_CADEIA "Confere a cadeia inteira na placa com o vetor do PhysioNet" OFF)
+if(BANCADA_CADEIA)
+    target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE BANCADA_CADEIA)
     target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/testes)
 endif()
 
