@@ -243,10 +243,11 @@ do módulo). O módulo tem os pull-ups na plaquinha e funciona a 3,3 V, no mesmo
   `DECIMACAO`, `FILTRO`). Se o sensor ou a decimação falham, mostra a tela de erro antes de a placa parar.
   A tela de inicialização fica no ar ao menos 2 s (`DISPLAY_AGUARDE_MS`).
 - **Display ausente:** `display_init` devolve `false` (o chip não respondeu em `DISPLAY_ENDERECO`), avisa na
-  serial e o resto da placa segue. Depois de 3 falhas seguidas de envio o display também se desliga, e a I2C3 é
-  reiniciada a cada falha, pra um barramento preso não deixar a placa sem ela. Antes de cada envio o
-  `display.c` espera o barramento livre por no máximo ~2 ms (a HAL esperaria 25 ms fixos): com o SDA preso,
-  cada falha custa ~2 ms, no máximo 3 vezes, e não 25 ms.
+  serial e o resto da placa segue. Depois de 3 falhas seguidas de envio o display se desliga **até o próximo
+  reset** (a I2C3 é reiniciada a cada falha, mas isso não solta um escravo que segura o SDA; só o display usa
+  a I2C3). Antes de cada envio o `display.c` espera o barramento livre por no máximo ~2 ms (a HAL esperaria
+  25 ms fixos pelo BUSY), e cada `HAL_I2C_Mem_Write` tem 5 ms de prazo. Pior caso de uma página que falha
+  (não medido): ~2 + ~2 + 5 ≈ 10 ms, contra 3,1 ms de uma página boa, no máximo 3 vezes seguidas.
 - **Resultados:** o `app.c` passa a ficha da cadeia (`cadeia_resultados()`) e a onda filtrada
   (`display_amostra()`, uma amostra por saída da cadeia, 100 Hz). O BPM segue a regra do BPM confiável:
   aparece só quando `bpm_picos.valido`, que a cadeia liga com `qualidade_bpm_confiavel()` (a mesma decisão

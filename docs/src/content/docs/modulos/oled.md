@@ -52,7 +52,9 @@ De onde vem cada número:
 - **BPM:** `bpm_picos.bpm`, arredondado. Mostra `--` se `bpm_picos.valido` é falso ou, **com a
   qualidade válida**, se ela não for `usavel`. Na cadeia, `bpm_picos.valido` já é a regra do BPM
   confiável (`qualidade_bpm_confiavel()`, que exige `usavel`), então a segunda condição é só uma
-  guarda redundante: o `--` acende e apaga junto com o `mostra` da linha `t,`. O **número** pode
+  guarda redundante. O display **nunca mostra número quando o último `t,` disse 0**; pode mostrar `--`
+  até ~1 s antes do `t,` (a cadeia apaga `bpm_picos.valido` num batimento com BPM inválido entre dois
+  julgamentos, e só acende no julgamento). O **número** pode
   diferir do `t,` por até ~1 s: a tela acompanha o BPM do último batimento, e o `t,` o do último
   julgamento da qualidade (uma vez por segundo).
 - **Barras:** `qualidade.indice` × 5; sem qualidade válida, nenhuma. Barra vazia é um traço de 1 px.
@@ -111,7 +113,7 @@ Firmware compilado com o `arm-none-eabi-gcc` 14.2.1, sem avisos. Release (`-Os`)
 | | Flash | RAM |
 |---|---|---|
 | `main` (v0.4.0) | 54.284 B | 37.032 B |
-| com o display | 59.796 B (**+5.512 B**) | 40.152 B (**+3.120 B**) |
+| com o display | 60.084 B (**+5.800 B**) | 40.152 B (**+3.120 B**) |
 
 A RAM a mais é o `oled_t` (~3 KB: a memória de imagem, a cópia do que o chip já tem e as 256 amostras da
 onda). O display lê a ficha da cadeia, sem cópia.

@@ -4,7 +4,7 @@
 #include <math.h>
 
 #define ENDERECO_HAL (DISPLAY_ENDERECO << 1) /* a HAL quer o endereço já deslocado */
-#define TIMEOUT_MS 10u /* uma página leva 3,1 ms (medido); sobra pra um ACK lento */
+#define TIMEOUT_MS 5u /* uma página leva 3,1 ms (medido); sobra pra um ACK lento */
 #define FALHAS_SEGUIDAS_MAX 3u
 
 #define CTRL_COMANDOS 0x00u /* o que vem depois são comandos */
@@ -103,7 +103,7 @@ bool display_init(I2C_HandleTypeDef *hi2c)
     falhas = 0;
     quadro_pendente = false;
     oled_init(&oled);
-    if (HAL_I2C_IsDeviceReady(i2c, ENDERECO_HAL, 3, TIMEOUT_MS) != HAL_OK)
+    if (!livre() || HAL_I2C_IsDeviceReady(i2c, ENDERECO_HAL, 3, TIMEOUT_MS) != HAL_OK)
         return false;
     if (!comandos(INICIO, sizeof INICIO))
         return false;

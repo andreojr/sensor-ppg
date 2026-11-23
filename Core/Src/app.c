@@ -115,6 +115,8 @@ void app_init(I2C_HandleTypeDef *sensor, I2C_HandleTypeDef *display, UART_Handle
 #endif
     if (!cadeia_init(&cadeia, ciclos_agora)) {
         static const char erro[] = "# erro: FFT de 1024 pontos nao compilada (espectral)\n";
+        etapas[2] = OLED_ETAPA_ERRO; /* não há tela de erro própria: marca a etapa */
+        display_tela_inicio(etapas, false);
         para(erro, sizeof erro - 1u, false, OLED_ERRO_SENSOR);
     }
     etapas[2] = OLED_ETAPA_OK; /* FILTRO (a cadeia) */
