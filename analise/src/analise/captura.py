@@ -1,7 +1,9 @@
-"""Grava em CSV o sinal cru do sensor real, lido pela serial.
+"""Grava em CSV o que a placa manda pela serial.
 
-O firmware manda, a SENSOR_FS_HZ, uma linha "n,ir,vermelho" por amostra
-(ver docs/src/content/docs/firmware.md). Linhas com "#" são comentário.
+Com -DSERIAL_COMPLETA=ON, o firmware manda, a SENSOR_FS_HZ, uma linha
+"n,ir,vermelho" por amostra crua (ver docs/src/content/docs/firmware.md); no
+firmware padrão essas linhas e as "f," não saem, e o CSV principal fica só com o
+cabeçalho. Linhas com "#" são comentário.
 Linhas "b,n,ir,vermelho" e "f,n,ir,vermelho" são o bruto (decimado) e o
 filtrado que a placa calculou a 100 Hz, e "r,n,rpm,valido" é a respiração (uma
 por segundo): vão pra <nome>_bruto.csv, <nome>_filtrado.csv e
@@ -70,6 +72,7 @@ class Resumo:
     invalidas: int = 0
     por_ponto: dict[str, int] = field(default_factory=dict)  # "bruto", "filtrado"... -> linhas
     saltos: list[tuple[int, int]] = field(default_factory=list)  # (n antes, n depois)
+    saltos_bruto: list[tuple[int, int]] = field(default_factory=list)  # o mesmo, nas b,
     comentarios: list[str] = field(default_factory=list)
     segundos: float = 0.0
 
@@ -79,7 +82,39 @@ class Resumo:
 
     @property
     def perdidas(self) -> int:
-        return sum(depois - antes - 1 for antes, depois in self.saltos if depois > antes)
+        return _perdidas(self.saltos)
+
+    @property
+    def brutos_perdidos(self) -> int:
+        return _perdidas(self.saltos_bruto)
+
+    def texto(self) -> list[str]:
+        """O resumo do fim da captura. Sem cruas (firmware padrão), conta pelas b,."""
+        taxa = 1 / max(self.segundos, 1e-9)
+        if self.amostras:
+            taxa_txt = (
+                f"{self.amostras} amostras em {self.segundos:.1f} s "
+                f"({self.amostras * taxa:.1f}/s; esperado {SENSOR_FS_HZ}/s)"
+            )
+            saltos_txt = (
+                f"saltos no n: {len(self.saltos)} ({self.perdidas} amostras perdidas); "
+                f"linhas inválidas: {self.invalidas}"
+            )
+        else:
+            taxa_txt = (
+                f"sem linhas cruas (só saem com -DSERIAL_COMPLETA=ON); "
+                f"{self.brutos} linhas b, em {self.segundos:.1f} s "
+                f"({self.brutos * taxa:.1f}/s; esperado 100/s)"
+            )
+            saltos_txt = (
+                f"saltos no n das b,: {len(self.saltos_bruto)} "
+                f"({self.brutos_perdidos} linhas perdidas); linhas inválidas: {self.invalidas}"
+            )
+        return [taxa_txt, saltos_txt]
+
+
+def _perdidas(saltos: list[tuple[int, int]]) -> int:
+    return sum(depois - antes - 1 for antes, depois in saltos if depois > antes)
 
 
 def le_linha(linha: str) -> tuple[int, int, int] | None:
@@ -253,6 +288,7 @@ def grava(fonte: Fonte, destino: Path, segundos: float | None = None) -> Resumo:
     resumo = Resumo()
     destino.parent.mkdir(parents=True, exist_ok=True)
     anterior: int | None = None
+    anterior_bruto: int | None = None
     inicio = time.monotonic()
     abertos: dict[str, tuple] = {}  # ponto -> (arquivo, escritor)
     with destino.open("w", newline="", encoding="utf-8") as arquivo:
@@ -285,6 +321,11 @@ def grava(fonte: Fonte, destino: Path, segundos: float | None = None) -> Resumo:
                         resumo.invalidas += 1
                         continue
                     ponto, valores = lido
+                    if ponto == "bruto":
+                        n = int(valores[0])
+                        if anterior_bruto is not None and n != anterior_bruto + 1:
+                            resumo.saltos_bruto.append((anterior_bruto, n))
+                        anterior_bruto = n
                     if ponto not in abertos:
                         arq = destino_ponto(destino, ponto).open("w", newline="", encoding="utf-8")
                         abertos[ponto] = (arq, csv.writer(arq))
@@ -328,14 +369,8 @@ def main(argv: list[str] | None = None) -> None:
         print(f"gravando {args.porta} em {destino} (Ctrl+C pra parar)")
         resumo = grava(AoVivo(porta) if args.qualidade else porta, destino, args.segundos)
 
-    print(
-        f"{resumo.amostras} amostras em {resumo.segundos:.1f} s "
-        f"({resumo.amostras / max(resumo.segundos, 1e-9):.1f}/s; esperado {SENSOR_FS_HZ}/s)"
-    )
-    print(
-        f"saltos no n: {len(resumo.saltos)} ({resumo.perdidas} amostras perdidas); "
-        f"linhas inválidas: {resumo.invalidas}"
-    )
+    for linha in resumo.texto():
+        print(linha)
     for ponto, linhas in resumo.por_ponto.items():
         print(f"{linhas} linhas do {ponto} da placa em {destino_ponto(destino, ponto)}")
     for c in resumo.comentarios:

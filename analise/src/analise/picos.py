@@ -39,7 +39,7 @@ from pathlib import Path
 
 import numpy as np
 
-from analise import FS_HZ, filtro
+from analise import FS_HZ, filtro, serial_completa
 
 F32 = np.float32
 
@@ -436,7 +436,7 @@ def main(argv: list[str] | None = None) -> None:
                 f"sem {arq_picos.name}: a placa não mandou nenhuma linha p, (dedo no sensor?)"
             )
         r = confere_placa(
-            np.loadtxt(lado(args.confere.stem + "_filtrado.csv"), delimiter=",", skiprows=1),
+            serial_completa.carrega(lado(args.confere.stem + "_filtrado.csv")),
             np.loadtxt(arq_picos, delimiter=",", skiprows=1, ndmin=2),
         )
         modo = (

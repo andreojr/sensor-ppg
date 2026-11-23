@@ -182,8 +182,8 @@ isso, mas só nesse intervalo da partida).
 
 ### 4. Sensor real
 
-O firmware passa cada bruto pelo filtro e manda as duas linhas (`b,...` e
-`f,...`). A captura grava `_bruto.csv` e `_filtrado.csv`, e o Python refaz o
+O firmware passa cada bruto pelo filtro e, com `-DSERIAL_COMPLETA=ON`, manda as
+duas linhas (`b,...` e `f,...`); o padrão manda só a `b,`. A captura grava `_bruto.csv` e `_filtrado.csv`, e o Python refaz o
 filtro sobre o bruto da placa:
 
 ```bash

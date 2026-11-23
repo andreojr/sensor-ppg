@@ -16,9 +16,10 @@ feito por nós**, rodando em tempo real numa STM32.
 |---|---|
 | MAX30102 (I2C1) | LEDs vermelho e infravermelho + ADC de 18 bits. Entrega o sinal cru. |
 | STM32F411 (Black Pill) | Roda a cadeia de PDS amostra a amostra. |
-| OLED SSD1306 (I2C3) | Mostra a onda e os resultados. |
+| OLED SSD1306 (I2C3) | Vai mostrar a onda e os resultados (ainda fora da cadeia). |
 
-Dedo em repouso, sensor fixo na protoboard.
+Dedo em repouso, sensor fixo na protoboard, sem suporte de dedo. O que a versão
+atual não cobre está em [Cadeia → Limitações](modulos/cadeia/#limitações-da-v040).
 
 ## A cadeia de processamento
 

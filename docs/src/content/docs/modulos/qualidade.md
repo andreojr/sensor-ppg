@@ -604,7 +604,7 @@ diferenças (o RMSSD não usa um par que atravessa o trecho ruim). O `hrv.c` nã
 libera (até ~1 s depois) e ganha `rr_usado`: 1 se o RR entrou no HRV, 0 se ficou de fora
 (trecho não usável, ou o picos já tinha recusado o RR). O
 `analise.hrv --confere` refaz a decisão no Python a partir do `_bruto.csv` e do
-`_filtrado.csv` (qualidade, picos e fila, na ordem do laço) e compara com o `rr_usado`
+`_filtrado.csv` (este só com `-DSERIAL_COMPLETA=ON`; qualidade, picos e fila, na ordem do laço) e compara com o `rr_usado`
 da placa. Linha perdida na serial: o Python preenche o buraco por interpolação (senão a
 qualidade dele recomeçaria e julgaria fora de fase com a placa até o fim) e deixa de fora
 da comparação os batimentos de 1 s antes a 3 s depois dele (perder só as primeiras

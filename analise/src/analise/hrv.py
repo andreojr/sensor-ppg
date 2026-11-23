@@ -652,8 +652,9 @@ def main() -> None:
         # O rr_usado é o que a qualidade muda no HRV: confere sempre.
         bruto, filtrado = (base.with_name(f"{base.stem}_{x}.csv") for x in ("bruto", "filtrado"))
         rr, porque = None, ""
-        if not (bruto.exists() and filtrado.exists()):
-            porque = "faltam o _bruto.csv e o _filtrado.csv"
+        faltam = [x.name for x in (bruto, filtrado) if not x.exists()]
+        if faltam:
+            porque = f"falta {' e '.join(faltam)} (o filtrado só sai com -DSERIAL_COMPLETA=ON)"
         else:
             rr = confere_rr_usado(
                 *(np.loadtxt(x, delimiter=",", skiprows=1, ndmin=2) for x in (bruto, filtrado, arqs[1])),

@@ -10,6 +10,9 @@
  *   # bancada filtro: ciclos med ... max ... (orcamento ...)
  *   ...
  *   # bancada cadeia: ciclos por amostra med X max Y (orcamento 51000 / 960000): OK
+ *
+ * OK = saídas iguais e média no orçamento. O max acima de 960 000 não reprova (a fila
+ * absorve); a linha acrescenta ", max acima: so registrado".
  */
 #ifndef BANCADA_CADEIA_H
 #define BANCADA_CADEIA_H

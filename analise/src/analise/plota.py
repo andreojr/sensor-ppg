@@ -19,6 +19,8 @@ from analise.captura import COLUNAS, SENSOR_FS_HZ
 def carrega(caminho: Path) -> pd.DataFrame:
     """Lê o CSV e acrescenta a coluna t (s), a partir de n e da taxa do sensor."""
     df = pd.read_csv(caminho)
+    if df.empty:
+        raise SystemExit(f"{caminho.name} está vazio: as cruas só saem com -DSERIAL_COMPLETA=ON")
     faltando = set(COLUNAS) - set(df.columns)
     if faltando:
         raise ValueError(f"{caminho}: faltam as colunas {sorted(faltando)}")

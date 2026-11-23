@@ -4,9 +4,10 @@ Processamento digital de sinais de fotopletismografia (PPG) em tempo real.
 Projeto da disciplina ENGG54 (Laboratório Integrado III, UFBA, 2026.2).
 
 **Hardware:** STM32F411 (Black Pill) + sensor MAX30102 (I2C1) + display OLED
-SSD1306 (I2C3). Dedo em repouso, sensor fixo na protoboard.
+SSD1306 (I2C3). Dedo em repouso, sensor fixo na protoboard, sem suporte de dedo
+(ver as [limitações](docs/src/content/docs/modulos/cadeia.md#limitações-da-v040)).
 
-**O foco é PDS.** A STM32 roda a cadeia em tempo real e mostra no display, mas
+**O foco é PDS.** A STM32 roda a cadeia em tempo real (o display ainda não entrou), mas
 o trabalho está nos módulos de processamento:
 
 | Módulo | O quê | Nível |

@@ -185,7 +185,7 @@ uma a cada 4 faz o FIR, o que pesa na CPU é a média.
 
 ### 4. Sensor real
 
-Com o firmware normal, a placa manda o sinal cru a 400 Hz e, junto, o bruto
+Com `-DSERIAL_COMPLETA=ON`, a placa manda o sinal cru a 400 Hz e, junto, o bruto
 que ela mesma decimou (linhas `b,n,ir,vermelho`). A captura grava os dois, e
 o Python confere a decimação da placa contra a dele no mesmo sinal real:
 

@@ -208,3 +208,16 @@ def test_qualidade_ao_vivo_reinicia_quando_o_n_volta(tmp_path, capsys):
     # Qualidade nova: com 3 s ainda não há 4 s pro ritmo, e o relógio voltou pro zero.
     assert "USAVEL" not in depois and "sem ritmo" in depois
     assert depois.count(" s  ") == 2 and "   2.0 s  " in depois and "   3.0 s  " in depois
+
+
+def test_resumo_sem_cruas_conta_pelas_linhas_b(tmp_path):
+    # Firmware padrão (sem SERIAL_COMPLETA): só b, e #. Uma b, perdida no meio.
+    linhas = _linhas_b(0, 2, 130_000.0, 0.005).split(b"\n")
+    del linhas[50]
+    serial_falsa = io.BytesIO(b"# cabecalho\n" + b"\n".join(linhas))
+    resumo = captura.grava(serial_falsa, tmp_path / "x.csv", segundos=0.5)
+    assert resumo.amostras == 0 and resumo.brutos == 199
+    assert resumo.saltos_bruto == [(49, 51)] and resumo.brutos_perdidos == 1
+    texto = "\n".join(resumo.texto())
+    assert "SERIAL_COMPLETA" in texto and "1 linhas perdidas" in texto
+    assert "0 amostras" not in texto

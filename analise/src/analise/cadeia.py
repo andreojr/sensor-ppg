@@ -306,13 +306,17 @@ def main(argv: list[str] | None = None) -> None:
                    help="o replay_cadeia (cmake --build build/testes)")
     args = p.parse_args(argv)
     if args.replay:
-        diferencas = replay(args.replay, args.bin)
+        try:
+            diferencas = replay(args.replay, args.bin)
+        except (ValueError, OSError) as e:
+            raise SystemExit(f"FALHOU: {e}") from None
         for ponto, n in diferencas.items():
             print(f"{ponto}: {n} linhas diferentes")
         if not diferencas:
             print("nada pra comparar: a captura não tem as linhas de resultado")
-        print("OK" if diferencas and not any(diferencas.values()) else "FALHOU")
-        return
+        ok = bool(diferencas) and not any(diferencas.values())
+        print("OK" if ok else "FALHOU")
+        raise SystemExit(0 if ok else 1)
     if args.vetores:
         for caminho in gera_vetores():
             print(caminho)
