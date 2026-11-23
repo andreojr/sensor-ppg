@@ -227,6 +227,9 @@ COLUNAS_NUMERO = {
     "hrv": {2: 0.1, 3: 0.1},              # sdnn, rmssd
     "espectral": {2: 0.1},                # bpm
     "respiracao": {1: 0.1},               # rpm
+    # A linha s, tem a spo2 com 2 casas e o R com 3: um arredondamento que vira no último
+    # dígito (mais a folga do float na diferença).
+    "spo2": {2: 0.02, 3: 0.002},          # spo2, r
     "tela": {2: 0.1},                     # bpm
 }
 REPLAY_BIN = Path(__file__).resolve().parents[3] / "build" / "testes" / "replay_cadeia"
