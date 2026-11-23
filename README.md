@@ -7,7 +7,7 @@ Projeto da disciplina ENGG54 (Laboratório Integrado III, UFBA, 2026.2).
 SSD1306 (I2C3). Dedo em repouso, sensor fixo na protoboard, sem suporte de dedo
 (ver as [limitações](docs/src/content/docs/modulos/cadeia.md#limitações-da-v040)).
 
-**O foco é PDS.** A STM32 roda a cadeia em tempo real (o display ainda não entrou), mas
+**O foco é PDS.** A STM32 roda a cadeia em tempo real e mostra a onda e os resultados no display, mas
 o trabalho está nos módulos de processamento:
 
 | Módulo | O quê | Nível |
@@ -16,8 +16,9 @@ o trabalho está nos módulos de processamento:
 | `filtro` | remoção de DC e passa-faixa 0,5 a 4 Hz | piso |
 | `picos` | detecção robusta de batimentos, BPM | piso |
 | `espectral` | BPM pela FFT | piso |
-| `hrv` | variabilidade entre batimentos (SDNN, RMSSD; LF/HF no alvo) | piso |
+| `hrv` (tempo) | variabilidade entre batimentos no tempo (SDNN, RMSSD) | piso |
 | `qualidade` | detecção de sinal ruim (dedo mal posicionado) | piso |
+| `hrv` (frequência) | balanço entre as bandas lenta e rápida da variabilidade (LF/HF) | alvo |
 | `spo2` | oxigenação pela razão vermelho/infravermelho | alvo |
 | `respiracao` | frequência respiratória pela variação lenta do sinal | alvo |
 
