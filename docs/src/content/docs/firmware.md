@@ -8,7 +8,7 @@ Código que usa HAL, em `Core/Inc` e `Core/Src` (fora de `pds/`).
 | Parte | Responsável | Estado |
 |---|---|---|
 | Leitura do MAX30102 (I2C1, FIFO, INT no PB5) | João | feita: `max30102.c` |
-| Serial pro PC (USART1 a 921600 com DMA, adaptador USB-serial) | João | feita: `serial.c`; o texto das linhas em `pds/cadeia/linhas.c`. Padrão: bruto e resultados; `-DSERIAL_COMPLETA=ON` acrescenta o sinal cru e o filtrado |
+| Serial pro PC (USART1 a 460800 com DMA, adaptador USB-serial) | João | feita: `serial.c`; o texto das linhas em `pds/cadeia/linhas.c`. Padrão: bruto e resultados; `-DSERIAL_COMPLETA=ON` acrescenta o sinal cru e o filtrado |
 | Decimação na placa (400 → 100 Hz) e ciclos (DWT) | João | feita: `sensor.c` e `bancada.c`; ver [Decimação](../modulos/decimacao/) |
 | Filtro na placa (bruto → filtrado) | João | feito: `pds/cadeia/` e `bancada.c`; ver [Filtro](../modulos/filtro/) |
 | Picos na placa (filtrado → batimentos e BPM) | Celso / André | feito: `pds/cadeia/` e `bancada.c`; ver [Picos](../modulos/picos/) |
@@ -94,8 +94,25 @@ INT ficar baixo, não vem outra borda de descida, e sem isso a leitura travaria.
 
 ## Serial pro PC (`serial.c`)
 
-921600 8N1, texto, uma linha por amostra. O texto das linhas sai de
+460800 8N1, texto, uma linha por amostra. O texto das linhas sai de
 `pds/cadeia/linhas.c` (sem HAL: o replay no PC escreve o mesmo). Dois modos:
+
+**Por que 460800** (23/11/2026, firmware da v0.4.0, Release, serial padrão, adaptador
+CH340 (driver ch341), 3 min cada, contando no PC as linhas `b,` que faltaram e as que chegaram
+cortadas):
+
+| Baud | Dedo | `b,` faltando | Linhas estragadas |
+|---|---|---|---|
+| 921600 | sem | 0 | 1 |
+| 921600 | com | 18 | 14 |
+| 460800 | com | 0 | 0 |
+
+A placa contou 0 amostras perdidas nas três: a perda era só no fio. O dedo encosta no
+módulo do sensor, que divide o terra com a placa e o adaptador, e põe ruído na linha
+da serial. A 921600 cada bit dura ~1 µs e um pico de ruído vira bit errado: o
+adaptador descarta o byte e a linha chega cortada no meio. A 460800 o bit dura o
+dobro e a mesma captura não perdeu nada. Ainda sobra banda: a serial padrão usa ~3 KB/s
+e a completa ~13 KB/s, de ~46 KB/s.
 
 - **Padrão:** o bruto (`b,`), os resultados (`p,` `h,` `e,` `r,` `t,`) e as
   linhas `#`. É o que a aplicação usa; o `captura --qualidade` julga a qualidade no
@@ -208,7 +225,7 @@ O que precisa no PC:
   (o do Chocolatey é o 10.3) não linka: o `.ld` do CubeMX 6.18 usa `READONLY`.
 - STM32CubeProgrammer, que traz o driver do ST-LINK. A extensão STM32Cube do
   VS Code também instala.
-- Adaptador USB-serial de 3,3 V que aguente 921600 (CH340, CP2102, FT232). O
+- Adaptador USB-serial de 3,3 V que aguente 460800 (CH340, CP2102, FT232). O
   CH340 precisa do driver CH341SER, do site da WCH.
 
 Ligações, com tudo desligado do USB:
@@ -229,9 +246,9 @@ cmake --build --preset Debug
 STM32_Programmer_CLI -c port=SWD -w build/Debug/sensor-ppg.elf -v -rst
 ```
 
-Pra ver a leitura, abra um terminal serial a 921600 na porta do adaptador:
-`python -m serial.tools.miniterm COM3 921600` (pyserial), ou o Serial Monitor
-do VS Code com `"vscode-serial-monitor.customBaudRates": [921600]` nas
+Pra ver a leitura, abra um terminal serial a 460800 na porta do adaptador:
+`python -m serial.tools.miniterm COM3 460800` (pyserial), ou o Serial Monitor
+do VS Code com `"vscode-serial-monitor.customBaudRates": [460800]` nas
 configurações. Nas linhas `b,` (bruto), sem dedo IR e vermelho ficam na casa
 de 1 000; com o dedo, passam de 100 000 e oscilam ~1% com o pulso.
 
@@ -288,7 +305,7 @@ firmware manda por padrão).
 |---|---|
 | `# erro: MAX30102 nao respondeu na I2C1` | VIN, GND, SCL ou SDA soltos (o SCL solto é o mais comum) |
 | Só o cabeçalho, nenhuma amostra | INT não ligado no B5 |
-| Caracteres sem sentido | baud errado (tem que ser 921600) |
+| Caracteres sem sentido | baud errado (tem que ser 460800; até a v0.4.0 era 921600) |
 | Nada chega | RX do adaptador fora do A9, ou sem GND comum |
 
 ### Bancada da decimação (fonte falsa)
@@ -417,7 +434,7 @@ Se o clock mudar, **o baud rate da USART1 e o TIM2 mudam junto**: recalcular.
 |---|---|---|
 | Mode | Asynchronous | |
 | Pinos | PA9 = TX, PA10 = RX | TX da placa no RX do adaptador USB-serial, GND em comum |
-| Baud rate | 921600, 8N1 | 400 Hz × 2 canais em texto não cabe em 115200. A 96 MHz o erro é 0,16%; a 16 MHz seria 2,12% (perde bytes) |
+| Baud rate | 460800, 8N1 | a serial completa (cruas a 400 Hz + `f,`, ~13 KB/s) não cabe em 115200 (11,5 KB/s). A 96 MHz o erro é 0,16%. Era 921600 até a v0.4.0: perdia bytes com o dedo no sensor (ver "Por que 460800") |
 | DMA | USART1_TX, DMA2 Stream 7, Memory To Peripheral, Normal, incremento só na memória, Byte/Byte | o DMA envia o buffer e a CPU segue lendo o sensor e rodando o PDS |
 | NVIC | USART1 global interrupt | avisa o fim do envio por DMA |
 
