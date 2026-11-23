@@ -9,7 +9,7 @@ por segundo): vão pra <nome>_bruto.csv, <nome>_filtrado.csv e
 "p,n_pico,fracao,rr_valido,rr_ms,bpm_valido,bpm" são os batimentos do picos
 na placa: vão pra <nome>_picos.csv. Linhas "e,n,bpm_valido,bpm" são o BPM do
 espectral (um por segundo): vão pra <nome>_espectral.csv. Linhas
-"h,n_pico,valido,sdnn,rmssd" são a saída do HRV a cada batimento: vão pra
+"h,n_pico,valido,sdnn,rmssd,rr_usado" são a saída do HRV a cada batimento: vão pra
 <nome>_hrv.csv.
 Linhas "q,..." (com -DBANCADA_QUALIDADE=ON) são a qualidade do bruto, uma
 por segundo: vão pra <nome>_qualidade.csv. Linhas "t,n,mostra,bpm" são o BPM
@@ -46,7 +46,7 @@ PONTOS = {
 }
 COLUNAS_PICOS = ("n_pico", "fracao", "rr_valido", "rr_ms", "bpm_valido", "bpm")
 COLUNAS_ESPECTRAL = ("n", "bpm_valido", "bpm")
-COLUNAS_HRV = ("n_pico", "valido", "sdnn_ms", "rmssd_ms")
+COLUNAS_HRV = ("n_pico", "valido", "sdnn_ms", "rmssd_ms", "rr_usado")
 COLUNAS_TELA = ("n", "mostra", "bpm")
 COLUNAS_QUALIDADE = (
     "n", "dedo", "usavel", "indice", "motivo", "dc", "pi", "aspereza", "razao", "ritmo",
@@ -127,13 +127,13 @@ def le_batimento(linha: str) -> tuple[int, float, int, float, int, float] | None
         return None
 
 
-def le_hrv(linha: str) -> tuple[int, int, float, float] | None:
-    """Converte "h,n_pico,valido,sdnn,rmssd". None se não for."""
+def le_hrv(linha: str) -> tuple[int, int, float, float, int] | None:
+    """Converte "h,n_pico,valido,sdnn,rmssd,rr_usado". None se não for."""
     partes = linha.strip().split(",")
-    if len(partes) != 5 or partes[0] != "h":
+    if len(partes) != 6 or partes[0] != "h":
         return None
     try:
-        return int(partes[1]), int(partes[2]), float(partes[3]), float(partes[4])
+        return int(partes[1]), int(partes[2]), float(partes[3]), float(partes[4]), int(partes[5])
     except ValueError:
         return None
 

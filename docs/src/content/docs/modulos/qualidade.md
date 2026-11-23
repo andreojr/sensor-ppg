@@ -189,7 +189,8 @@ segundo:
 
 A resposta vale para **os últimos 2 s** (o `ritmo` olha os 4 s que terminaram 1 s antes): o
 laço principal tem que descartar os batimentos desse trecho, não só os que vierem depois.
-Hoje o laço ainda não descarta: o HRV recebe todos os batimentos (pendência).
+Pro HRV, o batimento espera o julgamento seguinte (ver "O HRV só com batimentos
+usáveis", abaixo).
 
 ### Casos de borda
 
@@ -571,3 +572,61 @@ spec (leitura a leitura, não a mediana de 10 s com o dedo parado há 20 s). Ace
 erro que sobrou (6 bpm, no 1º segundo depois de um movimento) é pequeno e o tempo de tela baixo
 vem do sinal fraco deste módulo de sensor, não da regra: ela prefere `--` a um número duvidoso.
 
+## O HRV só com batimentos usáveis
+
+O `ppg.h` pede que, com `usavel` falso, o laço descarte os batimentos do trecho. Pro
+HRV, o RR de um batimento só entra se **dois julgamentos** da qualidade disserem usável:
+o último antes de o picos soltar o batimento e o primeiro depois.
+
+| julgamento de antes (≤ 1 s) | julgamento de depois | RR do picos válido | o RR entra no HRV |
+|---|---|---|---|
+| usável | usável | sim | sim |
+| qualquer outra combinação | | | não |
+
+**Por que os dois.** O picos solta o batimento ~1,3 s depois do pulso, e o pulso
+filtrado depende do sinal até 1 s depois dele (o lado direito do FIR). A janela julgada
+logo depois da soltura cobre o pulso e esse 1 s; só o julgamento de antes deixava passar
+o batimento quando o movimento começava logo depois do pulso (2 de 39 RR numa captura
+real). Cada "usável" já vale por 3 janelas boas seguidas (4 s), e os dois juntos cobrem
+também o começo do RR (até 2 s antes do pulso, o maior RR aceito). O de antes vale por
+um bloco (1 s): mais velho quer dizer que a qualidade recomeçou (`n` pulou, NaN) e ainda
+não julgou.
+
+**Como.** O batimento espera numa fila (`qualidade_fila_t`, 8 lugares: 2 s a 300 ms de
+RR) até o julgamento seguinte: até 1 s (até ~3 s se a qualidade recomeçou; aí a fila pode
+encher, e os excedentes saem com o RR de fora, que já seria o resultado). Aí vai ao `hrv_processa()`, com
+`rr_valido` falso se não entra: o RR fica fora da janela e quebra a sequência das
+diferenças (o RMSSD não usa um par que atravessa o trecho ruim). O `hrv.c` não muda.
+`qualidade_batimento_usavel()`, `qualidade_fila_poe()` e `qualidade_fila_tira()` (C) e
+`batimento_usavel()` e `Fila` (Python) têm a mesma tabela de casos nos dois testes.
+
+**Na serial.** A linha `p,` sai na hora, como o picos viu. A `h,` sai quando a fila
+libera (até ~1 s depois) e ganha `rr_usado`: 1 se o RR entrou no HRV, 0 se ficou de fora
+(trecho não usável, ou o picos já tinha recusado o RR). O
+`analise.hrv --confere` refaz a decisão no Python a partir do `_bruto.csv` e do
+`_filtrado.csv` (qualidade, picos e fila, na ordem do laço) e compara com o `rr_usado`
+da placa. Linha perdida na serial: o Python preenche o buraco por interpolação (senão a
+qualidade dele recomeçaria e julgaria fora de fase com a placa até o fim) e deixa de fora
+da comparação os batimentos de 1 s antes a 3 s depois dele (perder só as primeiras
+linhas conta como buraco no começo). Uma `p,` ou `h,` perdida faz o HRV pular uma janela
+(60 s) depois dela e voltar a comparar; o `rr_usado` casa por `n_pico` (±1 amostra). O comando termina
+com uma linha `ACEITE: sim/não, porque …`, e o código de saída segue ela. Pra "sim", além
+de placa = Python, a captura tem que ter exercitado a regra: pelo menos um batimento com o
+sinal piorando logo depois do pulso (usável antes, não depois: é o movimento) e um com ele
+melhorando (o contrário: já acontece quando o dedo assenta no começo); barrado nos dois
+julgamentos não distingue nada. Os batimentos casam com ±1 amostra (o Python acha o pico no
+filtrado com 2 casas), e o `rr_valido` da regra é o da `p,` da placa. E
+o HRV tem que ter ficado válido e batido com o Python. Isso roda mesmo quando não
+sai nenhum HRV válido.
+
+**Ciclos.** O `hrv_processa()` agora roda na amostra em que a qualidade julga (uma por
+segundo), não na que o picos solta o batimento: normalmente 1 ou 2 chamadas (20 000
+ciclos de orçamento cada) somadas ao pico dessa amostra. Depois de um reinício da
+qualidade (na placa, só com NaN), até ~7 chamadas numa amostra, ~1,5 ms a 96 MHz, bem
+abaixo do pico do espectral (estimado pelo orçamento do HRV, não medido).
+
+**O que muda no HRV.** Com este módulo de sensor, o trecho usável é curto (o número da
+tela aparece em ~50% do tempo bom), e o HRV precisa de 45 s de RR aceitos na janela de
+60 s: na prática, ele vai sair `valido` bem menos vezes. É o comportamento certo, porque
+os RR de trecho ruim (movimento, dedo mal apoiado) eram justamente os que estragavam o
+SDNN e o RMSSD.

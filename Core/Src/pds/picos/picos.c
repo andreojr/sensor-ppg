@@ -15,7 +15,6 @@
 #define RR_FAIXA_MIN 0.7 /* em double, como no Python */
 #define RR_FAIXA_MAX 1.4
 #define RR_ALFA 0.125f
-#define BPM_MINIMO 4u
 #define REG_MINIMO 6u  /* dos PICOS_REG_JANELA batimentos, quantos têm que ser bons */
 #define REG_TOL 0.15f  /* "perto da mediana": a menos de 15% dela */
 #define MS_POR_AMOSTRA (1000.0f / (float)PPG_FS_HZ)
@@ -201,7 +200,9 @@ static bool regular(const picos_t *p)
 
 void picos_bpm(const picos_t *p, ppg_bpm_t *saida)
 {
-    if (p->n_rrs < BPM_MINIMO || !regular(p)) {
+    /* regular() exige REG_MINIMO RR válidos entre os últimos batimentos, e todos eles
+       estão em rrs: não precisa checar um mínimo de RR à parte. */
+    if (!regular(p)) {
         saida->valido = false;
         saida->bpm = 0.0f;
         return;

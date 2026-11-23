@@ -102,7 +102,7 @@ INT ficar baixo, não vem outra borda de descida, e sem isso a leitura travaria.
 # filtro 100 Hz, atraso 100: f,n,ir,vermelho
 # picos: p,n_pico,fracao,rr_valido,rr_ms,bpm_valido,bpm
 # espectral: e,n,bpm_valido,bpm
-# hrv: h,n_pico,valido,sdnn,rmssd
+# hrv: h,n_pico,valido,sdnn,rmssd,rr_usado
 # respiracao 1 Hz: r,n,rpm,valido
 # tela 1 Hz: t,n,mostra,bpm x100
 0,112034,98765
@@ -112,7 +112,7 @@ b,0,112036.41,98768.02
 f,0,0.00,0.00
 ...
 p,1234,0.2500,1,812.50,1,73.85
-h,1234,1,48.27,33.10
+h,1234,1,48.27,33.10,1
 r,99,0.00,0
 ...
 e,799,1,73.85
@@ -147,9 +147,11 @@ t,1199,1,6420
   (`picos_bpm()`, 2 casas). Cada uma sai 300 ms depois do pico no `n` do
   filtrado (o candidato pendente), ou seja, ~1,3 s depois do pulso de verdade
   (mais 1 s do atraso do filtro).
-- Logo depois de cada `p,`, uma linha `h,` com a saída do HRV
+- Até ~1 s depois de cada `p,` (o batimento espera o julgamento da qualidade), uma linha `h,` com a saída do HRV
   (`hrv_processa()` sobre o mesmo batimento): `n_pico`, `valido` (0/1, só
-  com 45 s de RR aceitos na janela e 20 diferenças), SDNN e RMSSD em ms com 2 casas.
+  com 45 s de RR aceitos na janela e 20 diferenças), SDNN e RMSSD em ms com 2 casas,
+  e `rr_usado` (0/1): 1 se o RR entrou no HRV, 0 se ficou de fora (trecho que a qualidade
+  disse não usável, ou RR recusado pelo picos; ver [Qualidade](../modulos/qualidade/)).
 - Linhas que começam com `e,` são o **BPM do espectral** (`espectral_processa()` sobre o
   filtrado), uma por segundo, a partir de 8 s de sinal (a janela da FFT): `n` (o do
   filtrado em que a janela terminou), `bpm_valido` (0/1) e `bpm` (2 casas, 0 quando

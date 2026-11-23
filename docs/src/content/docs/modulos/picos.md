@@ -53,9 +53,10 @@ por vez**, sem guardar o sinal: só o estado de `picos_t`. Tudo em `float`.
 5. **Rejeição de intervalo errado:** o RR só é válido (`rr_valido`) entre 300 e
    2000 ms e entre 0,7 e 1,4 vez o RR típico (média móvel dos RR). Um
    batimento perdido faz o RR dobrar e fica de fora, e o HRV ignora esse par.
-6. **BPM:** `60000 / média` dos últimos 8 RR válidos. Só vale (`valido`) com 4
-   ou mais **e** com ritmo regular: nos últimos 8 batimentos, pelo menos 6 são
-   "bons" (RR válido e a menos de 15% da mediana dos RR válidos). Ver "Regularidade
+6. **BPM:** `60000 / média` dos últimos 8 RR válidos. Só vale (`valido`) com ritmo
+   regular: nos últimos 8 batimentos, pelo menos 6 são "bons" (RR válido e a menos
+   de 15% da mediana dos RR válidos). Isso já garante 6 RR válidos na média; o mínimo
+   de 4 que havia antes (`BPM_MINIMO`) ficou redundante e saiu. Ver "Regularidade
    do BPM" abaixo.
 
 Nos primeiros 2 s o detector só aprende o nível do sinal e não detecta (o
@@ -177,8 +178,8 @@ sentado e de 8 a 45 ms em movimento.
 maiores que o pulso, e o detector segue os passos em vez do coração (erro de
 BPM de 8 e 3,5 bpm; sensibilidade de 80 e 85%). Nenhum parâmetro resolve isso:
 é o papel do módulo `qualidade` marcar esse trecho como inutilizável
-(`usavel = false`); a tela não mostra o BPM nesse trecho (decisão do BPM confiável). O laço
-ainda não descarta os batimentos dele pro HRV (pendência).
+(`usavel = false`); a tela não mostra o BPM nesse trecho (decisão do BPM confiável), e o
+RR desses batimentos fica de fora do HRV.
 
 **A corcova do FIR (`s3_sit`), resolvida:** o FIR de fase linear deixa uma corcova
 antes do batimento. Sem tratamento, ela passava do limiar, virava batimento e o

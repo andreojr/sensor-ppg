@@ -241,3 +241,49 @@ bool qualidade_bpm_confiavel(const ppg_qualidade_t *q, const ppg_bpm_t *b, bool 
     uint32_t idade = n - n_ultimo_pico; /* certo na volta do uint32; n_pico > n vira enorme e bloqueia */
     return q->usavel && b->valido && tem_batimento && idade <= QUALIDADE_BATIMENTO_VALE;
 }
+
+bool qualidade_batimento_usavel(const ppg_qualidade_t *q, bool tem_julgamento,
+                                uint32_t n_julgamento, uint32_t n)
+{
+    uint32_t idade = n - n_julgamento; /* certo na volta do uint32; "no futuro" bloqueia */
+    return q->usavel && tem_julgamento && idade <= QUALIDADE_JULGAMENTO_VALE;
+}
+
+void qualidade_fila_init(qualidade_fila_t *f)
+{
+    f->conta = 0;
+}
+
+static void fila_anda(qualidade_fila_t *f)
+{
+    for (uint32_t i = 1; i < f->conta; i++) {
+        f->b[i - 1u] = f->b[i];
+        f->antes[i - 1u] = f->antes[i];
+    }
+    f->conta--;
+}
+
+bool qualidade_fila_poe(qualidade_fila_t *f, const ppg_batimento_t *b, bool usavel_antes,
+                        ppg_batimento_t *velho)
+{
+    bool cheia = f->conta == QUALIDADE_FILA;
+    if (cheia) {
+        *velho = f->b[0];
+        velho->rr_valido = false;
+        fila_anda(f);
+    }
+    f->b[f->conta] = *b;
+    f->antes[f->conta] = usavel_antes;
+    f->conta++;
+    return cheia;
+}
+
+bool qualidade_fila_tira(qualidade_fila_t *f, const ppg_qualidade_t *q, ppg_batimento_t *saida)
+{
+    if (f->conta == 0u)
+        return false;
+    *saida = f->b[0];
+    saida->rr_valido = saida->rr_valido && f->antes[0] && q->usavel;
+    fila_anda(f);
+    return true;
+}

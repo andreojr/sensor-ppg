@@ -354,6 +354,99 @@ static int decisao(void)
     return falhas;
 }
 
+/* O RR entra no HRV? Mesmos casos de test_batimento_usavel no Python. */
+static int batimento_hrv(void)
+{
+    struct {
+        bool usavel, tem;
+        uint32_t n_julg, n;
+        bool entra;
+    } casos[] = {
+        {true, true, 950u, 1000u, true},    {false, true, 900u, 1000u, false},
+        {true, false, 0u, 100u, false},     {true, true, 900u, 1000u, true},
+        {true, true, 899u, 1000u, false},   {true, true, 1080u, 1000u, false},
+        {true, true, 0xFFFFFFCEu, 50u, true},
+    };
+    int falhas = (QUALIDADE_JULGAMENTO_VALE != PPG_FS_HZ);
+    for (uint32_t i = 0; i < sizeof casos / sizeof casos[0]; i++) {
+        ppg_qualidade_t q = {.valido = true, .dedo_presente = true, .indice = 1.0f,
+                             .usavel = casos[i].usavel};
+        bool e = qualidade_batimento_usavel(&q, casos[i].tem, casos[i].n_julg, casos[i].n);
+        if (e != casos[i].entra) {
+            printf("batimento pro HRV: caso %u deu %d\n", (unsigned)i, e);
+            falhas++;
+        }
+    }
+    printf("batimento pro HRV: %d falhas\n", falhas);
+    return falhas;
+}
+
+/* A fila: mesma sequência de test_fila_precisa_do_julgamento_de_antes_e_de_depois. */
+static int fila_confere(qualidade_fila_t *f, const ppg_qualidade_t *q, const uint32_t *n,
+                        const bool *entra, uint32_t quantos, const char *nome)
+{
+    int falhas = 0;
+    ppg_batimento_t s;
+    uint32_t k = 0;
+    while (qualidade_fila_tira(f, q, &s)) {
+        if (k >= quantos || s.n_pico != n[k] || s.rr_valido != entra[k]) {
+            printf("fila %s: saída %u n_pico %u rr %d\n", nome, (unsigned)k, (unsigned)s.n_pico,
+                   s.rr_valido);
+            falhas++;
+        }
+        k++;
+    }
+    return falhas + (k != quantos);
+}
+
+static int batimentos_fila(void)
+{
+    qualidade_fila_t f;
+    ppg_batimento_t velho;
+    ppg_qualidade_t sim = {.usavel = true}, nao = {.usavel = false};
+    int falhas = 0;
+    qualidade_fila_init(&f);
+    ppg_batimento_t b = {.valido = true, .n_pico = 1u, .rr_valido = true, .rr_ms = 800.0f};
+    falhas += qualidade_fila_poe(&f, &b, true, &velho);
+    b.n_pico = 2u;
+    falhas += qualidade_fila_poe(&f, &b, false, &velho);
+    b.n_pico = 3u;
+    b.rr_valido = false;
+    falhas += qualidade_fila_poe(&f, &b, true, &velho);
+    const uint32_t n1[] = {1u, 2u, 3u};
+    const bool e1[] = {true, false, false};
+    falhas += fila_confere(&f, &sim, n1, e1, 3u, "1");
+
+    b.n_pico = 4u;
+    b.rr_valido = true;
+    falhas += qualidade_fila_poe(&f, &b, true, &velho);
+    const uint32_t n2[] = {4u};
+    const bool e2[] = {false}; /* o de depois disse não */
+    falhas += fila_confere(&f, &nao, n2, e2, 1u, "2");
+    falhas += fila_confere(&f, &sim, n2, e2, 0u, "vazia");
+
+    for (uint32_t k = 0; k < QUALIDADE_FILA; k++) {
+        b.n_pico = 10u + k;
+        falhas += qualidade_fila_poe(&f, &b, true, &velho);
+    }
+    b.n_pico = 99u;
+    if (!qualidade_fila_poe(&f, &b, true, &velho) || velho.n_pico != 10u || velho.rr_valido) {
+        printf("fila cheia: velho n_pico %u rr %d\n", (unsigned)velho.n_pico, velho.rr_valido);
+        falhas++;
+    }
+    uint32_t n3[QUALIDADE_FILA];
+    bool e3[QUALIDADE_FILA];
+    for (uint32_t k = 0; k + 1u < QUALIDADE_FILA; k++) {
+        n3[k] = 11u + k;
+        e3[k] = true;
+    }
+    n3[QUALIDADE_FILA - 1u] = 99u;
+    e3[QUALIDADE_FILA - 1u] = true;
+    falhas += fila_confere(&f, &sim, n3, e3, QUALIDADE_FILA, "3");
+    printf("fila do HRV: %d falhas\n", falhas);
+    return falhas;
+}
+
 int main(void)
 {
     const caso_t physionet = {
@@ -369,7 +462,7 @@ int main(void)
         bordas_saida_aspereza, bordas_saida_razao, bordas_saida_ritmo, BORDAS_TOL};
 
     int falhas = roda_caso(&physionet) + roda_caso(&bordas) + inicio() + estados() + reinicio() +
-                 decisao();
+                 decisao() + batimento_hrv() + batimentos_fila();
     printf(falhas ? "FALHOU (%d)\n" : "OK\n", falhas);
     return falhas ? 1 : 0;
 }
