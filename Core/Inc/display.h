@@ -13,6 +13,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "app.h"
 #include "main.h"
 #include "oled/oled.h"
 
@@ -58,6 +59,11 @@ void display_amostra(float ir_filtrado);
  * Chamar a cada volta do laço principal. Se há páginas de um quadro por mandar, manda uma;
  * senão, passado DISPLAY_QUADRO_MS, desenha o próximo quadro com os resultados.
  */
+#if APP_SERIAL_TELA
+/* Quantas linhas d, foram descartadas (buffer sem espaço) desde a última chamada; zera. */
+uint32_t display_descartadas(void);
+#endif
+
 void display_servico(const ppg_resultados_t *r, uint32_t agora_ms);
 
 #endif /* DISPLAY_H */

@@ -21,6 +21,8 @@ static uint32_t t_quadro;   /* ms do último quadro desenhado */
 static uint32_t t_inicio;   /* ms em que o display ligou */
 static bool quadro_pendente; /* o quadro desenhado ainda tem páginas por mandar */
 #if APP_SERIAL_TELA
+#define RESERVA_AMOSTRAS 1900u /* o pior bloco de amostras (ver o BUF_TAM em serial.c) */
+static uint32_t descartadas; /* linhas d, que não entraram no buffer (desde o último relato) */
 static uint32_t t_espelho; /* ms do último reenvio da tela inteira */
 #endif
 
@@ -74,11 +76,24 @@ static void enviada(uint8_t pagina, const uint8_t *dados)
 {
     char linha[OLED_LINHA_TELA_TAM];
     unsigned n = oled_linha_tela(pagina, dados, linha);
-    (void)serial_escreve(linha, n);
+    /* As amostras têm prioridade: a linha d, só entra se sobrar o pior bloco delas. */
+    if (serial_cabe(n, RESERVA_AMOSTRAS))
+        (void)serial_escreve(linha, n);
+    else
+        descartadas++;
     oled_pagina_enviada(&oled, pagina);
 }
 #else
 #define enviada(pagina, dados) oled_pagina_enviada(&oled, (pagina))
+#endif
+
+#if APP_SERIAL_TELA
+uint32_t display_descartadas(void)
+{
+    uint32_t d = descartadas;
+    descartadas = 0;
+    return d;
+}
 #endif
 
 /* Manda de uma vez tudo o que falta (bloqueia: só pro boot e pros erros). */
@@ -92,6 +107,11 @@ static void envia_tudo(void)
         if (ok)
             enviada(pagina, dados);
     }
+#if APP_SERIAL_TELA
+    /* Cada tela de início escreve ~1,2 KB de linhas d,: sem despachar aqui, as três (~3,7 KB)
+       quase enchem o buffer antes do primeiro serial_envia. */
+    serial_envia();
+#endif
 }
 
 bool display_init(I2C_HandleTypeDef *hi2c)

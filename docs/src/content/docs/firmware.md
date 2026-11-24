@@ -270,11 +270,15 @@ d,<página>,<256 caracteres hexadecimais minúsculos>
 - A linha entra no buffer pelo `serial_escreve()` e nunca espera: se não couber, a linha é descartada, a
   página fica certa no OLED e volta no próximo reenvio.
 - **Custo na serial:** 261 B = 5,7 ms de fio a 460800. O reenvio é pouco (8 × 261 B a cada 10 s, ~0,2 kB/s).
-  O que pesa é a onda: no pior caso, 6 páginas por quadro a 20 quadros por segundo, ~31 kB/s (68% dos ~46 kB/s),
-  além das linhas de sempre. Por isso o buffer da serial é de **4 KiB** nesse modo (3 KiB sem a opção): no
+  O que pesa é a onda: o teto é 6 páginas por quadro a 20 quadros por segundo, ~31 kB/s (68% dos ~46 kB/s); a
+  média medida da onda é ~3,9 páginas por quadro, ~20 kB/s. Isso vem além das linhas de sempre. Por isso o buffer da serial é de **4 KiB** nesse modo (3 KiB sem a opção): no
   tempo que o DMA leva pra mandar um buffer cheio (~67 ms) juntam-se até ~2,3 KB de linhas `d,`, e uma leitura
   pesada (até ~1,8 KB) pode cair em cima. RAM a mais: +2 KiB, só com a opção. Esse número é conta, não
   medida: o quanto a tela atrapalha a captura (linhas `b,` perdidas) fica para a validação na placa (#144).
+- **As amostras têm prioridade:** a linha `d,` só entra no buffer se sobrarem ~1,9 KB livres depois dela (o
+  pior bloco de amostras, `serial_cabe()`); senão cai só a `d,` e a página volta no reenvio de 10 s. Cada
+  linha `d,` descartada é contada e sai a cada segundo, junto do `# laco`, como `# tela: d_descartadas N`
+  (só com a opção). No boot, `envia_tudo()` despacha o buffer ao fim (as 3 telas de início escrevem ~3,7 KB).
 - O Python ignora o prefixo que não conhece, então as outras linhas não mudam.
 
 ### Por que 460800
