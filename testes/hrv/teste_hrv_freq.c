@@ -282,6 +282,43 @@ static int passo_sem_conta(void)
     return 0;
 }
 
+/*
+ * hrv_freq_comeca() no meio de uma conta recomeça: a conta velha é largada, e a
+ * nova (sobre a janela de agora, com um batimento a mais) sai depois de
+ * HRV_FREQ_PASSOS passos contados do segundo comeca, igual bit a bit ao
+ * hrv_freq_processa() desse batimento.
+ */
+static int recomeca(void)
+{
+    senoidal(400.0f, 40.0f, 20.0f, 0u);
+    h2 = h; /* a mesma janela nos dois */
+    hrv_freq_comeca(&h2);
+    ppg_hrv_t p = {0};
+    for (uint32_t k = 0; k < 5u; k++)
+        if (hrv_freq_passo(&h2, &p))
+            return falha("recomeça: a primeira conta saiu cedo demais");
+
+    /* Um batimento a mais (RR bem diferente, pra a janela mudar de verdade). */
+    uint32_t u = (h.inicio + h.conta - 1u) % HRV_FREQ_CAP;
+    ppg_batimento_t b = {true, h.n[u] + 130u, 0.25f, true, 1300.0f};
+    ppg_hrv_t esperado = {0};
+    if (!hrv_freq_processa(&h, &b, &esperado) || !esperado.lf_hf_valido)
+        return falha("recomeça: o batimento a mais não deu LF/HF válido");
+    hrv_freq_guarda(&h2, &b);
+
+    hrv_freq_comeca(&h2);
+    uint32_t k = 1;
+    while (!hrv_freq_passo(&h2, &p) && k <= HRV_FREQ_PASSOS)
+        k++;
+    if (k != HRV_FREQ_PASSOS)
+        return falha("recomeça: a conta não recomeçou do primeiro passo");
+    if (p.lf_hf_valido != esperado.lf_hf_valido ||
+        memcmp(&p.lf_hf, &esperado.lf_hf, sizeof p.lf_hf) != 0)
+        return falha("recomeça: saiu a conta da janela de antes");
+    printf("recomeça: ok (%u passos depois do segundo comeca)\n", (unsigned)k);
+    return 0;
+}
+
 /* hrv_freq_potencias sozinha: senoide no bin k cai na banda certa. */
 static int potencias(void)
 {
@@ -350,6 +387,7 @@ int main(void)
                               freq_bordas_n_pico, freq_bordas_fracao, freq_bordas_rr_valido,
                               freq_bordas_rr_ms, 5u);
     falhas += passo_sem_conta();
+    falhas += recomeca();
     falhas += encadeado();
     printf(falhas ? "FALHOU (%d)\n" : "OK\n", falhas);
     return falhas ? 1 : 0;
