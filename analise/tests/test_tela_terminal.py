@@ -1,6 +1,7 @@
 """O espelho do display: das linhas "d," da placa até o desenho no terminal (sem placa)."""
 
 import io
+import time
 
 import pytest
 
@@ -15,8 +16,15 @@ def linhas_d(fb: oled.Fb) -> list[str]:
     return [tt.linha_d(p, mem[p * 128 : (p + 1) * 128]) for p in range(8)]
 
 
+class Tty(io.StringIO):
+    """Saída que finge ser um terminal."""
+
+    def isatty(self) -> bool:
+        return True
+
+
 def espelho(**kw) -> tuple[tt.Espelho, io.StringIO]:
-    saida = io.StringIO()
+    saida = Tty()
     return tt.Espelho(saida=saida, intervalo=0, **kw), saida
 
 
@@ -86,21 +94,68 @@ def test_braille_desenha_16_linhas():
 
 
 def test_terminal_pequeno_nao_desenha_e_avisa():
-    saida = io.StringIO()
+    saida = Tty()
     e = tt.Espelho(saida=saida, intervalo=0, terminal=(100, 40))
     e.linha("d,0," + HEXA)
     e.fecha()
     assert saida.getvalue() == ""
     assert e.recebidas == 1
     assert "100x40" in e.aviso() and "128x32" in e.aviso()
-    assert tt.Espelho(braille=True, terminal=(64, 16)).aviso() is None
-    assert tt.Espelho(terminal=(128, 32)).aviso() is None
-    assert tt.Espelho(braille=True, terminal=(63, 16)).aviso() is not None
-    assert tt.Espelho(terminal=(128, 31)).aviso() is not None
+    assert "só o CSV" in e.aviso()
+    assert tt.Espelho(saida=Tty(), braille=True, terminal=(64, 16)).aviso() is None
+    assert tt.Espelho(saida=Tty(), terminal=(128, 32)).aviso() is None
+    assert tt.Espelho(saida=Tty(), braille=True, terminal=(63, 16)).aviso() is not None
+    assert tt.Espelho(saida=Tty(), terminal=(128, 31)).aviso() is not None
+
+
+def test_saida_que_nao_e_terminal_nao_escreve_escapes():
+    saida = io.StringIO()  # isatty() é False
+    e = tt.Espelho(saida=saida, intervalo=0, terminal=(80, 24))
+    assert "não é um terminal" in e.aviso()  # e não o aviso de 80x24
+    e.inicia()
+    e.linha("d,0," + HEXA)
+    e.fecha()
+    assert saida.getvalue() == "" and e.recebidas == 1
+
+
+def test_inicia_mostra_a_espera_que_some_com_a_primeira_pagina():
+    for braille, linhas in ((False, 32), (True, 16)):
+        e, saida = espelho(braille=braille)
+        e.inicia()
+        texto = saida.getvalue()
+        assert tt.ESPERA in texto and texto.count("\n") == linhas - 1
+        e.linha("d,0," + HEXA)
+        ultimo = saida.getvalue().split(tt.TOPO)[-1]
+        assert tt.ESPERA not in ultimo
+
+
+def test_rajada_de_8_paginas_fecha_a_tela_no_tick_mesmo_sem_linha_nova(tmp_path):
+    fb = oled.casos()["principal"][0]
+    entrada = [b"b,0,1,2\n"] + [(x + "\n").encode() for x in linhas_d(fb)]
+
+    class Fonte:
+        def readline(self) -> bytes:
+            if entrada:
+                return entrada.pop(0)
+            time.sleep(0.03)  # timeout da porta: linha vazia
+            return b""
+
+    saida = Tty()
+    e = tt.Espelho(saida=saida, intervalo=0.1)
+    captura.grava(Fonte(), tmp_path / "x.csv", segundos=0.5, espelho=e)
+    texto = saida.getvalue()
+    # a 1ª página desenhou na hora; as outras 7 ficaram seguradas e saíram em tick
+    assert texto.count(tt.TOPO) >= 2
+    ultimo = texto.split(tt.TOPO)[-1]
+    assert ultimo.split("\n")[0].count("█") + ultimo.count("▀") > 0
+    assert tt.desenha_blocos(fb.paginas()) == [
+        linha.removeprefix(tt.CORES).removesuffix("\033[0m")
+        for linha in ultimo.removesuffix(tt.FIM).split("\n")
+    ]
 
 
 def test_intervalo_segura_o_redesenho():
-    saida = io.StringIO()
+    saida = Tty()
     e = tt.Espelho(saida=saida, intervalo=3600)
     e.linha("d,0," + HEXA)  # o primeiro desenha
     e.linha("d,1," + HEXA)  # o segundo espera
@@ -130,6 +185,10 @@ def test_pagina_repetida_igual_nao_redesenha():
         "d,0," + HEXA + ",1",  # campo a mais
         "x,0," + HEXA,
         "d,0," + HEXA[:-1],  # cortada no meio
+        "d,0," + HEXA[:100] + " " + HEXA[101:],  # espaço no meio (mesmo tamanho)
+        "d,0," + HEXA[:100] + "\t" + HEXA[101:],  # tab no meio
+        "d,0," + HEXA[:-2] + " 1",  # espaço faria o fromhex ignorar
+        "d,0," + HEXA.upper(),  # o contrato é minúsculo
     ],
 )
 def test_linha_invalida_e_ignorada(linha):

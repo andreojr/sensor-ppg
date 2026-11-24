@@ -358,6 +358,8 @@ def grava(
         escritor.writerow(COLUNAS)
         try:
             while segundos is None or time.monotonic() - inicio < segundos:
+                if espelho is not None:
+                    espelho.tick()  # redesenho segurado pelo intervalo, mesmo sem linha nova
                 linha = fonte.readline().decode("ascii", errors="replace").strip()
                 if not linha:  # timeout da porta
                     continue
@@ -452,7 +454,11 @@ def main(argv: list[str] | None = None) -> None:
             espelho = Espelho(braille=args.braille, terminal=tuple(shutil.get_terminal_size()))
         else:
             print(f"gravando {args.porta} em {destino} (Ctrl+C pra parar)")
+        if espelho is not None and espelho.aviso():
+            print(espelho.aviso(), flush=True)
         try:
+            if espelho is not None:
+                espelho.inicia()
             resumo = grava(
                 AoVivo(porta) if args.qualidade else porta, destino, args.segundos, espelho
             )

@@ -33,13 +33,17 @@ TOPO = "\033[H"  # cursor no canto de cima à esquerda
 FIM = "\033[0m\033[?25h\033[?1049l"  # volta as cores, o cursor e a tela de antes
 CORES = "\033[97;40m"  # letra branca (pixel aceso) sobre fundo preto
 
+HEX = frozenset("0123456789abcdef")
+ESPERA = "esperando as linhas d, da placa (firmware com -DSERIAL_TELA=ON)"
+
 # Braille: o bit de cada ponto da célula 2 x 4, indexado por [linha][coluna].
 PONTOS_BRAILLE = ((0x01, 0x08), (0x02, 0x10), (0x04, 0x20), (0x40, 0x80))
 
 
 def le_pagina(linha: str) -> tuple[int, bytes] | None:
     """Converte "d,<página>,<256 hex>" em (página, 128 bytes). None se não for válida:
-    página fora de 0 a 7, tamanho errado ou caractere que não é hexadecimal."""
+    página fora de 0 a 7, tamanho errado ou caractere que não é hexadecimal minúsculo
+    (espaço, tab e maiúscula também são recusados: o contrato é só 0-9 e a-f)."""
     partes = linha.strip().split(",")
     if len(partes) != 3 or partes[0] != "d":
         return None
@@ -49,10 +53,10 @@ def le_pagina(linha: str) -> tuple[int, bytes] | None:
     hexa = partes[2]
     if pagina >= PAGINAS or len(hexa) != 2 * BYTES_PAGINA:
         return None
-    try:
-        return pagina, bytes.fromhex(hexa)
-    except ValueError:
+    if not set(hexa) <= HEX:
         return None
+    dados = bytes.fromhex(hexa)
+    return (pagina, dados) if len(dados) == BYTES_PAGINA else None
 
 
 def linha_d(pagina: int, dados: bytes) -> str:
@@ -135,15 +139,27 @@ class Espelho:
             self.terminal[0] >= self.tamanho[0] and self.terminal[1] >= self.tamanho[1]
         )
 
+    @property
+    def ativo(self) -> bool:
+        """Só desenha se a saída for um terminal e o desenho couber nele."""
+        return self.saida.isatty() and self.cabe
+
     def aviso(self) -> str | None:
-        """Uma linha pro resumo final, se o terminal é pequeno e o desenho não saiu."""
+        """Uma linha (antes de começar e no resumo) se o espelho não vai ser desenhado."""
+        if not self.saida.isatty():
+            return "a saída não é um terminal: o espelho não foi desenhado, só o CSV foi gravado"
         if self.cabe:
             return None
         c, ln = self.tamanho
         return (
             f"terminal pequeno ({self.terminal[0]}x{self.terminal[1]}): o espelho precisa de "
-            f"{c}x{ln}, então não foi desenhado (o CSV foi gravado normal)"
+            f"{c}x{ln} e não foi desenhado, só o CSV foi gravado"
         )
+
+    def inicia(self) -> None:
+        """Quadro vazio com o aviso de espera, que some quando chega a primeira página."""
+        if self.ativo and not self._comecou:
+            self.desenha(espera=True)
 
     def completa(self) -> bool:
         return all(p is not None for p in self.paginas)
@@ -167,8 +183,13 @@ class Espelho:
         memoria = self.memoria
         return desenha_braille(memoria) if self.braille else desenha_blocos(memoria)
 
+    def tick(self) -> None:
+        """Chamado a cada volta do laço: o redesenho segurado pelo intervalo sai aqui,
+        mesmo que nenhuma linha nova chegue (senão a tela ficaria incompleta)."""
+        self.desenha_se_precisar()
+
     def desenha_se_precisar(self) -> None:
-        if not self._sujo or not self.cabe:
+        if not self._sujo or not self.ativo:
             return
         agora = time.monotonic()
         if self._ultimo is not None and agora - self._ultimo < self.intervalo:
@@ -176,19 +197,23 @@ class Espelho:
         self.desenha()
         self._ultimo = agora
 
-    def desenha(self) -> None:
+    def desenha(self, espera: bool = False) -> None:
         if not self._comecou:
             self.saida.write(INICIO)
             self._comecou = True
+        quadro = self.quadro()
+        if espera:
+            meio = len(quadro) // 2
+            quadro[meio] = ESPERA[: len(quadro[meio])].center(len(quadro[meio]))
         # cada linha acaba com as cores zeradas, pra não pintar o resto do terminal
-        corpo = "\n".join(f"{CORES}{linha}\033[0m" for linha in self.quadro())
+        corpo = "\n".join(f"{CORES}{linha}\033[0m" for linha in quadro)
         self.saida.write(TOPO + corpo)  # sem \n no fim: não rola nem com o terminal justo
         self.saida.flush()
         self._sujo = False
 
     def fecha(self) -> None:
         """Desenha o que faltou, volta as cores e o cursor."""
-        if self._sujo and self.cabe:
+        if self._sujo and self.ativo:
             self.desenha()
         if self._comecou:
             self.saida.write(FIM)

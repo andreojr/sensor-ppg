@@ -131,11 +131,17 @@ uv run python -m analise.captura /dev/ttyUSB0 --tela --braille   # braille, 64 x
   ao que era antes, e só então sai o resumo, com "N páginas de tela (d,) recebidas".
 - O CSV é gravado normal ao mesmo tempo (é a evidência da #30). As linhas `d,` não entram em nenhum CSV.
 - O desenho é refeito no mesmo lugar (o cursor volta ao topo, sem rolar), no máximo 10 vezes por
-  segundo. O terminal precisa de pelo menos 128 colunas e 32 linhas (64 e 16 no `--braille`), com fonte
-  que tenha os caracteres `▀ ▄ █` (ou braille). Pixel aceso é claro e o fundo é escuro. Se o terminal
-  for menor, nada é desenhado e o resumo final avisa em uma linha (a gravação segue normal).
+  segundo; o redesenho que ficou esperando sai na volta seguinte do laço, mesmo sem linha nova. O
+  terminal precisa de pelo menos 128 colunas e 32 linhas (64 e 16 no `--braille`), com fonte que tenha
+  os caracteres `▀ ▄ █` (ou braille). Pixel aceso é claro e o fundo é escuro.
+- Ao começar, aparece um quadro vazio com "esperando as linhas d, da placa (firmware com
+  -DSERIAL_TELA=ON)". Se isso não some, o firmware não está mandando as linhas `d,`. O aviso some quando
+  chega a primeira página.
+- O espelho só desenha se a saída for um terminal e couber nele. Se o terminal for menor, ou se a saída
+  estiver redirecionada (`> arquivo`, pipe), nada é desenhado nem escrito: a captura avisa em uma linha
+  antes de começar e de novo no resumo, e só o CSV é gravado.
 - Página que ainda não chegou aparece apagada até chegar (no máximo ~10 s, pelo reenvio).
-- Linha `d,` inválida (página fora de 0 a 7, tamanho errado, hexadecimal inválido) é ignorada e conta
+- Linha `d,` inválida (página fora de 0 a 7, tamanho errado, hexadecimal inválido, com espaço ou em maiúsculo) é ignorada e conta
   em "linhas inválidas", como as outras.
 - `--tela` não anda junto com `--qualidade`: os dois escrevem no mesmo terminal. `--braille` só vale
   com `--tela`.
