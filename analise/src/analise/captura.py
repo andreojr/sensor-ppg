@@ -19,6 +19,10 @@ por segundo: vão pra <nome>_qualidade.csv. Linhas "t,n,mostra,bpm" são o BPM
 que a tela mostraria (qualidade + picos), uma por segundo: <nome>_tela.csv.
 Linhas "l,n,valido,lf_hf" são o LF/HF do HRV, um a cada 5 s: <nome>_lfhf.csv.
 
+Linhas "d,<página>,<256 hex>" (com -DSERIAL_TELA=ON) são uma cópia das páginas que a
+placa mandou ao display OLED. Não vão pra CSV: com --tela (e --braille), a captura
+remonta a tela de 128 x 64 e desenha o espelho no terminal (ver tela_terminal.py).
+
 Com --qualidade, a captura roda a qualidade do Python (a mesma conta do C) nas
 linhas "b," enquanto grava e mostra, uma vez por segundo, se o sinal está
 usável e, se não está, por quê. Serve pra ajeitar o dedo antes de valer.
@@ -26,6 +30,8 @@ usável e, se não está, por quê. Serve pra ajeitar o dedo antes de valer.
 Uso:
     uv run python -m analise.captura COM3 --segundos 30
     uv run python -m analise.captura COM3 --segundos 60 --qualidade
+    uv run python -m analise.captura COM3 --tela            # espelho do OLED no terminal
+    uv run python -m analise.captura COM3 --tela --braille  # o mesmo, em 64 x 16
     uv run python -m analise.captura /dev/ttyUSB0 -o dados/repouso.csv
 
 Sem --segundos, grava até o Ctrl+C.
@@ -35,6 +41,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import shutil
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -44,6 +51,7 @@ from typing import Protocol
 import serial
 
 from analise import qualidade as ql
+from analise.tela_terminal import Espelho, le_pagina
 
 SENSOR_FS_HZ = 400  # igual a MAX30102_FS_HZ em Core/Inc/max30102.h
 BAUD = 460800  # igual a huart1.Init.BaudRate (main.c); ver firmware.md, "Por que 460800"
@@ -78,6 +86,7 @@ class Resumo:
     saltos: list[tuple[int, int]] = field(default_factory=list)  # (n antes, n depois)
     saltos_bruto: list[tuple[int, int]] = field(default_factory=list)  # o mesmo, nas b,
     comentarios: list[str] = field(default_factory=list)
+    paginas_tela: int = 0  # linhas "d," válidas (o espelho do OLED)
     segundos: float = 0.0
 
     @property
@@ -330,8 +339,14 @@ def destino_ponto(destino: Path, ponto: str) -> Path:
     return destino.with_name(f"{destino.stem}_{ponto}.csv")
 
 
-def grava(fonte: Fonte, destino: Path, segundos: float | None = None) -> Resumo:
-    """Lê linhas da fonte e grava as amostras em CSV até o tempo acabar (ou Ctrl+C)."""
+def grava(
+    fonte: Fonte,
+    destino: Path,
+    segundos: float | None = None,
+    espelho: Espelho | None = None,
+) -> Resumo:
+    """Lê linhas da fonte e grava as amostras em CSV até o tempo acabar (ou Ctrl+C).
+    As linhas "d," (a tela do OLED) não vão pro CSV: alimentam o espelho, se houver."""
     resumo = Resumo()
     destino.parent.mkdir(parents=True, exist_ok=True)
     anterior: int | None = None
@@ -343,11 +358,20 @@ def grava(fonte: Fonte, destino: Path, segundos: float | None = None) -> Resumo:
         escritor.writerow(COLUNAS)
         try:
             while segundos is None or time.monotonic() - inicio < segundos:
+                if espelho is not None:
+                    espelho.tick()  # redesenho segurado pelo intervalo, mesmo sem linha nova
                 linha = fonte.readline().decode("ascii", errors="replace").strip()
                 if not linha:  # timeout da porta
                     continue
                 if linha.startswith("#"):
                     resumo.comentarios.append(linha)
+                    continue
+                if linha.startswith("d,"):
+                    valida = espelho.linha(linha) if espelho else le_pagina(linha) is not None
+                    if valida:
+                        resumo.paginas_tela += 1
+                    else:
+                        resumo.invalidas += 1
                     continue
                 if linha[:2] in LEITORES:
                     ponto, ler, colunas = LEITORES[linha[:2]]
@@ -408,16 +432,46 @@ def main(argv: list[str] | None = None) -> None:
         "--qualidade", action="store_true",
         help="mostra ao vivo, 1/s, se o sinal está usável (precisa das linhas b,)",
     )
+    p.add_argument(
+        "--tela", action="store_true",
+        help="desenha o espelho do OLED no terminal (precisa das linhas d,)",
+    )
+    p.add_argument(
+        "--braille", action="store_true",
+        help="com --tela, desenha em braille (64x16) em vez de meio-blocos (128x32)",
+    )
     args = p.parse_args(argv)
+    if args.braille and not args.tela:
+        p.error("--braille só vale junto com --tela")
+    if args.tela and args.qualidade:
+        p.error("--tela e --qualidade escrevem no mesmo terminal: use um de cada vez")
 
     destino = args.saida or DADOS / f"sensor_{datetime.now().astimezone():%Y%m%d_%H%M%S}.csv"
     with serial.Serial(args.porta, BAUD, timeout=0.5) as porta:
         porta.reset_input_buffer()
-        print(f"gravando {args.porta} em {destino} (Ctrl+C pra parar)")
-        resumo = grava(AoVivo(porta) if args.qualidade else porta, destino, args.segundos)
+        espelho = None
+        if args.tela:  # só o desenho na tela; o resumo sai depois
+            espelho = Espelho(braille=args.braille, terminal=tuple(shutil.get_terminal_size()))
+        else:
+            print(f"gravando {args.porta} em {destino} (Ctrl+C pra parar)")
+        if espelho is not None and espelho.aviso():
+            print(espelho.aviso(), flush=True)
+        try:
+            if espelho is not None:
+                espelho.inicia()
+            resumo = grava(
+                AoVivo(porta) if args.qualidade else porta, destino, args.segundos, espelho
+            )
+        finally:
+            if espelho is not None:
+                espelho.fecha()
 
     for linha in resumo.texto():
         print(linha)
+    if espelho is not None:
+        if espelho.aviso():
+            print(espelho.aviso())
+        print(f"{resumo.paginas_tela} páginas de tela (d,) recebidas")
     for ponto, linhas in resumo.por_ponto.items():
         print(f"{linhas} linhas do {ponto} da placa em {destino_ponto(destino, ponto)}")
     for c in resumo.comentarios:
