@@ -281,8 +281,10 @@ d,<página>,<256 caracteres hexadecimais minúsculos>
   (só com a opção). No boot, `envia_tudo()` despacha o buffer ao fim (as 3 telas de início escrevem ~3,7 KB).
 - **Sem display ativo** (o `display_init` falhou, ou a I2C falhou 3 vezes seguidas e o display se desligou)
   não saem `d,` nem reenvio: o PC fica com a última tela.
-- A leitura da `d,` no Python vem no PR #146 (#142). Até lá, a captura atual conta as `d,` como linhas
-  inválidas, então a captura com `-DSERIAL_TELA=ON` só faz sentido depois do #146.
+- O Python lê a `d,` (PR #146, #142) e mostra a tela no terminal com
+  `uv run python -m analise.captura <porta> --tela` (ver
+  [Espelho no terminal](../modulos/oled/#espelho-no-terminal---tela)). Sem `--tela`, as `d,` são lidas e
+  descartadas, sem contar como linhas inválidas. `--tela` não anda junto com `--qualidade`.
 
 ### Por que 460800
 
