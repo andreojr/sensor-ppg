@@ -15,7 +15,7 @@ Código que usa HAL, em `Core/Inc` e `Core/Src` (fora de `pds/`).
 | HRV na placa (batimentos → SDNN e RMSSD) | André | feito: `pds/cadeia/`, linhas `h,`, bate com o Python na placa; ver [HRV](../modulos/hrv/) |
 | Espectral na placa (filtrado → BPM pela FFT) | Celso | feito: `pds/cadeia/`, linhas `e,`, bate com o Python na placa; ver [Espectral](../modulos/espectral/) e [FFT](../modulos/fft/) |
 | Respiração na placa (bruto → rpm, 1 por segundo) | João | feita: `pds/cadeia/` e `bancada.c`; ver [Respiração](../modulos/respiracao/) |
-| SpO2 na placa (bruto → SpO2 **estimada**) | Celso | bancada passou na placa (24/11: 33/33, erro 0); falta o sensor real (#78): `pds/cadeia/`, `bancada.c`, linhas `s,`; ver [SpO2](../modulos/spo2/) |
+| SpO2 na placa (bruto → SpO2 **estimada**) | Celso | bancada passou na placa (24/11: 33/33, erro 0); sensor real (24/11): 361 de 361 válidas, mediana 98,6 a 98,9%: `pds/cadeia/`, `bancada.c`, linhas `s,`; ver [SpO2](../modulos/spo2/) |
 | Bancada do HRV na placa (`-DBANCADA_HRV=ON`) | André | feita: `bancada_hrv.c`, passou na placa; ver [HRV](../modulos/hrv/) |
 | Bancada da qualidade na placa (`-DBANCADA_QUALIDADE=ON`) | André | feita: `bancada_qualidade.c`, passou na placa (55/55, pior caso 2 149 ciclos no Debug); ver [Qualidade](../modulos/qualidade/) |
 | Fonte falsa (PhysioNet em flash) | André | feita: os vetores do PhysioNet das bancadas (`-DBANCADA_*`) |
@@ -487,7 +487,7 @@ e `r` com tolerância de 0,001). Confere também o orçamento de ciclos. Pode se
 
 **Medido na placa (24/11/2026):** 33 de 33 saídas, 0 fora da tolerância, erro 0; ciclos por amostra med 131 e
 max 1 532 em Release, 420 e 3 822 em Debug (orçamento 9 600). O emulador do PC dá 197 e 1 701 (sem a espera da
-flash). Falta a captura com o sensor real (#78). Ver [SpO2](../modulos/spo2/).
+flash). Com o sensor real (24/11): 361 de 361 saídas válidas, mediana 98,6 a 98,9%. Ver [SpO2](../modulos/spo2/).
 
 ### O BPM que a tela mostraria (linha `t,`)
 
