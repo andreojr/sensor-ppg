@@ -65,7 +65,7 @@ class Batimento(NamedTuple):
 
 
 class SaidaHrv(NamedTuple):
-    """Espelho de ppg_hrv_t (sem o LF/HF, que fica pra depois)."""
+    """Espelho de ppg_hrv_t sem o LF/HF (que é o hrv_freq.py)."""
 
     valido: bool
     sdnn_ms: float

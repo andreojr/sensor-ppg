@@ -2,8 +2,8 @@
  * hrv.h: variabilidade da frequência cardíaca no tempo (SDNN e RMSSD).
  *
  * Recebe um batimento (ppg_batimento_t) por vez e devolve SDNN e RMSSD dos
- * batimentos dos últimos HRV_JANELA_S segundos. O LF/HF (na frequência) ainda
- * não existe: lf_hf_valido sai sempre false.
+ * batimentos dos últimos HRV_JANELA_S segundos. Escreve lf_hf_valido = false:
+ * o LF/HF (na frequência) é o hrv_freq.h, chamado depois deste.
  *
  *   SDNN   desvio padrão dos RR da janela (divide por N - 1).
  *   RMSSD  raiz da média dos quadrados das diferenças entre RR seguidos.

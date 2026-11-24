@@ -18,16 +18,18 @@ sidebar:
 
 ## Estado
 
-Só a parte no tempo (SDNN e RMSSD). O LF/HF (na frequência) é outro item:
-por enquanto `lf_hf_valido` sai sempre `false`.
+Duas partes. **No tempo** (SDNN e RMSSD, `hrv.c`): feita até a placa.
+**Na frequência** (LF/HF, `hrv_freq.c`): feita até a placa com a fonte falsa
+(medida em 23/11). Detalhes do LF/HF na seção
+[LF/HF](#lfhf-na-frequência).
 
-| Passo | Estado |
-|---|---|
-| 1. Python, validado no PhysioNet | feito |
-| 2. C sem HAL | feito: `hrv.h`, `hrv.c` |
-| 3. Teste no PC contra os vetores | feito: `testes/hrv/`, no CI |
-| 4. Placa com a fonte falsa | feito: bancada passou na STM32 (`-DBANCADA_HRV=ON`) |
-| 5. Sensor real | feito: a placa calcula igual ao Python; o valor fisiológico depende do suporte de dedo (abaixo) |
+| Passo | No tempo (SDNN, RMSSD) | Na frequência (LF/HF) |
+|---|---|---|
+| 1. Python, validado no PhysioNet | feito | feito: `hrv_freq.py` |
+| 2. C sem HAL | feito: `hrv.h`, `hrv.c` | feito: `hrv_freq.h`, `hrv_freq.c` |
+| 3. Teste no PC contra os vetores | feito: `testes/hrv/`, no CI | feito: `teste_hrv_freq.c`, no CI |
+| 4. Placa com a fonte falsa | feito: passou na STM32 (`-DBANCADA_HRV=ON`) | feito (23/11, `-DBANCADA_HRV_FREQ=ON`): 0 fora da tolerância; pior batimento 1 284 715 ciclos em Release e 2 985 443 em Debug |
+| 5. Sensor real | feito: a placa calcula igual ao Python; o valor fisiológico depende do suporte de dedo (abaixo) | depende do `picos/`; procedimento abaixo |
 
 ## Método
 
@@ -307,3 +309,293 @@ válidos e o HRV nunca ficou válido. **O projeto precisa de um suporte que
 segure o dedo sobre o sensor com pressão leve e constante** (como um
 oxímetro de dedo); com ele, a captura de repouso e a de respiração guiada
 abaixo valem como validação fisiológica.
+
+## LF/HF (na frequência)
+
+### O que é medido
+
+Olhe a sequência de RR como um **sinal no tempo**: ela sobe e desce em
+"ritmos". Dois deles interessam (Task Force de 1996):
+
+- **HF** (*high frequency*), **0,15 a 0,40 Hz**: um ciclo a cada 2,5 a 7 s.
+  É a respiração: o coração acelera ao inspirar e desacelera ao expirar
+  (arritmia sinusal respiratória, ligada ao nervo vago).
+- **LF** (*low frequency*), **0,04 a 0,15 Hz**: um ciclo a cada 7 a 25 s.
+  Ligado ao barorreflexo (o ajuste da pressão), com simpático e vago
+  misturados.
+
+**LF/HF** é a razão entre a potência (o "tamanho ao quadrado" da oscilação)
+das duas faixas. Foi proposto como índice do equilíbrio simpático-vagal, mas
+essa leitura é contestada: o LF não é "só simpático". Use como indicador
+grosseiro, e só comparando a mesma pessoa em condições diferentes.
+
+Exemplo: se o RR oscila ±40 ms a 0,1 Hz e ±20 ms a 0,25 Hz, LF/HF ≈
+(40/20)² = 4 (o teste em C confere isso: dá 4,07).
+
+### Método
+
+A cada batimento, com os RR aceitos dos **últimos 300 s**:
+
+1. **Pontos irregulares.** Cada RR fica no instante do batimento que o
+   fecha. Os batimentos não chegam a intervalos regulares, e a DFT precisa
+   de amostras regulares.
+2. **Spline cúbica natural e reamostragem a 2 Hz.** Uma curva suave passa
+   por todos os pontos (cada trecho entre dois batimentos é um polinômio de
+   grau 3; nas pontas, curvatura zero: "natural") e é lida a cada 0,5 s.
+   Vira um sinal regular de até 601 amostras.
+3. **Tira a reta e aplica a janela de Hann.** A reta (tendência linear dos
+   300 s) e as variações mais lentas que 0,04 Hz não são LF nem HF; sem
+   tirar, vazam pra dentro do LF. A janela de Hann (um "sino" que vai a
+   zero nas pontas) diminui esse vazamento entre frequências.
+4. **DFT só onde interessa.** A grade de frequências é $f_k = k/300$ Hz
+   (a resolução de uma janela de 300 s). LF são os $k$ de 12 a 44, HF de 45
+   a 120: 109 frequências. Para cada uma, $|X(f_k)|^2$; somando, a potência
+   de cada banda. **LF/HF = LF / HF**: as escalas (ms², número de amostras)
+   se cancelam na razão.
+
+Cada escolha foi medida no PhysioNet (`uv run python -m analise.hrv_freq
+--metodos`): 22 registros `sit`, janela de 300 s, ECG exato, a cada 5
+batimentos. Razão da outra conta contra a nossa:
+
+| Conta | razão, mediana | faixa (5% a 95%) |
+|---|---|---|
+| spline a 4 Hz (em vez de 2 Hz) | 1,000 | 1,00 a 1,00 |
+| interpolação linear (em vez de spline) | 1,218 | 1,06 a 1,42 |
+| periodograma nos bins da FFT, a 4 Hz (receita de livro) | 1,003 | 1,00 a 1,02 |
+| Lomb-Scargle (sem reamostrar) | 1,020 | 0,61 a 1,46 |
+
+- **2 Hz basta.** A banda vai até 0,4 Hz; pela amostragem (Nyquist), 0,8 Hz
+  já bastaria. 4 Hz (o padrão do Kubios) dá o mesmo número com o dobro de
+  conta e de memória.
+- **Spline, não reta.** Ligar os pontos com retas é um filtro passa-baixa:
+  atenua a HF (a respiração) e infla o LF/HF em ~22% (até 42%).
+- **A nossa grade bate com a receita de livro** (periodograma da FFT): 0,3%.
+- **Lomb-Scargle** calcula o espectro direto dos pontos irregulares, sem
+  reamostrar. Na mediana, dá o mesmo; num batimento qualquer, pode dar 40%
+  a mais ou a menos. Isso mostra o tamanho da incerteza **do próprio
+  método**: dois jeitos aceitos de calcular o LF/HF discordam desse tanto.
+
+### A janela: por que 300 s
+
+A banda LF é lenta: um ciclo de 0,04 Hz dura 25 s. Uma janela de 60 s tem
+só 2 a 9 ciclos de LF, e a resolução de frequência é $1/60 \approx
+0{,}017$ Hz: a banda LF inteira (0,04 a 0,15 Hz) vira ~6 pontos do
+espectro. A Task Force pede ~2 min pro LF e padroniza 5 min.
+
+Medido (`uv run python -m analise.hrv_freq --janelas`): a cada 5
+batimentos depois de 300 s de registro, o LF/HF das janelas curtas contra o
+de 300 s, no mesmo instante, com o ECG exato. "Fator" = quantas vezes um
+difere do outro (2 = metade ou o dobro):
+
+| Janela | fator típico (mediana dos 22) | pior registro | 1 em 10 passa de |
+|---|---|---|---|
+| 60 s | 1,76 | 2,49 | 3,16 |
+| 120 s | 1,47 | 2,97 | 2,12 |
+| 180 s | 1,28 | 2,28 | 1,60 |
+
+LF/HF de 300 s nos registros: mediana 3,2 (0,34 a 11,1).
+
+![Espectro de uma janela de 300 s e LF/HF a cada batimento com janelas de 60, 120 e 300 s](../../../assets/hrv_freq.png)
+
+À esquerda, o espectro dos últimos 300 s de `s1_sit`: o maior pico fica
+abaixo de 0,04 Hz (fora das duas bandas; é por isso que tirar a reta e usar
+Hann importam). À direita, a mesma pessoa, sentada: com 60 s, o LF/HF anda
+de 1 a 7 em dois minutos; com 300 s, de 1,1 a 2,5, devagar.
+
+**Conclusão:** numa janela de 60 s, o LF/HF erra tipicamente por um fator
+de 1,8 (e 1 vez em 10 por mais de 3): **não é confiável, no máximo
+indicativo**. Mesmo 120 s ainda erra por ~1,5. Por isso a janela é de
+**300 s**. O que isso custa:
+
+- **Atraso:** o primeiro LF/HF sai depois de os RR aceitos somarem 270 s
+  (`HRV_FREQ_COBERTURA_MIN` = 90% da janela): **~4,5 min** depois de pôr o
+  dedo (o SDNN e o RMSSD saem com 45 s). Depois, um valor novo a cada
+  batimento, que muda devagar.
+- **Memória:** `hrv_freq_t` tem **~16,4 KiB** (600 RR com `n_pico`,
+  `fracao` e RR, mais a área de trabalho da spline e a série de 601
+  amostras). O `hrv_t` do tempo tem 3,3 KiB. A F411 tem 128 KiB.
+- **Batimentos rápidos:** cabem 600 RR. Acima de ~120 bpm de média em
+  5 min, o buffer descarta os mais antigos, a cobertura cai abaixo de 90% e
+  o LF/HF fica inválido. Em repouso (o caso que interessa) não acontece.
+
+Mesmo em 300 s o LF/HF **não é um número preciso** (a tabela de métodos
+mostra ±40% entre contas aceitas). Serve pra comparar a mesma pessoa em
+duas condições (repouso e respiração guiada, por exemplo), não pra comparar
+com tabelas.
+
+### Quais RR entram e quando é válido
+
+As mesmas regras do HRV no tempo: `rr_valido`, 300 a 2000 ms, NaN e
+infinito fora, janela pelo `n_pico` (sai quando `n_atual - n_pico >=
+30000`). A mais: um RR no **mesmo instante** do último guardado (mesmo
+`n_pico` e `fracao`) não entra, porque a spline dividiria por zero.
+
+`lf_hf_valido` só quando os RR aceitos **somam pelo menos 270 s** e há pelo
+menos 4 pontos. Um batimento perdido tira **dois** RR (o dele e o seguinte,
+que chega com `rr_valido` false): a spline passa por cima do buraco, mas com
+mais de ~1 perdido a cada 20 batimentos a cobertura cai abaixo de 90% e o
+LF/HF fica inválido. No teste, 1 perdido a cada 40 muda o LF/HF em 9%.
+
+| Situação | O que acontece |
+|---|---|
+| menos de 270 s de RR | `lf_hf_valido` false, `lf_hf` = 0 |
+| batimento com `valido` false | ignorado: devolve `false`, saída e estado intocados |
+| `n_pico` menor que o anterior | reinicia |
+| buraco longo sem batimento | a janela esvazia e volta a inválido |
+| mais de 600 RR na janela | sai o mais antigo |
+| `hrv_freq_init` de novo | zera tudo |
+
+### Implementação em C
+
+```c
+hrv_t h;               /* ~3,3 KiB */
+hrv_freq_t hf;         /* ~16,4 KiB: static, não na pilha */
+hrv_init(&h);
+hrv_freq_init(&hf);
+...
+ppg_hrv_t hrv;
+if (hrv_processa(&h, &batimento, &hrv)) {   /* escreve lf_hf_valido = false */
+    hrv_freq_processa(&hf, &batimento, &hrv); /* DEPOIS: preenche lf_hf */
+}
+```
+
+`hrv_freq.c` é um arquivo ao lado do `hrv.c` no mesmo módulo, com estado
+próprio: o LF/HF precisa de 300 s e o SDNN/RMSSD de 60 s, e assim a bancada
+de um não muda o orçamento do outro. Ele preenche só `lf_hf_valido` e
+`lf_hf` de `ppg_hrv_t` (o `ppg.h` não mudou: os campos já existiam).
+
+- **Spline:** sistema tridiagonal resolvido pelo algoritmo de Thomas (uma
+  ida e uma volta, ~600 passos). Antes, tira a média dos RR (números
+  pequenos em float32; a reta sai depois de qualquer jeito).
+- **Tempo relativo:** o instante de cada RR é calculado como
+  `(n - n_primeiro) + (fracao - fracao_primeiro)`, subtraindo os inteiros
+  antes de virar float. `n_pico / 100` direto em float32 perderia os
+  milissegundos depois de ~2 dias de `n`.
+- **DFT por Goertzel** (`hrv_freq_potencias()`): pra cada frequência, um
+  ressonador de 2ª ordem $s_j = y_j + 2\cos\omega\, s_{j-1} - s_{j-2}$, e
+  no fim $|X|^2 = s_1^2 + s_2^2 - 2\cos\omega\, s_1 s_2$. Uma
+  multiplicação por amostra, sem tabela de senos. 109 frequências × ~600
+  amostras ≈ 65 mil iterações por batimento.
+- **Trocável por FFT:** `hrv_freq_potencias(y, n, &lf, &hf)` recebe a série
+  pronta e devolve as duas potências. Com o CMSIS-DSP (#25), dá pra trocar
+  por uma FFT real de 1024 pontos sem mexer no resto.
+
+Por que não as outras opções em C puro:
+
+| Opção | Conta por batimento | Memória extra | Por que não |
+|---|---|---|---|
+| **Spline + Goertzel (escolhida)** | ~65 mil mult. + spline | série de 601 floats | — |
+| Spline + DFT completa (601 bins) | ~360 mil mult. complexas | igual | 5× mais conta pra jogar fora 80% dos bins |
+| FFT (CMSIS-DSP) | ~20 mil | 1024 floats | depende da #25, que ainda não existe |
+| Lomb-Scargle direto | ~109 × 360 × 4 senos/cossenos (~150 mil `sinf`) | nenhuma série | ~10× mais lento e não vira FFT depois |
+| Interpolação linear + Goertzel | igual à escolhida | menos 2 vetores | infla o LF/HF em 22% (medido) |
+
+### Validação do LF/HF
+
+#### 1. Python no PhysioNet
+
+`uv run python -m analise.hrv_freq` roda os 22 registros `sit` inteiros. O
+gabarito é o mesmo módulo (`HrvFreq`) com os picos R do ECG a 500 Hz no
+instante exato. Erro de um registro: o fator típico (mediana) entre a saída
+e o gabarito, nos batimentos em que os dois são válidos:
+
+| Entrada | fator de erro, mediana | pior registro | registros abaixo de 1,2 | saídas válidas |
+|---|---|---|---|---|
+| picos R na grade de 100 Hz, sem interpolar | 1,022 | 1,21 | 21 de 22 | 6258 de 6258 |
+| picos do PPG a 100 Hz, sem interpolar | 1,136 | 7,62 | 13 de 22 | 5848 de 6258 |
+| picos do PPG a 100 Hz, com parábola | 1,086 | 7,58 | 13 de 22 | 5858 de 6258 |
+
+- **Grade de 100 Hz:** erro de 2%, sem sentido fixo (em alguns registros
+  pra cima, em outros pra baixo). O ruído de ±5 ms do arredondamento é
+  pequeno perto das oscilações de dezenas de ms que o LF/HF mede. Ao
+  contrário do RMSSD, aqui a `fracao` do `picos/` quase não faz diferença.
+- **PPG:** com o detector simples de validação (o mesmo do HRV no tempo; o
+  de verdade é o `picos/`), metade dos registros fica com erro abaixo de
+  20%, e a parábola ajuda (14% → 9% na mediana). Nos registros com picos
+  falsos, o erro chega a um fator de 7,6: um pico falso cria um par de RR
+  curto-longo, que é uma oscilação rápida falsa (vai pra HF ou acima).
+  Problema do `picos/` e do `qualidade/`, como no SDNN/RMSSD.
+
+#### 2. C no PC
+
+`testes/hrv/teste_hrv_freq.c`, no CI. Vetores gerados por
+`uv run python -m analise.hrv_freq --vetores`:
+
+| Caso | Entrada | Batimentos | Saídas válidas | Maior erro contra o Python |
+|---|---|---|---|---|
+| `freq_s1_sit` | picos R do registro inteiro, com `fracao` exata | 613 | 283 | 1,6 × 10⁻⁵ |
+| `freq_bordas` | sintético (senoides em LF e HF): RR de 250 e 2600 ms, 3 perdidos, um `valido` false, `n` voltando, 400 s sem batimento, ~158 bpm enchendo o buffer | 2469 | 1285 | 9,9 × 10⁻⁵ |
+
+Tolerância de 0,002 no LF/HF; `lf_hf_valido` e o retorno exatos. O teste
+também confere, no C: senoide num bin exato cai inteira na banda certa
+($|X|^2 = (N/2)^2$), senoides conhecidas dão LF/HF ≈ 4, janela incompleta
+(inválido até ~270 s), 1 perdido em 40 (muda < 10%) e em 20 (inválido),
+poucos batimentos, batimento inválido, RR no mesmo instante, reinício e o
+encadeamento `hrv_processa` → `hrv_freq_processa`. Errar de propósito pega:
+spline virando reta (1568 falhas), sem tirar a reta (65), sem Hann (1558),
+0,15 Hz contado no LF (1483), janela com `>` (6) e buffer cheio sem
+descartar (350).
+
+#### 3. Placa com a fonte falsa
+
+```bash
+cmake --preset Release -DBANCADA_HRV_FREQ=ON   # e de novo com Debug
+cmake --build --preset Release
+STM32_Programmer_CLI -c port=SWD -w build/Release/sensor-ppg.elf -v -rst
+```
+
+Na partida, logo depois de abrir a serial (antes do sensor), a placa toca
+os 613 batimentos de `s1_sit` no `hrv_freq_processa()`, confere com o mesmo
+vetor do teste no PC e mede os ciclos de cada batimento. Esperado:
+
+```text
+# bancada lf/hf: 613 batimentos, 283 validos, 0 fora da tolerancia, erro max ... milionesimos
+# bancada lf/hf: ciclos por batimento med ... max ... (orcamento 1500000): OK
+```
+
+**Orçamento, por perfil** (`bancada_hrv.h`; o Release é `-Os`, que define
+`__OPTIMIZE__`): 1 500 000 ciclos por batimento em Release e 3 400 000 em
+Debug (`-O0`), o pior batimento medido (abaixo) com folga de ~15%. O orçamento
+antigo era um só, 2 000 000, estimado sem medir pra `-O0`: o Debug medido
+passou dele (31 ms). O que preocupa mais é o **tempo de um batimento**, não a
+média: 13 ms parado no meio do laço são mais de uma amostra a 100 Hz (5 do
+sensor a 400 Hz), 31 ms em Debug são 3. Por isso, na cadeia, a conta não pode
+rodar inteira num batimento: tem que ir em pedaços ou só a cada tanto (ele
+muda devagar), ou trocar pela FFT. Com as duas bancadas do HRV ligadas,
+compila sem warnings: Release 88 632 B de flash e 60 560 B de RAM; Debug
+136 740 e 60 568 (medido em 24/11, já com a SpO2 na cadeia).
+
+**Resultado na placa** (23/11/2026, 613 batimentos de `s1_sit`): 283 válidos,
+0 fora da tolerância, erro máximo 14 milionésimos. Ciclos por batimento:
+
+| | Release (`-Os`) | Debug (`-O0`) |
+|---|---|---|
+| Média | 587 395 | 1 368 224 |
+| Pior batimento | 1 284 715 (13,4 ms a 96 MHz) | 2 985 443 (31 ms) |
+| Orçamento | 1 500 000 | 3 400 000 |
+
+A média inclui os ~270 primeiros batimentos, em que a janela ainda não cobre
+e não há conta; por isso ela é perto da metade do máximo.
+
+Passos: (1) gravar com a opção; (2) abrir a serial a 460800 e copiar as
+duas linhas; (3) conferir `0 fora da tolerancia` e `283 validos`; (4)
+anotar média e máximo dos ciclos aqui; (5) voltar com
+`-DBANCADA_HRV_FREQ=OFF`.
+
+#### 4. Sensor real
+
+Depende do `picos/`, como o SDNN/RMSSD. Sem ECG na placa, o teste é
+fisiológico, e precisa de **pelo menos 5 min por condição**, mais os
+~4,5 min até o primeiro valor:
+
+1. **Repouso sentado, respiração livre, 8 min:** anotar o LF/HF dos
+   últimos 3 min. Varia muito entre pessoas: nos 22 registros sentados do
+   PhysioNet, de 0,34 a 11 (mediana 3,2).
+2. **Respiração guiada a 6 por minuto (0,1 Hz), 8 min:** a respiração cai
+   **dentro da banda LF**, e o LF/HF tem que **subir muito** (fator de 3 ou
+   mais). É o teste mais claro, porque o efeito é grande e previsível.
+3. **Respiração guiada a 15 por minuto (0,25 Hz), 8 min:** a respiração
+   fica na HF; o LF/HF tem que **cair** em relação ao item 2.
+4. Se der, uma cinta peitoral ao mesmo tempo, como gabarito de RR.
+
+**Resultado com o sensor:** *(preencher)*
