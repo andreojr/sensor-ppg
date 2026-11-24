@@ -148,6 +148,14 @@ bool oled_proxima_pagina(oled_t *o, uint8_t *pagina, const uint8_t **dados);
 /* Chamar depois de enviar a página com sucesso. */
 void oled_pagina_enviada(oled_t *o, uint8_t pagina);
 
+/*
+ * A linha da serial com uma página: "d,<página>,<256 hex minúsculos>\n" (os 128 bytes, coluna
+ * 0 a 127). Escreve OLED_LINHA_TELA_TAM bytes em saida, sem '\0'. Devolve esse tamanho, ou 0 se a
+ * página for >= OLED_PAGINAS (e não escreve nada).
+ */
+#define OLED_LINHA_TELA_TAM (2u + 1u + 1u + 2u * OLED_W + 1u) /* "d," + página + "," + hex + "\n" */
+unsigned oled_linha_tela(uint8_t pagina, const uint8_t dados[OLED_W], char *saida);
+
 /* O chip foi reiniciado: todas as páginas voltam a precisar de envio. */
 void oled_invalida(oled_t *o);
 

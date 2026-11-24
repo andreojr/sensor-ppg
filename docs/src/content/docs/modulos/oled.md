@@ -71,6 +71,13 @@ A **onda** usa 2 amostras por coluna (a média das duas) e a mais nova fica na d
 encher, ela começa pela direita. A escala é automática (o mínimo e o máximo das colunas viram o fundo
 e o topo, com 8% de folga) e **cresce na hora e encolhe 5% por quadro**, pra onda não "respirar" a cada batida.
 
+## Linha da serial (`oled_linha_tela`)
+
+`oled_linha_tela(pagina, dados, saida)` escreve `d,<página>,<256 hex minúsculos>\n` (261 bytes) com os
+128 bytes de uma página, pro espelho do display (`-DSERIAL_TELA=ON`, ver [firmware](../../firmware/)). É só
+formatação: pura, sem HAL, testada em `testes/oled/teste_oled.c` (prefixo, hex minúsculo, ida e volta
+byte a byte e página fora de 0 a 7).
+
 ## Decisões e suposições
 
 O protótipo do design deixa algumas coisas em aberto; estas são as escolhas, todas fáceis de mudar:

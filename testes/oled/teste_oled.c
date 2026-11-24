@@ -398,8 +398,56 @@ static void resultados_estranhos(void)
     CHECA(total(&o) > 0, "índice negativo não derruba");
 }
 
+/* A linha d, da serial (-DSERIAL_TELA): "d,<página>,<256 hex minúsculos>\n". */
+static void linha_da_tela(void)
+{
+    uint8_t dados[OLED_W];
+    char saida[OLED_LINHA_TELA_TAM + 1];
+    for (unsigned i = 0; i < OLED_W; i++)
+        dados[i] = (uint8_t)(i * 2u + 1u); /* 0x01, 0x03 ... 0xFF: de 0x00 a 0xFF passa por tudo */
+    dados[0] = 0x00u;
+    dados[1] = 0xABu;
+    dados[127] = 0xFFu;
+    memset(saida, '#', sizeof saida);
+    unsigned n = oled_linha_tela(5, dados, saida);
+    CHECA(n == 261u && n == OLED_LINHA_TELA_TAM, "a linha tem 261 bytes");
+    CHECA(saida[n] == '#', "não escreve depois da linha");
+    CHECA(memcmp(saida, "d,5,00ab05", 10) == 0, "prefixo, página e primeiros bytes em hex");
+    CHECA(memcmp(saida + 4 + 2 * 127, "ff\n", 3) == 0, "último byte e fim de linha");
+    for (unsigned i = 4; i < n - 1; i++)
+        CHECA((saida[i] >= '0' && saida[i] <= '9') || (saida[i] >= 'a' && saida[i] <= 'f'),
+              "só hex minúsculo");
+    /* ida e volta: lê o hex de novo e compara com os bytes */
+    for (unsigned i = 0; i < OLED_W; i++) {
+        unsigned v;
+        char par[3] = {saida[4 + 2 * i], saida[5 + 2 * i], 0};
+        sscanf(par, "%x", &v);
+        CHECA(v == dados[i], "hex volta ao byte");
+    }
+    CHECA(oled_linha_tela(0, dados, saida) == n && saida[2] == '0', "página 0");
+    CHECA(oled_linha_tela(7, dados, saida) == n && saida[2] == '7', "página 7");
+    memset(saida, '#', sizeof saida);
+    CHECA(oled_linha_tela(8, dados, saida) == 0 && saida[0] == '#', "página 8 não existe");
+
+    /* uma tela de verdade, página por página, tem o mesmo conteúdo do fb */
+    oled_t o;
+    oled_init(&o);
+    oled_texto(&o, 0, 0, "BPM 72", 2, true);
+    for (uint8_t p = 0; p < OLED_PAGINAS; p++) {
+        n = oled_linha_tela(p, o.fb[p], saida);
+        CHECA(n == OLED_LINHA_TELA_TAM, "linha da página da tela");
+        for (unsigned i = 0; i < OLED_W; i++) {
+            unsigned v;
+            char par[3] = {saida[4 + 2 * i], saida[5 + 2 * i], 0};
+            sscanf(par, "%x", &v);
+            CHECA(v == o.fb[p][i], "coluna da tela");
+        }
+    }
+}
+
 int main(void)
 {
+    linha_da_tela();
     falhas += telas_do_design();
     formato_e_recorte();
     envio_por_pagina();

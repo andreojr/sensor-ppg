@@ -13,6 +13,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "app.h"
 #include "main.h"
 #include "oled/oled.h"
 
@@ -35,6 +36,9 @@
 /* Quadros por segundo: o design pede 20 a 400 kHz. */
 #define DISPLAY_QUADRO_MS 50u
 
+/* Com -DSERIAL_TELA=ON: de quanto em quanto tempo a tela inteira é reenviada à serial. */
+#define DISPLAY_ESPELHO_MS 10000u
+
 /*
  * Confere se o chip responde e manda a sequência de inicialização. false se não respondeu
  * (o resto da API passa a não fazer nada).
@@ -50,6 +54,11 @@ void display_tela_erro(oled_erro_t erro);
 /* Uma amostra do sinal filtrado (IR), a 100 Hz. O sinal é invertido aqui: no IR, sangue a
    mais é luz a menos, e o pulso sairia de cabeça pra baixo. A confirmar na placa. */
 void display_amostra(float ir_filtrado);
+
+#if APP_SERIAL_TELA
+/* Quantas linhas d, foram descartadas (buffer sem espaço) desde a última chamada; zera. */
+uint32_t display_descartadas(void);
+#endif
 
 /*
  * Chamar a cada volta do laço principal. Se há páginas de um quadro por mandar, manda uma;

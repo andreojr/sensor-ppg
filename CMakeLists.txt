@@ -83,6 +83,14 @@ if(SERIAL_COMPLETA)
     target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE SERIAL_COMPLETA)
 endif()
 
+# Espelho do display: cada página enviada ao OLED também sai pela serial, numa linha
+# d,<página>,<256 hex>, e a tela inteira é reenviada a cada ~10 s (o PC remonta e desenha).
+# cmake --preset Debug -DSERIAL_TELA=ON
+option(SERIAL_TELA "Manda as páginas do OLED pela serial (linha d,)" OFF)
+if(SERIAL_TELA)
+    target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE SERIAL_TELA)
+endif()
+
 # Bancadas: na partida, tocam a fonte falsa no módulo e conferem com o Python
 # (os vetores de testes/<módulo>/). cmake --preset Debug -DBANCADA_FILTRO=ON
 option(BANCADA_DECIMACAO "Confere a decimação na placa com a fonte falsa" OFF)

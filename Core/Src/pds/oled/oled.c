@@ -207,6 +207,24 @@ void oled_onda_quadro(oled_t *o, int x0, int y0, int w, int h)
     oled_onda(o, x0 + w - (int)colunas, y0, w, h, col, colunas, o->esc_min, o->esc_max);
 }
 
+unsigned oled_linha_tela(uint8_t pagina, const uint8_t dados[OLED_W], char *saida)
+{
+    static const char HEX[] = "0123456789abcdef";
+    char *p = saida;
+    if (pagina >= OLED_PAGINAS)
+        return 0;
+    *p++ = 'd';
+    *p++ = ',';
+    *p++ = (char)('0' + pagina);
+    *p++ = ',';
+    for (unsigned i = 0; i < OLED_W; i++) {
+        *p++ = HEX[dados[i] >> 4];
+        *p++ = HEX[dados[i] & 0x0Fu];
+    }
+    *p++ = '\n';
+    return (unsigned)(p - saida);
+}
+
 bool oled_proxima_pagina(oled_t *o, uint8_t *pagina, const uint8_t **dados)
 {
     for (unsigned i = 1; i <= OLED_PAGINAS; i++) {

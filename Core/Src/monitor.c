@@ -3,7 +3,9 @@
 
 #include <stdio.h>
 
+#include "app.h"
 #include "bancada.h"
+#include "display.h"
 #include "bancada_hrv.h"
 #include "bancada_qualidade.h"
 #include "sensor.h"
@@ -95,6 +97,11 @@ void monitor_tarefa(fila_t *fila, cadeia_t *c)
                        "perdidas %lu\n", (unsigned long)amostras, (unsigned long)fila->max,
                        (unsigned long)fila->cheia, (unsigned long)m->perdidas);
     serial_escreve(linha, (uint32_t)tam);
+#if APP_SERIAL_TELA
+    tam = snprintf(linha, sizeof linha, "# tela: d_descartadas %lu\n",
+                   (unsigned long)display_descartadas());
+    serial_escreve(linha, (uint32_t)tam);
+#endif
     amostras = 0;
     m->perdidas = 0;
     fila_zera_medidas(fila);
