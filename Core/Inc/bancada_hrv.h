@@ -38,7 +38,8 @@
  *
  * O pior passo da conta espalhada (hrv_freq_passo, um por amostra na cadeia, ou o
  * hrv_freq_comeca), medido na placa em 24/11/2026: 187 285 ciclos em Debug
- * (~2 ms, um passo do Goertzel: 8 das 109 frequências, ~7% da conta inteira) e
+ * (~2 ms, coerente com um passo do Goertzel: 8 das 109 frequências, ~7% da
+ * conta inteira) e
  * 136 137 em Release (1,4 ms; acima da estimativa de ~90 mil, coerente com o
  * passo da Hann, com 601 cosf, ser o pior em Release). O hrv_freq_comeca: 110 260
  * e 36 077. O orçamento é 1/3 de um período de amostra em Debug (3,3 ms) e

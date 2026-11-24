@@ -31,7 +31,7 @@ Python e o LF/HF sobe com a respiração lenta, como a teoria prevê. Detalhes d
 | 2. C sem HAL | feito: `hrv.h`, `hrv.c` | feito: `hrv_freq.h`, `hrv_freq.c` |
 | 3. Teste no PC contra os vetores | feito: `testes/hrv/`, no CI | feito: `teste_hrv_freq.c`, no CI |
 | 4. Placa com a fonte falsa | feito: passou na STM32 (`-DBANCADA_HRV=ON`) | feito (23/11 e 24/11, `-DBANCADA_HRV_FREQ=ON`): 0 fora da tolerância; conta inteira no pior batimento 1 154 324 ciclos em Release e 3 026 814 em Debug (24/11); conta espalhada 0 diferentes em 62 contas, pior passo 136 137 em Release e 187 285 em Debug |
-| 5. Sensor real | feito: a placa calcula igual ao Python; o valor fisiológico depende do suporte de dedo (abaixo) | feito (24/11): 370 s com o dedo, `--replay` com 0 diferenças nas linhas `l,`; o LF/HF sobe de 6,03 a 11,05 na respiração lenta; sem valor só de repouso (ver [LF/HF → Sensor real](#lfhf-na-frequência)) |
+| 5. Sensor real | feito: a placa calcula igual ao Python; o valor fisiológico depende do suporte de dedo (abaixo) | feito (24/11): 370 s com o dedo, `--replay` com 0 diferenças nas linhas `l,`; o LF/HF sobe de 6,03 a 11,05 na respiração lenta; sem valor só de repouso (ver [LF/HF → Sensor real](#4-sensor-real-1)) |
 
 ## Método
 
@@ -326,7 +326,7 @@ Medianas:
 
 Desta vez o repouso ficou na faixa típica, e na respiração lenta o SDNN dobrou,
 como o item 2 prevê. Sem ECG nem cinta, é uma comparação fisiológica qualitativa.
-O LF/HF da mesma captura está em [LF/HF → Sensor real](#lfhf-na-frequência).
+O LF/HF da mesma captura está em [LF/HF → Sensor real](#4-sensor-real-1).
 
 ## LF/HF (na frequência)
 

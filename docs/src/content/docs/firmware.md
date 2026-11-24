@@ -206,7 +206,8 @@ l,537,0,0.000
 - Linhas que começam com `l,` são o **LF/HF** do HRV (`hrv_freq.h`), uma a cada
   5 s: `n` (a amostra em que a conta terminou, `n % 500 == 37`), `valido` (0/1, só
   com 270 s de RR usados na janela de 300 s, ~4,5 min depois de pôr o dedo) e
-  `lf_hf` (3 casas, 0 quando inválido). A janela termina no último batimento que
+  `lf_hf` (3 casas, 0 quando inválido, no máximo 999.999 para não estourar o `long` da
+  formatação; o `r` da linha `s,` tem o mesmo teto). A janela termina no último batimento que
   foi pro HRV. A conta é espalhada em 17 amostras (ver
   [HRV](../modulos/hrv/#na-cadeia-a-cada-5-s-espalhado)).
 - Linhas que começam com `r,` são a **respiração** (`respiracao_processa()`):
@@ -764,7 +765,7 @@ corrigidos). Duas medidas:
 | `# taxa` | 99,83 amostras/s em 370 s | 100 |
 
 O `--replay` dessa captura deu 0 linhas diferentes em todas as saídas (picos, hrv,
-espectral, respiração, SpO2, tela e lfhf). O BPM mediano do picos foi ~93, e a tela
+espectral, respiração, SpO2, tela e lfhf). O BPM mediano do picos foi ~94, e a tela
 mostrou o BPM em 168 de 179 e em 178 de 188 segundos. O LF/HF medido está em
 [HRV](../modulos/hrv/#lfhf-na-frequência).
 
@@ -775,7 +776,8 @@ mostrou o BPM em 168 de 179 e em 178 de 188 segundos. O LF/HF medido está em
 - A linha final da bancada da cadeia nessa medida não foi guardada (só "478 saídas, 0
   fora da tolerância"). Com o critério de então, ela teria saído `FALHOU` pelo max; o critério
   mudou depois (na pré-release da v0.4.0: o max acima de 960 000 só é registrado) e o
-  novo só foi compilado, não rodado na placa.
+  novo rodou na placa em 24/11/2026 com a pilha completa (496 saídas, 0 fora; no Debug o max de
+  1 252 992 só foi registrado, ver "A pilha completa na placa").
 - Uma linha que a placa não consegue pôr no buffer da serial (cheio) é descartada sem
   contagem; no PC isso aparece como linha perdida, igual a uma perda no adaptador.
 - O `--replay` só confere numa direção: cada linha refeita no PC tem que existir na
