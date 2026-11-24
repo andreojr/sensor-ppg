@@ -26,8 +26,8 @@
    respiração 9 600 + qualidade 3 000 + LF/HF 9 600). O HRV no tempo e a guarda do
    LF/HF rodam dentro da medida, mas só a cada batimento (~1 por segundo) e ficam fora
    da soma: o hrv_processa, até 12 876 ciclos medidos em Debug; a guarda, numa fila
-   circular (nada é movido), algumas centenas, estimado (a bancada do LF/HF mede,
-   orçamento 2 000). Juntos, dentro dos 20 000 do HRV: ~200 por amostra.
+   circular (nada é movido), no máximo 624 ciclos em Debug e 170 em Release (medido na
+   bancada do LF/HF em 24/11/2026, orçamento 2 000). Juntos, dentro dos 20 000 do HRV: ~200 por amostra.
    O pior caso é comparado com um período (960 000), mas passa dele uma vez por
    segundo, quando a respiração e o espectral calculam juntos: só se registra
    (firmware.md, "Se estourar"). */

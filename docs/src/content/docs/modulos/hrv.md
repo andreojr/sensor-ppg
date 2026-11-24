@@ -20,17 +20,18 @@ sidebar:
 
 Duas partes. **No tempo** (SDNN e RMSSD, `hrv.c`): feita até a placa.
 **Na frequência** (LF/HF, `hrv_freq.c`): feita até a placa com a fonte falsa
-(ciclos medidos em 23/11) e ligada na cadeia: sai na linha `l,` da serial e na
-ficha do display, uma conta a cada 5 s, espalhada em 17 amostras. Falta a
-captura com o sensor. Detalhes do LF/HF na seção [LF/HF](#lfhf-na-frequência).
+(ciclos medidos em 23/11 e 24/11) e ligada na cadeia: sai na linha `l,` da serial e na
+ficha do display, uma conta a cada 5 s, espalhada em 17 amostras. Capturado com
+o sensor em 24/11 (6 min, repouso e depois respiração lenta): a placa bate com o
+Python e o LF/HF sobe com a respiração lenta, como a teoria prevê. Detalhes do LF/HF na seção [LF/HF](#lfhf-na-frequência).
 
 | Passo | No tempo (SDNN, RMSSD) | Na frequência (LF/HF) |
 |---|---|---|
 | 1. Python, validado no PhysioNet | feito | feito: `hrv_freq.py` |
 | 2. C sem HAL | feito: `hrv.h`, `hrv.c` | feito: `hrv_freq.h`, `hrv_freq.c` |
 | 3. Teste no PC contra os vetores | feito: `testes/hrv/`, no CI | feito: `teste_hrv_freq.c`, no CI |
-| 4. Placa com a fonte falsa | feito: passou na STM32 (`-DBANCADA_HRV=ON`) | feito (23/11, `-DBANCADA_HRV_FREQ=ON`): 0 fora da tolerância; pior batimento 1 284 715 ciclos em Release e 2 985 443 em Debug; a bancada da conta espalhada (acrescentada depois) falta rodar |
-| 5. Sensor real | feito: a placa calcula igual ao Python; o valor fisiológico depende do suporte de dedo (abaixo) | integrado na cadeia (linha `l,`, `analise.cadeia --replay`); falta a captura de 5 min ou mais; procedimento abaixo |
+| 4. Placa com a fonte falsa | feito: passou na STM32 (`-DBANCADA_HRV=ON`) | feito (23/11 e 24/11, `-DBANCADA_HRV_FREQ=ON`): 0 fora da tolerância; conta inteira no pior batimento 1 154 324 ciclos em Release e 3 026 814 em Debug (24/11); conta espalhada 0 diferentes em 62 contas, pior passo 136 137 em Release e 187 285 em Debug |
+| 5. Sensor real | feito: a placa calcula igual ao Python; o valor fisiológico depende do suporte de dedo (abaixo) | feito (24/11): 370 s com o dedo, `--replay` com 0 diferenças nas linhas `l,`; o LF/HF sobe de 6,03 a 11,05 na respiração lenta; sem valor só de repouso (ver [LF/HF → Sensor real](#lfhf-na-frequência)) |
 
 ## Método
 
@@ -311,6 +312,22 @@ segure o dedo sobre o sensor com pressão leve e constante** (como um
 oxímetro de dedo); com ele, a captura de repouso e a de respiração guiada
 abaixo valem como validação fisiológica.
 
+**Segunda captura** (24/11/2026, firmware padrão Release, ainda sem suporte: dedo
+pressionado com a mão, sentado, 370 s desde o reset; 0 a 180 s em repouso e 183 a
+375 s com respiração guiada a 6 por minuto): o `--confere` comparou 562
+batimentos, 486 com HRV válido, erro máximo SDNN 0,005 ms e RMSSD 0,006 ms (o
+`rr_usado` não foi conferido: sem `-DSERIAL_COMPLETA=ON` não sai o filtrado).
+Medianas:
+
+| Trecho | SDNN | RMSSD |
+|---|---|---|
+| Repouso, respiração livre | 33,2 ms | 22,1 ms |
+| Respiração lenta, 6 por minuto | 68,5 ms | 30,0 ms |
+
+Desta vez o repouso ficou na faixa típica, e na respiração lenta o SDNN dobrou,
+como o item 2 prevê. Sem ECG nem cinta, é uma comparação fisiológica qualitativa.
+O LF/HF da mesma captura está em [LF/HF → Sensor real](#lfhf-na-frequência).
+
 ## LF/HF (na frequência)
 
 ### O que é medido
@@ -516,16 +533,16 @@ if (hrv_freq_passo(&hf, &hrv)) {       /* true no 17º passo */
   mesma ordem (as somas das bandas também vão na ordem de *k*). O
   `teste_hrv_freq` confere a igualdade bit a bit em 152 contas dos dois vetores,
   com batimentos guardados no meio da conta, e que o resultado sai no 17º passo.
-- **Pior passo (estimativa):** 8 das 109 frequências são ~7% da conta inteira
-  medida: em Debug o pior é um passo do Goertzel, ~185 a 200 mil ciclos (~2 ms);
-  em Release, ~90 a 120 mil ciclos (estimativa; o passo da Hann, com 601 `cosf`,
-  pode ser o pior em Release). A
-  proporção vem de medir cada passo no PC: cada passo do Goertzel (8
-  frequências) é ~6,9% do total em `-O0` e ~6,5% em `-Os`; os 3 primeiros
-  (spline, reamostragem, reta e Hann), 1,3 a 1,8% em `-O0` e 3,0 a 3,4% em
-  `-Os`. Na placa, os ~600 `cosf` da Hann (passo 3) devem pesar mais do que no
-  PC; que ainda fiquem abaixo de um passo do Goertzel é **estimativa**, não
-  medida. A bancada mede (abaixo).
+- **Pior passo (medido na placa, 24/11):** 187 285 ciclos em Debug (~2 ms) e
+  136 137 em Release (1,4 ms); o `hrv_freq_comeca`, 110 260 e 36 077. Antes de
+  medir, a estimativa vinha da proporção de cada passo no PC: cada passo do
+  Goertzel (8 frequências) é ~6,9% do total em `-O0` e ~6,5% em `-Os`; os 3
+  primeiros (spline, reamostragem, reta e Hann), 1,3 a 1,8% em `-O0` e 3,0 a
+  3,4% em `-Os`. Isso dava ~185 a 200 mil em Debug, e bateu. Em Release dava
+  ~90 a 120 mil, e a placa mediu 136 mil: acima da estimativa, o que combina
+  com o passo da Hann (601 `cosf`, que na placa pesam mais do que no PC) ser o
+  pior em Release. Mesmo assim cabe no orçamento (160 000 em Release, 320 000
+  em Debug).
 
 `hrv_freq.c` é um arquivo ao lado do `hrv.c` no mesmo módulo, com estado
 próprio: o LF/HF precisa de 300 s e o SDNN/RMSSD de 60 s, e assim a bancada
@@ -573,8 +590,8 @@ lê) e pra serial na linha `l,n,valido,lf_hf` (3 casas). Por quê:
   devagar, e a conta inteira custa 13,4 ms (Release) ou 31 ms (Debug) no pior
   batimento: junto da amostra mais pesada (16 a 19 ms de volta em Release, 26 ms
   em Debug), estouraria a folga de 37,5 ms do sensor depois do INT.
-- **Espalhada em 17 amostras:** o pior passo fica em ~2 ms em Debug (estimado),
-  bem abaixo de 5 ms.
+- **Espalhada em 17 amostras:** o pior passo fica em ~2 ms em Debug e 1,4 ms
+  em Release (medido), bem abaixo de 5 ms.
 - **`n % 500 == 20`:** longe da amostra de `n % 100 == 99`, onde a qualidade
   julga (e solta os batimentos da fila do HRV, até 2 numa amostra), a FFT do
   espectral e a respiração calculam. A placa processa as amostras em lotes de 4
@@ -680,10 +697,12 @@ janela cheia (os que tiram RR da janela: 242 em `s1_sit`). Esperado:
 | | Release | Debug (`-O0`) |
 |---|---|---|
 | Conta inteira, pior batimento (medido, 23/11) | 1 284 715 (13,4 ms) | 2 985 443 (31 ms) |
+| Conta inteira, pior batimento (medido, 24/11) | 1 154 324 (12 ms) | 3 026 814 (31,5 ms) |
 | Orçamento da conta inteira | 1 500 000 | 3 400 000 |
-| Pior passo da conta espalhada (estimado) | ~90 000 (~1 ms) | ~200 000 (~2 ms) |
-| Orçamento do passo | 160 000 (1,7 ms) | 320 000 (3,3 ms) |
-| Pior `hrv_freq_guarda` (estimado) | algumas centenas | algumas centenas |
+| Pior passo da conta espalhada (medido, 24/11) | 136 137 (1,4 ms) | 187 285 (~2 ms) |
+| `hrv_freq_comeca` (medido, 24/11) | 36 077 | 110 260 |
+| Orçamento do passo (e do `comeca`) | 160 000 (1,7 ms) | 320 000 (3,3 ms) |
+| Pior `hrv_freq_guarda` (medido, 24/11) | 170 | 624 |
 | Orçamento da guarda (10% dos 20 000 do HRV) | 2 000 | 2 000 |
 
 O orçamento antigo era um só, 2 000 000, estimado sem medir pra `-O0`: o Debug
@@ -696,8 +715,24 @@ em Debug).
 válidos, 0 fora da tolerância, erro máximo 14 milionésimos; pior batimento
 1 284 715 ciclos em Release (13,4 ms a 96 MHz) e 2 985 443 em Debug (31 ms);
 média 587 395 e 1 368 224. É por esses números que, na cadeia, a conta vai espalhada e
-só a cada 5 s. **Falta rodar** a bancada nova (a terceira e a quarta linhas,
-com a guarda e o pior passo).
+só a cada 5 s.
+
+**Resultado na placa** (24/11/2026, a bancada nova, no firmware da pilha completa
+com `-DBANCADA_HRV_FREQ=ON -DBANCADA_CADEIA=ON`, sem dedo):
+
+| | Release | Debug |
+|---|---|---|
+| Conta inteira, med / max | 531 003 / 1 154 324 | 1 392 883 / 3 026 814 |
+| `hrv_freq_guarda`, max (com a janela cheia, 242 batimentos) | 170 | 624 |
+| Espalhada: 17 passos, 62 contas | 0 diferentes | 0 diferentes |
+| Pior passo / `comeca` | 136 137 / 36 077 | 187 285 / 110 260 |
+| Resultado | OK | OK |
+
+Tudo dentro do orçamento. Em Release o pior passo (136 mil) passou da estimativa
+de ~90 mil, o que é coerente com o passo da Hann ser o pior (ver "Pior passo" na implementação,
+acima); em Debug bateu com a estimativa
+(~2 ms). Na mesma gravação, a bancada da cadeia deu 496 saídas, 0 fora da
+tolerância, e perdidas 0 (ver [Firmware](../../firmware/#ciclos-e-orçamento)).
 
 Com a bancada do LF/HF ligada, compila sem warnings: Release 82 024 B de flash e
 74 112 B de RAM; Debug 115 940 e 74 120 (o `hrv_freq_t` da bancada é outro, além
@@ -728,4 +763,40 @@ pro `<nome>_lfhf.csv`, um valor a cada 5 s) e confira com
    fica na HF; o LF/HF tem que **cair** em relação ao item 2.
 4. Se der, uma cinta peitoral ao mesmo tempo, como gabarito de RR.
 
-**Resultado com o sensor:** *(preencher)*
+**Resultado com o sensor** (24/11/2026, a mesma captura do SDNN/RMSSD acima:
+firmware padrão Release da pilha completa, dedo pressionado com a mão, sentado,
+370 s desde o reset; 0 a 180 s em repouso com respiração livre, 183 a 375 s
+respiração guiada a 6 por minuto, 5 s inspirando e 5 s expirando).
+
+O `analise.cadeia --replay` refez tudo no PC: 0 linhas diferentes em picos, hrv,
+espectral, respiração, SpO2, tela e lfhf. Ou seja, a placa calcula o LF/HF igual
+ao Python.
+
+O primeiro LF/HF válido saiu aos 290 s (6,03) e, a cada 5 s, subiu até 11,05 aos
+370 s, em 17 contas válidas:
+
+```text
+6,03  6,14  6,27  6,42  6,59  6,83  7,13  7,47  7,80
+8,16  8,54  8,98  9,36  9,82  10,24  10,67  11,05
+```
+
+Sobe de forma contínua porque a janela de 300 s vai pegando cada vez mais da
+respiração lenta, e 6 por minuto é 0,1 Hz, dentro da banda LF: é o que a teoria
+prevê (item 2).
+
+Ressalvas:
+
+- **Não há valor só de repouso.** As 17 contas válidas já pegam parte da
+  respiração lenta (a primeira sai aos 290 s, e a respiração lenta começou aos
+  183 s). Pra ter os dois, seriam 5 min de repouso e mais uns 3 min de
+  respiração lenta. A apresentação tem 15 min, então a demonstração do LF/HF ao
+  vivo não cabe: mostra-se esta captura gravada.
+- **Sem ECG nem cinta:** é comparação fisiológica qualitativa, não contra um
+  gabarito de RR.
+- **Sem suporte de dedo:** a pressão foi feita com a mão (ver a ressalva no
+  [SDNN/RMSSD](#4-sensor-real)).
+
+Na mesma captura, o monitor do laço mediu o LF/HF em média 2 437 ciclos por
+amostra e no pior 125 579 (orçamentos 9 600 e 160 000), e nada se perdeu (ver
+[Firmware → Ciclos e orçamento](../../firmware/#ciclos-e-orçamento)). Os arquivos
+são `analise/dados/alvo_passo5*.csv` (fora do git).

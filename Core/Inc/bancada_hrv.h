@@ -37,10 +37,11 @@
  * cadeia ela não roda assim: vai espalhada.
  *
  * O pior passo da conta espalhada (hrv_freq_passo, um por amostra na cadeia, ou o
- * hrv_freq_comeca): em Debug, um passo do Goertzel (8 das 109 frequências, ~7%
- * da conta inteira), ~185 a 200 mil ciclos (~2 ms); em Release, ~90 a 120 mil
- * ciclos (estimativa; o passo da Hann, com 601 cosf, pode ser o pior em
- * Release). O orçamento é 1/3 de um período de amostra em Debug (3,3 ms) e
+ * hrv_freq_comeca), medido na placa em 24/11/2026: 187 285 ciclos em Debug
+ * (~2 ms, um passo do Goertzel: 8 das 109 frequências, ~7% da conta inteira) e
+ * 136 137 em Release (1,4 ms; acima da estimativa de ~90 mil, coerente com o
+ * passo da Hann, com 601 cosf, ser o pior em Release). O hrv_freq_comeca: 110 260
+ * e 36 077. O orçamento é 1/3 de um período de amostra em Debug (3,3 ms) e
  * metade disso em Release.
  */
 #ifdef __OPTIMIZE__
@@ -53,8 +54,9 @@
 /*
  * O pior hrv_freq_guarda (o que a cadeia faz a cada batimento, dentro da medida
  * "hrv", junto do hrv_processa, que tem 20 000): com a fila circular, nenhum
- * vetor é movido, só se escreve o RR e se anda o início. Estimativa: algumas
- * centenas de ciclos em Debug; o orçamento é 10% do do HRV.
+ * vetor é movido, só se escreve o RR e se anda o início. Medido na placa em
+ * 24/11/2026: no máximo 624 ciclos em Debug e 170 em Release; o orçamento é 10%
+ * do do HRV.
  */
 #define BANCADA_ORCAMENTO_HRV_FREQ_GUARDA 2000u
 /* Média por amostra na cadeia (uma conta a cada 500 amostras): 1% da CPU. */

@@ -100,7 +100,8 @@ cadeia (`-DBANCADA_CADEIA=ON`), a linha `# bancada lf/hf` **não mede o pior pas
 o vetor tem 90 s, os RR nunca cobrem os 270 s, os passos não calculam nada e o
 "max" é só o do `hrv_freq_comeca` (a conferência da cobertura); a placa avisa isso
 numa linha logo abaixo. O pior passo de verdade vem da bancada do LF/HF
-(`-DBANCADA_HRV_FREQ=ON`, ver [HRV](../hrv/#validação-do-lfhf)). O vetor
+(`-DBANCADA_HRV_FREQ=ON`; medido em 24/11: 136 137 ciclos em Release e 187 285 em
+Debug; ver [HRV](../hrv/#validação-do-lfhf)). O vetor
 `longo` (320 s, que cobre) não vai pra placa: são 256 KB de flash só nele. Os orçamentos estão em
 [Firmware → Ciclos e orçamento](../../firmware/#ciclos-e-orçamento).
 
