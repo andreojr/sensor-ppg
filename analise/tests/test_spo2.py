@@ -59,13 +59,13 @@ def test_canais_trocados_ficam_fora_da_faixa():
     """R de 0,5 vira 2,0 se vermelho e IR trocam de lugar: acima do R_MAX, inválido."""
     ir, vm = bruto(0.5)
     assert all(s.valido for s in estima(ir, vm))
-    assert not any(s.valido for s in estima(vm, ir))
+    assert not any(s.valido or s.spo2 != 0.0 for s in estima(vm, ir))
 
 
 @pytest.mark.parametrize("r_real", [0.1, R_MAX + 0.4])
 def test_r_fora_da_faixa_e_invalido(r_real):
     ir, vm = bruto(r_real)
-    assert not any(s.valido for s in estima(ir, vm))
+    assert not any(s.valido or s.spo2 != 0.0 for s in estima(ir, vm))
 
 
 def test_spo2_acima_de_100_e_limitada():

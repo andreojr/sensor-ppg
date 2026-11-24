@@ -128,8 +128,8 @@ static void comportamento(void)
     roda(&s, vm_s, ir_s, 2000, &o);
     bool algum = false;
     for (uint32_t i = 0; i < o.n; i++)
-        algum = algum || o.valido[i];
-    CHECA(o.n > 0 && !algum, "canais trocados ficam inválidos");
+        algum = algum || o.valido[i] || o.spo2[i] != 0.0f;
+    CHECA(o.n > 0 && !algum, "canais trocados ficam inválidos, com spo2 0");
 
     /* R abaixo do mínimo e sem dedo (DC baixo). */
     sintetico(ir_s, vm_s, 2000, 0.1f, 80000.0f, 78000.0f);
@@ -137,8 +137,8 @@ static void comportamento(void)
     roda(&s, ir_s, vm_s, 2000, &o);
     algum = false;
     for (uint32_t i = 0; i < o.n; i++)
-        algum = algum || o.valido[i];
-    CHECA(o.n > 0 && !algum, "R abaixo do mínimo é inválido");
+        algum = algum || o.valido[i] || o.spo2[i] != 0.0f;
+    CHECA(o.n > 0 && !algum, "R abaixo do mínimo é inválido, com spo2 0");
     sintetico(ir_s, vm_s, 2000, 0.5f, 5000.0f, 5000.0f);
     spo2_init(&s);
     roda(&s, ir_s, vm_s, 2000, &o);

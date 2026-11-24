@@ -79,12 +79,15 @@ static void respiracao(saida_t *o, uint32_t n, const ppg_respiracao_t *r)
 }
 
 /* A SpO2 (ESTIMADA, sem calibração): "s,n,valido,spo2,r", spo2 em % (2 casas, 0 inválida) e
-   o R em milésimos. */
+   o R em milésimos. O R sai limitado a 999.999: um R enorme (DC do vermelho perto de 0) não
+   cabe no unsigned long e a conversão seria UB; negativo e NaN saem 0. */
+#define R_TETO 999.999f
 static void oxigenacao(saida_t *o, uint32_t n, const ppg_spo2_t *s, float r)
 {
     char pct[24], linha[80];
     linhas_centesimos(pct, sizeof pct, s->spo2_pct);
-    unsigned long mil = (unsigned long)(r >= 0.0f ? r * 1000.0f + 0.5f : 0.0f);
+    const float limitado = r >= 0.0f ? (r < R_TETO ? r : R_TETO) : 0.0f;
+    unsigned long mil = (unsigned long)(limitado * 1000.0f + 0.5f);
     poe(o, linha, snprintf(linha, sizeof linha, "s,%lu,%d,%s,%lu.%03lu\n", (unsigned long)n,
                            s->valido ? 1 : 0, pct, mil / 1000u, mil % 1000u));
 }

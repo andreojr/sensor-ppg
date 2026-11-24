@@ -2,6 +2,7 @@
  * Teste das linhas da serial: o mesmo texto que o main.c da v0.3 mandava
  * (o analise.captura lê essas linhas).
  */
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -93,6 +94,32 @@ static void so_bruto_e_tela_apagada(void)
     igual("tela apagada", buf, "b,7,1.00,2.00\nt,7,0,0\n");
 }
 
+/* O R da linha s: limitado a 999.999 (um R enorme seria UB ao virar unsigned long), negativo
+   e NaN saem 0, e os normais não mudam. */
+static void r_limitado(void)
+{
+    const struct {
+        float r;
+        const char *esperado;
+    } casos[] = {
+        {0.5464f, "s,9,0,0.00,0.546\n"}, {999.0f, "s,9,0,0.00,999.000\n"},
+        {1.0e12f, "s,9,0,0.00,999.999\n"}, {INFINITY, "s,9,0,0.00,999.999\n"},
+        {-2.0f, "s,9,0,0.00,0.000\n"},     {NAN, "s,9,0,0.00,0.000\n"},
+    };
+    for (size_t k = 0; k < sizeof casos / sizeof casos[0]; k++) {
+        cadeia_saida_t s;
+        memset(&s, 0, sizeof s);
+        s.oxigenou = true;
+        s.spo2 = (ppg_spo2_t){false, 0.0f};
+        s.spo2_r = casos[k].r;
+        ppg_amostra_t bruto = {9u, 1.0f, 2.0f};
+        char buf[LINHAS_MAX];
+        linhas_cadeia(&s, &bruto, false, buf, sizeof buf);
+        const char *linha = strstr(buf, "s,");
+        igual("r limitado", linha ? linha : "", casos[k].esperado);
+    }
+}
+
 static void buffer_pequeno(void)
 {
     cadeia_saida_t s = saida_cheia();
@@ -121,6 +148,7 @@ int main(void)
     centesimos();
     todas();
     so_bruto_e_tela_apagada();
+    r_limitado();
     buffer_pequeno();
     cru();
     printf("%s\n", falhas ? "FALHOU" : "OK");
