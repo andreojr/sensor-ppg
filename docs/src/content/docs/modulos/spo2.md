@@ -25,8 +25,8 @@ tendência e a ordem de grandeza (95 a 100% em pessoas saudáveis), não como me
 | 1. Python (`analise/src/analise/spo2.py`) | feito, validado em 15 registros do PhysioNet (estabilidade e plausibilidade) |
 | 2. C (`Core/*/pds/spo2/`) | feito, idêntico ao Python (erro 0) |
 | 3. Teste no PC (`testes/spo2/`) | feito: 2 vetores e os casos de comportamento |
-| 4. Placa com a fonte falsa | **código pronto, compila; falta rodar na placa** (`-DBANCADA_SPO2=ON`) |
-| 5. Sensor real | **código pronto, compila; falta rodar com o sensor** (linha `s,...` na serial) |
+| 4. Placa com a fonte falsa | feito na placa (24/11/2026, `-DBANCADA_SPO2=ON`): 33 de 33 saídas, 0 fora da tolerância, erro 0; ciclos por amostra med 131 / max 1 532 (Release) e 420 / 3 822 (Debug), orçamento 9 600 |
+| 5. Sensor real | offline nas capturas de 22 e 23/11 (abaixo); falta a captura com o firmware novo (linha `s,...` na serial) |
 
 Esta página é atualizada em todo PR que mexe no módulo.
 
@@ -108,6 +108,13 @@ registro a partir de 30 s do bruto da fonte falsa (`uv run python -m analise.spo
   A atribuição dos canais faz diferença, e o `R_MAX` protege contra LEDs trocados no sensor parado, **não** com
   movimento; aí depende de a qualidade marcar o trecho como não usável.
 
+**Nas capturas do nosso sensor (offline).** Passando as 8 capturas de 22 e 23/11 (`*_bruto.csv`) pelo
+`analise.spo2`, só nas janelas que a qualidade diz usáveis: com os canais na ordem que o firmware mandava, o R
+mediano deu 1,86 a 2,68 e só 0 a 1 janela por captura saiu válida (SpO2 em torno de 50%, impossível em repouso).
+Trocando os canais, o R mediano deu 0,37 a 0,54 e todas as janelas usáveis saíram válidas, com SpO2 de 96,6 a 100%.
+Conferido na placa: no nosso módulo os LEDs vêm trocados (com o LED1 apagado, a luz vermelha continua acesa).
+O driver passou a desfazer a troca (ver [Firmware](../../firmware/)), e a SpO2 depende dessa correção.
+
 **O que isso NÃO prova.**
 
 - **Não prova que o valor está certo.** Só que ele é plausível, estável e coerente. A reta de livro dá ~97% aqui, e
@@ -158,8 +165,6 @@ do código ARM emulado também batem com as do Python (33 de 33).
 
 ## Pendente
 
-- **Rodar na placa** com a fonte falsa (`-DBANCADA_SPO2=ON`) e com o sensor real, e ver as linhas `s,...`.
+- **Rodar com o sensor real** no firmware com os LEDs corrigidos e ver as linhas `s,...` (passo 5, #78).
 - **Calibrar com um oxímetro de referência.** Sem isso o resultado continua "estimado".
-- **Conferir a ordem dos LEDs** do módulo MAX30102 real (vermelho e IR podem vir trocados): o `R_MAX` derruba os
-  valores se estiverem, mas o certo é conferir.
 - **Passa-faixa no AC** (ou o AC do filtrado), para o ruído de banda larga e o movimento puxarem menos o R.
