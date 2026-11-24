@@ -15,7 +15,9 @@ desenhada no terminal:
   caracteres, pra terminal pequeno.
 
 O desenho é sempre no mesmo lugar (o cursor volta ao topo por ANSI), sem rolar. Pixel
-aceso é claro e o fundo é escuro.
+aceso é colorido e o fundo é preto. As cores imitam o painel bicolor da placa: as
+16 primeiras linhas de pixel (as páginas 0 e 1) são amarelas e as 48 de baixo são azuis.
+A cor não vem nos dados "d,"; é só como o desenho aparece no terminal.
 """
 
 from __future__ import annotations
@@ -31,7 +33,14 @@ BYTES_PAGINA = W
 INICIO = "\033[?1049h\033[?25l\033[2J"  # tela alternativa, sem cursor, limpa
 TOPO = "\033[H"  # cursor no canto de cima à esquerda
 FIM = "\033[0m\033[?25h\033[?1049l"  # volta as cores, o cursor e a tela de antes
-CORES = "\033[97;40m"  # letra branca (pixel aceso) sobre fundo preto
+CORES = "\033[97;40m"  # branco sobre preto: só o quadro "esperando"
+
+# Cores do painel bicolor (ANSI de 256 cores, letra = pixel aceso, fundo preto).
+CORTE_AMARELO_PX = 16  # linhas de pixel 0 a 15 são amarelas; da 16 em diante, azuis
+CODIGO_AMARELO = 220  # código de 256 cores; a janela (tela_janela.py) converte pra hexadecimal
+CODIGO_AZUL = 39
+COR_AMARELO = f"\033[38;5;{CODIGO_AMARELO};40m"
+COR_AZUL = f"\033[38;5;{CODIGO_AZUL};40m"
 
 HEX = frozenset("0123456789abcdef")
 ESPERA = "esperando as linhas d, da placa (firmware com -DSERIAL_TELA=ON)"
@@ -97,6 +106,11 @@ def desenha_braille(memoria: bytes) -> list[str]:
     return linhas
 
 
+def cor_da_linha(linha: int, px_por_linha: int) -> str:
+    """A cor da linha de caractere `linha`, que começa na linha de pixel linha * px_por_linha."""
+    return COR_AMARELO if linha * px_por_linha < CORTE_AMARELO_PX else COR_AZUL
+
+
 class Espelho:
     """Guarda as 8 páginas e redesenha o terminal quando uma muda.
 
@@ -121,6 +135,7 @@ class Espelho:
         self._sujo = False
         self._ultimo: float | None = None
         self._comecou = False
+        self.encerrado = False  # a janela (se houver) liga isto ao ser fechada: a captura para
 
     @property
     def memoria(self) -> bytes:
@@ -206,7 +221,11 @@ class Espelho:
             meio = len(quadro) // 2
             quadro[meio] = ESPERA[: len(quadro[meio])].center(len(quadro[meio]))
         # cada linha acaba com as cores zeradas, pra não pintar o resto do terminal
-        corpo = "\n".join(f"{CORES}{linha}\033[0m" for linha in quadro)
+        px = 4 if self.braille else 2  # linhas de pixel que cada linha de caractere junta
+        corpo = "\n".join(
+            f"{CORES if espera else cor_da_linha(i, px)}{linha}\033[0m"
+            for i, linha in enumerate(quadro)
+        )
         self.saida.write(TOPO + corpo)  # sem \n no fim: não rola nem com o terminal justo
         self.saida.flush()
         self._sujo = False

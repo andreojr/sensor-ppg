@@ -32,6 +32,7 @@ Uso:
     uv run python -m analise.captura COM3 --segundos 60 --qualidade
     uv run python -m analise.captura COM3 --tela            # espelho do OLED no terminal
     uv run python -m analise.captura COM3 --tela --braille  # o mesmo, em 64 x 16
+    uv run python -m analise.captura COM3 --janela --monitor fhd  # espelho numa janela gráfica
     uv run python -m analise.captura /dev/ttyUSB0 -o dados/repouso.csv
 
 Sem --segundos, grava até o Ctrl+C.
@@ -51,6 +52,7 @@ from typing import Protocol
 import serial
 
 from analise import qualidade as ql
+from analise.tela_janela import MONITOR_PADRAO, RESOLUCOES, ErroJanela, Janela
 from analise.tela_terminal import Espelho, le_pagina
 
 SENSOR_FS_HZ = 400  # igual a MAX30102_FS_HZ em Core/Inc/max30102.h
@@ -360,6 +362,8 @@ def grava(
             while segundos is None or time.monotonic() - inicio < segundos:
                 if espelho is not None:
                     espelho.tick()  # redesenho segurado pelo intervalo, mesmo sem linha nova
+                    if espelho.encerrado:  # fechou a janela: acaba a captura
+                        break
                 linha = fonte.readline().decode("ascii", errors="replace").strip()
                 if not linha:  # timeout da porta
                     continue
@@ -440,16 +444,35 @@ def main(argv: list[str] | None = None) -> None:
         "--braille", action="store_true",
         help="com --tela, desenha em braille (64x16) em vez de meio-blocos (128x32)",
     )
+    p.add_argument(
+        "--janela", action="store_true",
+        help="mostra o espelho do OLED numa janela gráfica (amarelo e azul, precisa das linhas d,)",
+    )
+    p.add_argument(
+        "--monitor", choices=list(RESOLUCOES), default=MONITOR_PADRAO,
+        help="com --janela, a resolução do monitor, que define o tamanho (padrão: %(default)s)",
+    )
     args = p.parse_args(argv)
+    if args.janela and args.tela:
+        p.error("--janela e --tela são dois espelhos: use um de cada vez")
+    if args.janela and args.qualidade:
+        p.error("--janela e --qualidade não andam juntos: use um de cada vez")
     if args.braille and not args.tela:
         p.error("--braille só vale junto com --tela")
     if args.tela and args.qualidade:
         p.error("--tela e --qualidade escrevem no mesmo terminal: use um de cada vez")
 
+    janela = None
+    if args.janela:  # abre antes da serial: sem ambiente gráfico, nem começa
+        try:
+            janela = Janela(args.monitor)
+        except ErroJanela as e:
+            raise SystemExit(f"erro: {e}") from None
+
     destino = args.saida or DADOS / f"sensor_{datetime.now().astimezone():%Y%m%d_%H%M%S}.csv"
     with serial.Serial(args.porta, BAUD, timeout=0.5) as porta:
         porta.reset_input_buffer()
-        espelho = None
+        espelho = janela
         if args.tela:  # só o desenho na tela; o resumo sai depois
             espelho = Espelho(braille=args.braille, terminal=tuple(shutil.get_terminal_size()))
         else:
