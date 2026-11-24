@@ -279,7 +279,10 @@ d,<página>,<256 caracteres hexadecimais minúsculos>
   pior bloco de amostras, `serial_cabe()`); senão cai só a `d,` e a página volta no reenvio de 10 s. Cada
   linha `d,` descartada é contada e sai a cada segundo, junto do `# laco`, como `# tela: d_descartadas N`
   (só com a opção). No boot, `envia_tudo()` despacha o buffer ao fim (as 3 telas de início escrevem ~3,7 KB).
-- O Python ignora o prefixo que não conhece, então as outras linhas não mudam.
+- **Sem display ativo** (o `display_init` falhou, ou a I2C falhou 3 vezes seguidas e o display se desligou)
+  não saem `d,` nem reenvio: o PC fica com a última tela.
+- A leitura da `d,` no Python vem no PR #146 (#142). Até lá, a captura atual conta as `d,` como linhas
+  inválidas, então a captura com `-DSERIAL_TELA=ON` só faz sentido depois do #146.
 
 ### Por que 460800
 
