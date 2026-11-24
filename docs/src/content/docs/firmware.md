@@ -369,7 +369,8 @@ Issues #30, #144 (parte de #141). Com o MAX30102 de verdade, a cadeia inteira (d
 picos, espectral, HRV, LF/HF, SpO2, respiração) rodando junto com o display, gravei **400 s com o dedo no
 sensor**: todas as linhas da serial com horário, inclusive cada página enviada ao OLED (`d,`). Firmware Release
 da `main` (6b54cdd + #145) com `-DSERIAL_TELA=ON`, 460800 baud. O objetivo era ver se o display mostra o que a
-cadeia calcula e se o espelho não atrapalha a leitura.
+cadeia calcula e se o espelho não atrapalha a leitura. O horário de cada linha é o de **recebimento no PC**
+(com o atraso do USB), não o da placa.
 
 ### A cadeia roda inteira, sem perder nada
 
@@ -389,41 +390,76 @@ O espelho não trouxe linhas perdidas novas: é a salvaguarda do 460800 (#136, [
 
 ### Os números na tela batem com os da serial
 
-Refiz cada campo pelo `oled.py` a partir das linhas de resultado da placa e comparei, **pixel a pixel**, com
-o quadro remontado das linhas `d,` (amostrando a cada 0,25 s). Um campo bate se algum dos valores que a placa
-mandou por perto no tempo desenha exatamente os pixels que estavam na tela.
+A conferência (`analise.oled_confere`) remonta os quadros de 128 × 64 das linhas `d,`, amostra a cada 0,25 s,
+desenha de novo o texto de cada campo pelo `oled.py` a partir das linhas de resultado da placa e compara
+**pixel a pixel** com o quadro. Um campo bate se algum dos valores que a placa mandou por perto no tempo
+desenha exatamente os pixels que estavam na tela.
 
-| Campo na tela | Bate com a serial |
-|---|---|
-| BPM grande (principal; mais SINAL RUIM, onde é `--`), linha `t,` e `p,` | 897/905 (99,1%) |
-| BPM PICOS (resumo), `p,` | 328/337 (97,3%) |
-| BPM FFT (resumo), `e,` | 337/337 |
-| SDNN e RMSSD (resumo), `h,` | 337/337 cada |
-| SPO2~ (resumo), `s,` | 337/337 |
-| RESP (resumo), `r,` | 337/337 |
-| SPO2 grande (alvo), `s,` | 358/358 |
-| RESP grande (alvo), `r,` | 358/358 |
+**Janela de "por perto"** (as últimas linhas do tipo, não mais velhas que o limite, e até 0,5 s *depois* do
+quadro, porque a linha pode ter sido calculada antes do quadro e chegado ao PC depois): `t,` e `p,` do BPM
+grande: 1,1 s; `s,` e `r,`: 1,1 s; no resumo, que mostra o último valor, só pela quantidade: as 3 últimas `p,`,
+as 2 últimas `e,`, as 4 últimas `h,` e as 2 últimas `l,`. Foram os menores valores que ainda dão o resultado
+abaixo (com menos, `p,` cai para 85%, `h,` para 88%, `e,` para 42%). Quando a linha traz x,50 (2 casas), o
+valor real pode ter arredondado para qualquer lado, e os dois textos valem.
 
-Os 17 desencontros são transições: o quadro lido com algumas páginas já novas e outras ainda velhas, ou o
-BPM da linha da serial que mudou entre um quadro e o seguinte.
+| Campo conferido | Linha da placa | Bate |
+|---|---|---|
+| BPM grande (principal e SINAL RUIM, onde é `--`) | `t,` (e `p,` do último batimento) | 901/905 (99,6%) |
+| BPM PICOS (resumo) | `p,` | 337/337 |
+| BPM FFT (resumo) | `e,` | 337/337 |
+| SDNN (resumo) | `h,` | 337/337 |
+| RMSSD (resumo) | `h,` | 337/337 |
+| LF/HF (resumo, `x.y` ou `--`) | `l,` | 337/337 |
+| SPO2~ (resumo) | `s,` | 337/337 |
+| RESP (resumo) | `r,` | 337/337 |
+| SPO2 grande (alvo) | `s,` | 358/358 |
+| RESP grande (alvo) | `r,` | 358/358 |
+
+**O que a conferência não olha:** QUALIDADE (resumo), as 5 barras de qualidade, o coração, o "2/3" do
+resumo, o BPM e o SINAL do alvo, e a onda.
+
+Os 4 desencontros que sobram são do BPM grande: quadros lidos no meio da atualização (algumas páginas já
+novas e outras ainda velhas). Os 13 que a primeira versão da conferência contava a mais eram 9 empates de
+arredondamento no BPM PICOS (a linha traz `105.50` e a tela mostra 105, porque o valor real era menor que
+105,5) e 4 amostras em que a tela mostrava `--` porque o último `p,` tinha BPM inválido; agora os dois casos
+são tratados e os números acima já incluem isso.
+
+**Poder de discriminação.** Um campo que bate 100% só diz muito se um valor errado não bateria também. Para
+medir isso, comparei a tela com os resultados de 15 s antes:
+
+| Campo | Bate com 15 s de atraso | Com 30 s |
+|---|---|---|
+| BPM grande, BPM PICOS, BPM FFT | 12% a 13% | 5% a 10% |
+| SDNN, RMSSD | 26% e 38% | 18% |
+| SPO2~ e SPO2 grande | 57% e 59% | 41% a 51% |
+| RESP e RESP grande | 55% e 51% | 23% a 30% |
+| LF/HF | 93% | 88% |
+
+SpO2 e respiração variam pouco nessa sessão (SpO2 96 a 100%, respiração 5 a 7 rpm ou `--`), e o LF/HF é `--`
+em 315 dos 337 quadros do resumo (só 22 quadros, de 2 trechos, mostraram valor). Por isso os 100% desses
+campos dizem **menos** que os do BPM e do SDNN, onde um valor velho quase nunca bate.
 
 ### O rodízio segue o previsto
 
-Principal 8 s, resumo 4 s, alvo 4 s, nessa ordem (mediana de cada trecho: 8,0 / 4,0 / 4,0 s, em 22, 24 e 24
-trechos completos). A tela alvo entrou assim que a SpO2 ficou válida. Em 52 s dos 400 (6 trechos) a tela foi a
-de **SINAL RUIM**, que ganha do rodízio (dedo mexendo): a conferência trata ela como tela própria, com o BPM
-grande em `--`.
+O código confere as **durações** (mediana de cada tela perto de 8, 4 e 4 s, com tolerância de 0,5 s) e a
+**ordem** (principal, resumo, alvo, principal; o resumo pode ir direto para a principal; SINAL RUIM e SEM DEDO
+interrompem a conta): saem com código 1 se não baterem.
+
+Dos trechos completos (todos menos o primeiro e o último, que podem estar cortados), 22 são da principal, 24 do
+resumo e 24 do alvo. Só 20, 19 e 20 estão a 0,5 s do nominal. Os outros 11 (de 0,75 a 3,25 s) foram
+**encurtados pelo SINAL RUIM**, que ganha do rodízio (dedo mexendo) e aparece colado a todos eles. Medianas:
+8,0 / 4,0 / 4,0 s.
 
 | Tela | Tempo na sessão |
 |---|---|
 | Principal | 174 s |
 | Resumo | 84 s |
 | Alvo | 90 s |
-| Sinal ruim | 52 s |
+| Sinal ruim | 52 s (6 trechos) |
 
 ### Números da sessão
 
-Extremos de verdade, tirados das linhas da serial (e de onde a tela só mostrou o que a qualidade deixou):
+Extremos de verdade, tirados das linhas da serial:
 
 | | Mínimo a máximo | Faixa de 5% a 95% |
 |---|---|---|
@@ -431,20 +467,27 @@ Extremos de verdade, tirados das linhas da serial (e de onde a tela só mostrou 
 | SpO2 estimada | 93 a 100% | 96 a 100% |
 | SDNN | 29 a 80 ms | 32 a 77 ms |
 
-- Respiração válida em 242 dos 400 s (começa em 28 s; no resto a tela mostra `--`, certo).
-- LF/HF: primeiro valor válido em 320 s (5,97), depois ~6.
-- O pulso na tela sobe a cada batimento, com subida rápida e queda lenta: o sinal invertido do
-  `display_amostra` está certo (conferido em 24/11).
+- **Respiração:** válida em 242 dos 400 s, a partir de 28 s. Dos 158 s sem valor, só 28 são do aquecimento
+  (antes do primeiro valor); os outros 130 são depois dele, quando a estimativa perdeu a validade (a tela
+  mostra `--`, certo).
+- **LF/HF:** válido de 320 a 355 s (8 linhas, de 5,97 a 6,56) e volta a `--` até o fim; só 22 quadros do
+  resumo mostraram valor.
+- **O pulso sobe a cada batimento:** conferido de dois jeitos. Visualmente (subida rápida, queda lenta, e o
+  coração acende no topo). E numericamente, **à parte, fora do script**, na revisão do PR: a onda desenhada
+  tem correlação de 0,97 com o IR filtrado invertido (mediana de 256 quadros da tela principal, atraso de
+  ~1 s); sem inverter, daria −0,97. É o que confirma o sinal invertido do `display_amostra`.
 
 ### As telas reais
 
-Quadros do espelho, pintados como o painel bicolor (amarelo nas 16 linhas de cima, azul nas outras 48):
+Quadros do espelho, pintados como o painel bicolor (amarelo nas 16 linhas de cima, azul nas outras 48), em
+sequência no rodízio. O quadro de cada imagem é escolhido sempre do mesmo jeito: o primeiro, depois de 120 s,
+em que todos os campos da tela batem, têm um único valor possível e valem número.
 
-![Tela principal: BPM, qualidade e onda do pulso](../../assets/oled_principal.png)
+![Tela principal: BPM 97, as barras de qualidade e a onda do pulso](../../assets/oled_principal.png)
 
-![Tela de resumo: BPM, SDNN, RMSSD, LF/HF, SpO2 e respiração](../../assets/oled_resumo.png)
+![Tela de resumo: BPM PICOS 98, FFT 98, SDNN 34 ms, RMSSD 16 ms, LF/HF sem valor, qualidade 100%, SpO2 95 e respiração 6](../../assets/oled_resumo.png)
 
-![Tela alvo: SpO2 e respiração grandes, BPM e onda](../../assets/oled_alvo.png)
+![Tela alvo: SpO2 97% e respiração 6/min grandes, BPM 105, sinal 100% e a onda](../../assets/oled_alvo.png)
 
 ### Limitações
 
@@ -452,10 +495,11 @@ Quadros do espelho, pintados como o painel bicolor (amarelo nas 16 linhas de cim
   que o display mostra o que a cadeia calcula, não que o número está certo contra uma referência.
 - O dedo foi apoiado à mão, sem suporte; os 52 s de SINAL RUIM são em parte isso.
 - Uma sessão de 400 s, uma pessoa.
+- A conferência cobre só os campos listados acima, e os de SpO2, respiração e LF/HF discriminam pouco.
 
 ### Como reproduzir
 
-Com o firmware de `-DSERIAL_TELA=ON` na placa (não grave nem rode nada pra isso além da serial):
+Com o firmware de `-DSERIAL_TELA=ON` na placa (os dois comandos só leem a serial e o log):
 
 ```bash
 cd analise
@@ -463,9 +507,12 @@ uv run python -m analise.grava_log /dev/ttyUSB0 --espera 10 --segundos 400 -o da
 uv run python -m analise.oled_confere dados/sessao.log --png dados/oled_telas
 ```
 
-O primeiro só lê a serial e grava todas as linhas com o horário. O segundo confere integridade, rodízio e os
-campos da tela, imprime um resumo, salva os PNGs e sai com código 1 se algum campo bater menos de 95%
-(`--minimo`); `--desencontros` mostra os primeiros desencontros de cada campo. `dados/` fica fora do git.
+O primeiro grava todas as linhas com o horário de recebimento. O segundo imprime integridade, rodízio e os
+campos, salva os PNGs e **sai com código 1** se: algum campo bater menos de 95% (`--minimo`); faltar algum
+campo da lista; o rodízio não bater; houver linha estragada, salto nas `b,` ou amostra perdida; ou as `d,`
+descartadas passarem de 0,5% das válidas (`--max-descartadas`). `--desencontros` mostra os primeiros
+desencontros de cada campo. `dados/` fica fora do git; os 3 PNGs acima são os que esse comando gera do log de
+24/11 (um teste confere, quando o log existe).
 
 ## Rodar na placa e ver a leitura
 

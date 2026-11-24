@@ -80,10 +80,13 @@ byte a byte e página fora de 0 a 7).
 
 ## Com o sensor real (24/11)
 
-Em 400 s com o dedo no MAX30102 e o espelho ligado, o OLED mostrou o que a cadeia calculou: BPM, SDNN, RMSSD,
-SpO2 e respiração bateram com as linhas da serial pixel a pixel (97% a 100% por campo, os desencontros são
-transições), o rodízio ficou em 8 / 4 / 4 s e nenhuma amostra foi perdida. Tabelas, imagens das telas e
-como reproduzir (`analise.grava_log` e `analise.oled_confere`) em
+Em 400 s com o dedo no MAX30102 e o espelho ligado, o OLED mostrou o que a cadeia calculou: os 10 campos
+conferidos (BPM grande, BPM PICOS e FFT, SDNN, RMSSD, LF/HF, SPO2~ e RESP do resumo, SPO2 e RESP grandes do
+alvo) bateram com as linhas da serial pixel a pixel, 99,6% a 100% por campo (os 4 desencontros do BPM grande
+são quadros lidos no meio da atualização), o rodízio ficou em 8 / 4 / 4 s (11 trechos encurtados pelo SINAL
+RUIM, que ganha do rodízio) e nenhuma amostra foi perdida. SpO2, respiração e LF/HF variam pouco e
+discriminam pouco nesse teste, e QUALIDADE, barras, coração, BPM e SINAL do alvo e a onda não são conferidos.
+Tabelas, imagens das telas e como reproduzir (`analise.grava_log` e `analise.oled_confere`) em
 [Integração final com o sensor real](../../firmware/#integração-final-com-o-sensor-real-2411).
 
 ## Decisões e suposições

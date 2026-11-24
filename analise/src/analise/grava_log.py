@@ -6,7 +6,8 @@ do arquivo, no formato
 
     <segundos desde o início>\\t<linha da serial>
 
-Serve de evidência (o oled_confere.py lê esse arquivo) e pra rever uma sessão depois. O
+O horário é o de recebimento no PC (a placa não manda relógio): leva o atraso do USB e do
+sistema, de alguns milissegundos. Serve de evidência (o oled_confere.py lê esse arquivo) e pra rever uma sessão depois. O
 programa só lê a serial: não manda nada pra placa.
 
 Uso:

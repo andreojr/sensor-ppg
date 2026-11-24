@@ -5,28 +5,37 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from matplotlib.image import imread
 
 from analise import grava_log, oled
 from analise import oled_confere as oc
 from analise import tela_terminal as tt
 
 CASOS = oled.casos()
-LOG_REAL = Path(__file__).resolve().parents[1] / "dados" / "oled_passo5_20261124.log"
+RAIZ = Path(__file__).resolve().parents[2]
+LOG_REAL = RAIZ / "analise" / "dados" / "oled_passo5_20261124.log"
+ASSETS = RAIZ / "docs" / "src" / "assets"
+CAMPO_BPM = "principal: BPM grande (t,)"
 
-# resultados que a tela principal e o alvo de oled.casos() mostram: BPM 72, SpO2 97, resp 16
-RESUMO = oled.tela_resumo(
-    [
-        ("BPM PICOS", "72"),
-        ("BPM FFT", "71"),
-        ("SDNN", "48 MS"),
-        ("RMSSD", "35 MS"),
-        ("LF/HF", "--"),
-        ("QUALIDADE", "82%"),
-    ],
-    "2/2",
-    "97",
-    "16",
-)
+
+def resumo(picos="72", fft="71", sdnn="48 MS", rmssd="35 MS", lf="6.0", spo2="97", resp="16"):
+    return oled.tela_resumo(
+        [
+            ("BPM PICOS", picos),
+            ("BPM FFT", fft),
+            ("SDNN", sdnn),
+            ("RMSSD", rmssd),
+            ("LF/HF", lf),
+            ("QUALIDADE", "82%"),
+        ],
+        "2/3",
+        spo2,
+        resp,
+    )
+
+
+def alvo(spo2="97", resp="16"):
+    return oled.tela_alvo(spo2, resp, "72", "82%", CASOS["alvo"][1])
 
 
 def linhas_d(fb: oled.Fb, t: float) -> list[tuple[float, str]]:
@@ -34,33 +43,36 @@ def linhas_d(fb: oled.Fb, t: float) -> list[tuple[float, str]]:
     return [(t, tt.linha_d(p, mem[p * 128 : (p + 1) * 128])) for p in range(8)]
 
 
-def resultados(t: float, bpm: float = 72.0) -> list[tuple[float, str]]:
-    """As linhas de resultado que combinam com as telas acima, um pouco antes de t."""
-    t = t - 0.1
-    return [
-        (t, f"t,1,1,{round(bpm * 100)}"),
-        (t, f"p,10,0.5,1,833,1,{bpm}"),
-        (t, "e,1,1,71.0"),
-        (t, "h,10,1,48.2,35.1,60"),
-        (t, "s,1,1,97.2,0.5"),
-        (t, "r,1,16.0,1"),
-    ]
+RESULTADOS_BONS = {
+    "t": "t,1,1,7200",
+    "p": "p,10,0.5,1,833,1,72.0",
+    "e": "e,1,1,71.0",
+    "h": "h,10,1,48.2,35.1,60",
+    "l": "l,1,1,6.044",
+    "s": "s,1,1,97.2,0.5",
+    "r": "r,1,16.0,1",
+}
 
 
-def sessao(ciclos: int = 3, bpm: float = 72.0) -> list[tuple[float, str]]:
-    """Principal 8 s, resumo 4 s, alvo 4 s, repetido. A placa manda as linhas de resultado
-    uma vez por segundo (um pouco antes do quadro)."""
-    telas = [(CASOS["principal"][0], 8.0), (RESUMO, 4.0), (CASOS["alvo"][0], 4.0)]
+def sessao(
+    ciclos: int = 3,
+    duracoes: tuple[float, float, float] = (8.0, 4.0, 4.0),
+    telas=None,
+    linhas: dict[str, str] | None = None,
+) -> list[tuple[float, str]]:
+    """Principal, resumo e alvo repetidos. A placa manda as linhas de resultado uma vez por
+    segundo, um pouco depois do começo do segundo. `linhas` troca o texto de um tipo."""
+    r = {**RESULTADOS_BONS, **(linhas or {})}
+    telas = telas or [CASOS["principal"][0], resumo(), alvo()]
     ev: list[tuple[float, str]] = []
     t = 0.0
     for _ in range(ciclos):
-        for fb, duracao in telas:
+        for fb, duracao in zip(telas, duracoes, strict=True):
             ev += linhas_d(fb, t + 0.1)
             t += duracao
-    # um último quadro igual, só pra o fim da última tela contar
-    ev += linhas_d(CASOS["principal"][0], t + 0.1)
+    ev += linhas_d(telas[0], t + 0.1)  # um quadro a mais, só pra o fim da última tela contar
     for seg in range(int(t) + 1):
-        ev += resultados(seg + 0.5, bpm)
+        ev += [(seg + 0.5, s) for s in r.values()]
     return sorted(ev, key=lambda e: e[0])
 
 
@@ -70,23 +82,38 @@ def conta(ev: list[tuple[float, str]]) -> oc.Relatorio:
     return r
 
 
-def test_caso_certo_bate_100_por_cento():
+def escreve(pasta: Path, ev: list[tuple[float, str]], nome: str = "s.log") -> Path:
+    p = pasta / nome
+    p.write_text("".join(f"{t:.3f}\t{s}\n" for t, s in ev))
+    return p
+
+
+def sai_com(pasta: Path, ev, capsys, *args: str) -> tuple[int, str]:
+    capsys.readouterr()
+    codigo = oc.main([str(escreve(pasta, ev)), *args])
+    return codigo, capsys.readouterr().out
+
+
+# ---------- o caso certo ----------
+
+
+def test_caso_certo_bate_100_por_cento_e_passa():
     r = conta(sessao())
-    assert r.campos  # algo foi conferido
+    assert set(r.campos) == set(oc.CAMPOS_ESPERADOS)
     for nome, c in r.campos.items():
         assert c.ok == c.total > 0, nome
-    assert set(r.campos) == {
-        "principal: BPM grande (t,)",
-        "resumo: BPM PICOS (p,)",
-        "resumo: BPM FFT (e,)",
-        "resumo: SDNN (h,)",
-        "resumo: RMSSD (h,)",
-        "resumo: SPO2~ (s,)",
-        "resumo: RESP (r,)",
-        "alvo: SPO2 grande (s,)",
-        "alvo: RESP grande (r,)",
-    }
+    assert r.falhas() == []
     assert r.passou()
+
+
+def test_main_sai_com_zero_no_caso_certo(tmp_path, capsys):
+    codigo, saida = sai_com(tmp_path, sessao(), capsys, "--png", str(tmp_path / "png"))
+    assert codigo == 0
+    assert "100.0%" in saida
+    assert (tmp_path / "png" / "oled_alvo.png").exists()
+
+
+# ---------- rodízio ----------
 
 
 def test_rodizio_reconhecido():
@@ -95,59 +122,100 @@ def test_rodizio_reconhecido():
     mediana = {k: v[0] for k, v in r.duracao_por_tela.items()}
     assert mediana == {"principal": 8.0, "resumo": 4.0, "alvo": 4.0}
     assert r.rodizio_ok
+    assert r.nominais == {"principal": (2, 2), "resumo": (3, 3), "alvo": (3, 3)}
+
+
+def test_rodizio_4_8_8_sai_com_1(tmp_path, capsys):
+    codigo, saida = sai_com(tmp_path, sessao(duracoes=(4.0, 8.0, 8.0)), capsys)
+    assert codigo == 1
+    assert "rodízio: a duração" in saida
+
+
+def test_trecho_de_6_s_reprova():
+    # 2 s de diferença: fora de 0,5 s (e dentro de uma tolerância frouxa de 2 s)
+    assert not oc.duracao_confere({"principal": [8.0, 8.0], "resumo": [6.0, 6.0]})
+    assert oc.duracao_confere({"principal": [8.0], "resumo": [4.4], "alvo": [3.6]})
+    assert not oc.duracao_confere({})
+
+
+def test_ordem_do_rodizio():
+    def seg(*telas):
+        return [[k, i, i] for i, k in enumerate(telas)]
+
+    assert oc.ordem_confere(seg("principal", "resumo", "alvo", "principal", "resumo"))
+    assert oc.ordem_confere(seg("principal", "resumo", "principal"))  # alvo sem valor
+    assert oc.ordem_confere(seg("principal", "sinal_ruim", "alvo"))  # SINAL RUIM interrompe
+    assert not oc.ordem_confere(seg("principal", "alvo"))
+    assert not oc.ordem_confere(seg("principal", "resumo", "alvo", "resumo"))
+    assert not oc.ordem_confere(seg("alvo", "resumo"))
+
+
+def test_ordem_trocada_sai_com_1(tmp_path, capsys):
+    ev = sessao(telas=[CASOS["principal"][0], alvo(), resumo()])  # principal, alvo, resumo
+    codigo, saida = sai_com(tmp_path, ev, capsys)
+    assert codigo == 1
+    assert "a ordem" in saida
 
 
 def test_sinal_ruim_e_tela_propria_e_o_bpm_grande_dela_e_conferido():
     ruim = CASOS["sinal_ruim"][0]
+    ev = linhas_d(ruim, 0.1) + linhas_d(ruim, 10.1)
 
-    def sessao_ruim(linha_t: str) -> list[tuple[float, str]]:
-        ev = linhas_d(ruim, 0.1) + linhas_d(ruim, 10.1)
+    def com_t(linha_t):
         return sorted(ev + [(s + 0.5, linha_t) for s in range(11)], key=lambda e: e[0])
 
-    r = conta(sessao_ruim("t,1,0,0"))  # a placa não mostra BPM: a tela tem "--"
+    r = conta(com_t("t,1,0,0"))  # a placa não mostra BPM: a tela tem "--"
     assert r.sequencia == ["sinal_ruim"]
-    assert r.campos["principal: BPM grande (t,)"].fracao == 1.0
-    r = conta(sessao_ruim("t,1,1,7200"))  # a placa diz 72, mas a tela tem "--"
-    assert not r.passou()
+    assert r.campos[CAMPO_BPM].fracao == 1.0
+    r = conta(com_t("t,1,1,7200"))  # a placa diz 72, mas a tela tem "--"
+    assert r.campos[CAMPO_BPM].ok == 0
 
 
-def test_rodizio_fora_do_previsto_nao_passa():
-    assert not oc.rodizio_confere({"principal": [3.0, 3.0], "resumo": [4.0]})
-    assert not oc.rodizio_confere({})
-
-
-def test_troca_de_um_digito_na_tela_e_detectada():
-    # a tela principal mostra 73 quando a placa disse 72
-    ev = sessao()
-    errada = oled.tela_principal("73", True, 4, CASOS["principal"][1])
-    ev = [(t, s) for t, s in ev if not s.startswith("d,")]  # tira todos os quadros
-    t = 0.0
-    novas: list[tuple[float, str]] = []
-    for fb, duracao in [(errada, 8.0), (RESUMO, 4.0), (CASOS["alvo"][0], 4.0)] * 3:
-        novas += linhas_d(fb, t + 0.1)
-        t += duracao
-    novas += linhas_d(errada, t + 0.1)
-    r = conta(sorted(ev + novas, key=lambda e: e[0]))
-    assert r.campos["principal: BPM grande (t,)"].ok == 0
-    assert r.campos["resumo: SDNN (h,)"].fracao == 1.0
-    assert not r.passou()
+# ---------- integridade e código de saída ----------
 
 
 @pytest.mark.parametrize(
-    "tipo, trocado",
+    "extra, trecho",
     [
-        ("p,", "p,10,0.5,1,833,1,75.0"),  # BPM PICOS 75 e BPM grande
-        ("e,", "e,1,1,77.0"),
-        ("h,", "h,10,1,52.0,35.1,60"),
-        ("s,", "s,1,1,91.0,0.5"),
-        ("r,", "r,1,12.0,1"),
+        ([(2.0, "b,1,1.0,1.0"), (2.1, "b,3,1.0,1.0")], "saltos no contador"),
+        ([(2.0, "lixo no meio")], "linhas estragadas"),
+        ([(2.0, "d,3,xyz")], "d, estragadas"),
+        ([(2.0, "# laco: amostras 100 fila_max 5 fila_cheia 0 perdidas 2")], "amostras perdidas"),
+        ([(2.0, "# tela: d_descartadas 5")], "descartadas"),
+        ([(2.0, "p,10,0.5,1")], "linhas estragadas"),  # faltam campos
     ],
 )
-def test_troca_do_valor_de_uma_linha_de_resultado_e_detectada(tipo, trocado):
-    ev = [(t, trocado if s.startswith(tipo) else s) for t, s in sessao()]
-    r = conta(ev)
-    assert any(c.fracao < 0.5 for c in r.campos.values())
-    assert not r.passou()
+def test_cada_problema_de_integridade_sai_com_1(tmp_path, capsys, extra, trecho):
+    ev = sorted(sessao() + extra, key=lambda e: e[0])
+    codigo, saida = sai_com(tmp_path, ev, capsys)
+    assert codigo == 1
+    assert trecho in saida
+
+
+def test_descartadas_dentro_do_limite_passam(tmp_path, capsys):
+    ev = sessao() + [(2.0, "# tela: d_descartadas 5")]
+    ev.sort(key=lambda e: e[0])
+    assert sai_com(tmp_path, ev, capsys)[0] == 1
+    assert sai_com(tmp_path, ev, capsys, "--max-descartadas", "0.2")[0] == 0
+
+
+def test_log_so_com_d_e_t_sai_com_1(tmp_path, capsys):
+    ev = [(t, s) for t, s in sessao() if s.startswith(("d,", "t,"))]
+    codigo, saida = sai_com(tmp_path, ev, capsys)
+    assert codigo == 1
+    assert "campo sem conferência: resumo: BPM PICOS" in saida
+
+
+def test_sem_quadros_nao_ha_o_que_conferir(tmp_path, capsys):
+    assert oc.confere([(0.0, "b,1,1.0,1.0")]) is None
+    assert oc.main([str(escreve(tmp_path, [(0.0, "# so comentario")]))]) == 1
+
+
+def test_campo_abaixo_do_minimo_sai_com_1(tmp_path, capsys):
+    ev = sessao(linhas={"p": "p,10,0.5,1,833,1,75.0"})  # a tela diz 72
+    codigo, saida = sai_com(tmp_path, ev, capsys)
+    assert codigo == 1
+    assert "resumo: BPM PICOS" in saida and "mínimo" in saida
 
 
 def test_linha_d_estragada_e_contada():
@@ -159,7 +227,8 @@ def test_linha_d_estragada_e_contada():
     assert r.integridade.d_estragadas == 3
     assert r.integridade.d_validas == 8 * 10  # 9 trocas de tela + o último quadro
     assert r.integridade.estragadas == 0
-    assert r.passou()  # as estragadas não derrubam os quadros bons
+    assert any("d, estragadas" in f for f in r.falhas())
+    assert all(c.fracao == 1.0 for c in r.campos.values())  # os quadros bons seguem certos
 
 
 def test_integridade_conta_saltos_perdidas_e_estragadas():
@@ -183,21 +252,260 @@ def test_integridade_conta_saltos_perdidas_e_estragadas():
     assert i.d_descartadas == 4
 
 
-def test_sem_quadros_nao_ha_o_que_conferir():
-    assert oc.confere([(0.0, "b,1,1.0,1.0")]) is None
+def test_linhas_truncadas_nao_derrubam_e_contam_como_estragadas():
+    # p, e t, com menos campos, e demais; # laco sem "perdidas"; # tela sem número
+    ev = [
+        (0.0, "p,1,0.5,1"),
+        (0.1, "t,1,1"),
+        (0.2, "t,1,1,7200,5"),
+        (0.3, "h,1,1,2.0"),
+        (0.4, "# laco: amostras 100 fila_max 5"),
+        (0.5, "# tela: d_descartadas"),
+        (0.6, "e,1,1,71.0"),  # esta está certa
+    ]
+    i = oc.mede_integridade(ev)
+    assert i.estragadas == 6
+    h = oc.Historico(ev)
+    assert h.tempos["e"] == [0.6]
+    assert "p" not in h.tempos and "t" not in h.tempos
+    assert oc.candidatos_principal(h, 0.5) == set()  # sem IndexError
+
+
+def test_le_log_conta_linha_sem_tab_ou_vazia(tmp_path):
+    p = tmp_path / "s.log"
+    p.write_text("0.100\tb,1,1.0,1.0\n\nsem tab\nabc\tb,2,1.0,1.0\n0.200\t\n0.300\t# ok\n")
+    eventos, ruins = oc.le_log(p)
+    assert eventos == [(0.1, "b,1,1.0,1.0"), (0.3, "# ok")]
+    assert ruins == 4
+    assert oc.mede_integridade(eventos, ruins).estragadas == 4
+
+
+# ---------- arredondamento, valores inválidos e teto ----------
+
+
+def test_textos_numero_meio_pra_cima_e_empate():
+    assert oc.textos_numero(72.4, 999) == {"72"}
+    assert oc.textos_numero(72.6, 999) == {"73"}
+    assert oc.textos_numero(72.5, 999) == {"72", "73"}  # x,50: os dois lados valem
+    assert oc.textos_numero(72.50, 999) == {"72", "73"}
+    assert oc.textos_numero(72.496, 999) == {"72", "73"}  # a linha só tem 2 casas
+    assert oc.textos_numero(72.504, 999) == {"72", "73"}
+    assert oc.textos_numero(72.494, 999) == {"72"}
+    assert oc.textos_numero(72.506, 999) == {"73"}
+    assert oc.textos_numero(0.5, 999) == {"0", "1"}
+
+
+def test_textos_numero_invalido_e_teto():
+    assert oc.textos_numero(-1.0, 999) == {"--"}
+    assert oc.textos_numero(float("nan"), 999) == {"--"}
+    assert oc.textos_numero(150.0, 99) == {"99"}  # resp passa de 99
+    assert oc.textos_numero(150.0, 999) == {"150"}
+    assert oc.textos_numero(1500.0, 999) == {"999"}
+    assert oc.textos_numero(100.4, 100) == {"100"}
+    assert oc.textos_numero(98.5, 99) == {"98", "99"}  # o teto não passa de 99 no empate
+
+
+def test_lf_hf_formato_x_ponto_y():
+    assert oc.texto_lf_hf(6.044) == {"6.0"}
+    assert oc.texto_lf_hf(6.287) == {"6.3"}
+    assert oc.texto_lf_hf(0.95) == {"0.9", "1.0"}  # x,x5 é empate
+    assert oc.texto_lf_hf(14.0) == {"14.0"}
+    assert oc.texto_lf_hf(-1.0) == {"--"}
+
+
+def campo(r, nome):
+    return r.campos[nome]
+
+
+def test_empate_no_bpm_picos_aceita_os_dois_lados():
+    for tela_txt in ("72", "73"):
+        ev = sessao(telas=[CASOS["principal"][0], resumo(picos=tela_txt), alvo()],
+                    linhas={"p": "p,10,0.5,1,833,1,72.50"})
+        assert campo(conta(ev), "resumo: BPM PICOS (p,)").fracao == 1.0, tela_txt
+    ev = sessao(telas=[CASOS["principal"][0], resumo(picos="74"), alvo()],
+                linhas={"p": "p,10,0.5,1,833,1,72.50"})
+    assert campo(conta(ev), "resumo: BPM PICOS (p,)").ok == 0
+
+
+def test_valor_invalido_vira_dois_tracos_no_resumo_e_no_alvo():
+    ev = sessao(
+        telas=[
+            CASOS["principal"][0],
+            resumo(picos="--", fft="--", sdnn="--", rmssd="--", lf="--", spo2="--", resp="--"),
+            alvo(spo2="--", resp="--"),
+        ],
+        linhas={
+            "p": "p,10,0.5,0,0.0,0,0.0",
+            "e": "e,1,0,0.0",
+            "h": "h,10,0,0.0,0.0,0",
+            "l": "l,1,0,0.000",
+            "s": "s,1,0,0.0,0.0",
+            "r": "r,1,0.0,0",
+        },
+    )
+    r = conta(ev)
+    for nome, c in r.campos.items():
+        if nome != CAMPO_BPM:
+            assert c.ok == c.total > 0, nome
+
+
+def test_tela_com_numero_e_placa_dizendo_invalido_nao_bate():
+    ev = sessao(linhas={"s": "s,1,0,0.0,0.0", "r": "r,1,0.0,0", "l": "l,1,0,0.000"})
+    r = conta(ev)
+    for nome in ("resumo: SPO2~ (s,)", "resumo: RESP (r,)", "alvo: SPO2 grande (s,)",
+                 "alvo: RESP grande (r,)", "resumo: LF/HF (l,)"):
+        assert campo(r, nome).ok == 0, nome
+
+
+def test_lf_hf_no_resumo_confere_o_formato():
+    assert campo(conta(sessao()), "resumo: LF/HF (l,)").fracao == 1.0
+    errado = sessao(telas=[CASOS["principal"][0], resumo(lf="6.3"), alvo()])
+    assert campo(conta(errado), "resumo: LF/HF (l,)").ok == 0
+    ok = sessao(
+        telas=[CASOS["principal"][0], resumo(lf="6.3"), alvo()], linhas={"l": "l,1,1,6.287"}
+    )
+    assert campo(conta(ok), "resumo: LF/HF (l,)").fracao == 1.0
+
+
+def test_troca_de_um_digito_na_tela_e_detectada():
+    errada = oled.tela_principal("73", True, 4, CASOS["principal"][1])
+    r = conta(sessao(telas=[errada, resumo(), alvo()]))
+    assert campo(r, CAMPO_BPM).ok == 0
+    assert campo(r, "resumo: SDNN (h,)").fracao == 1.0
+    assert not r.passou()
+
+
+@pytest.mark.parametrize(
+    "tipo, trocado",
+    [
+        ("p", "p,10,0.5,1,833,1,75.0"),
+        ("e", "e,1,1,77.0"),
+        ("h", "h,10,1,52.0,35.1,60"),
+        ("s", "s,1,1,91.0,0.5"),
+        ("r", "r,1,12.0,1"),
+        ("l", "l,1,1,3.100"),
+    ],
+)
+def test_troca_do_valor_de_uma_linha_de_resultado_e_detectada(tipo, trocado):
+    r = conta(sessao(linhas={tipo: trocado}))
+    assert any(c.fracao < 0.5 for c in r.campos.values())
+    assert not r.passou()
+
+
+@pytest.mark.parametrize(
+    "tipo, trocado, campos",
+    [
+        ("p", "p,10,0.5,1,833,1,82.0", ["resumo: BPM PICOS (p,)"]),  # só a dezena: 72 -> 82
+        ("e", "e,1,1,81.0", ["resumo: BPM FFT (e,)"]),
+        ("h", "h,10,1,58.2,45.1,60", ["resumo: SDNN (h,)", "resumo: RMSSD (h,)"]),
+        ("s", "s,1,1,87.2,0.5", ["resumo: SPO2~ (s,)", "alvo: SPO2 grande (s,)"]),
+        ("r", "r,1,26.0,1", ["resumo: RESP (r,)", "alvo: RESP grande (r,)"]),
+    ],
+)
+def test_so_a_dezena_diferente_tambem_e_detectada(tipo, trocado, campos):
+    r = conta(sessao(linhas={tipo: trocado}))
+    for nome in campos:
+        assert campo(r, nome).ok == 0, nome
+    assert not r.passou()
+
+
+def test_teto_de_resp_99_e_de_spo2_100_no_resumo_e_no_alvo():
+    ev = sessao(
+        telas=[CASOS["principal"][0], resumo(spo2="100", resp="99"), alvo(spo2="100", resp="99")],
+        linhas={"s": "s,1,1,105.0,0.5", "r": "r,1,150.0,1"},
+    )
+    r = conta(ev)
+    for nome in ("resumo: SPO2~ (s,)", "resumo: RESP (r,)", "alvo: SPO2 grande (s,)",
+                 "alvo: RESP grande (r,)"):
+        assert campo(r, nome).fracao == 1.0, nome
+
+
+def test_bpm_grande_do_ultimo_batimento_invalido_vira_dois_tracos():
+    sem = oled.tela_principal("--", False, 4, CASOS["principal"][1])
+    ev = sessao(telas=[sem, resumo(), alvo()],
+                linhas={"t": "t,1,1,7200", "p": "p,10,0.5,1,0.0,0,0.0"})
+    assert campo(conta(ev), CAMPO_BPM).fracao == 1.0
+
+
+def test_bpm_grande_com_t_dizendo_mostra_0_nao_aceita_numero():
+    # o display nunca mostra número quando o último t, disse 0, mesmo com p, válido
+    ev = sessao(linhas={"t": "t,1,0,0", "p": "p,10,0.5,1,833,1,72.0"})
+    assert campo(conta(ev), CAMPO_BPM).ok == 0
+
+
+# ---------- as janelas ----------
+
+
+def test_valor_de_15_s_atras_nao_vale():
+    ev = [
+        (5.0, "t,1,1,7200"),
+        (5.0, "s,1,1,97.2,0.5"),
+        (5.0, "r,1,16.0,1"),
+        (5.0, "p,1,0.5,1,833,1,72.0"),
+        (20.0, "t,2,1,9000"),
+        (20.0, "s,2,1,91.0,0.5"),
+        (20.0, "r,2,12.0,1"),
+        (20.0, "p,2,0.5,1,833,1,90.0"),
+    ]
+    h = oc.Historico(ev)
+    assert oc.candidatos_principal(h, 20.2) == {"90"}
+    assert h.ultimas("t", 20.2) == [[2, 1, 9000]]
+    assert h.ultimas("s", 20.2) == [[2, 1, 91.0, 0.5]]
+    assert h.ultimas("r", 20.2) == [[2, 12.0, 1]]
+    assert oc.candidatos_principal(h, 5.2) == {"72"}
+    # e, pelo fim: uma linha que chega depois do quadro só vale até FRENTE_S
+    assert h.ultimas("t", 19.4) == []
+    assert h.ultimas("t", 19.6) == [[2, 1, 9000]]
+
+
+def test_resumo_mostra_o_ultimo_valor_mesmo_antigo_mas_so_as_ultimas():
+    ev = (
+        [(float(i), f"h,{i},1,{40 + i}.0,30.0,60") for i in range(10)]
+        + [(float(i), f"p,{i},0.5,1,833,1,{70 + i}.0") for i in range(10)]
+        + [(float(i), f"e,{i},1,{70 + i}.0") for i in range(10)]
+        + [(float(i), f"l,{i},1,{1 + i}.000") for i in range(10)]
+    )
+    h = oc.Historico(ev)
+    assert [d[0] for d in h.ultimas("h", 100.0)] == [6, 7, 8, 9]  # as 4 últimas
+    assert [d[0] for d in h.ultimas("p", 100.0)] == [7, 8, 9]
+    assert [d[0] for d in h.ultimas("e", 100.0)] == [8, 9]
+    assert [d[0] for d in h.ultimas("l", 100.0)] == [8, 9]
+
+
+def test_tela_velha_nao_bate_com_resultado_novo_no_log():
+    # a tela mostra SpO2 97 e RESP 16, mas depois de 15 s a placa diz outra coisa
+    ev = sessao(ciclos=2)
+    novos = [(t + 15.0, s) for t, s in ev if s.startswith(("s,", "r,"))]
+    ev = [(t, s) for t, s in ev if not s.startswith(("s,", "r,"))] + [
+        (t, s.replace("97.2", "91.0").replace("16.0", "12.0")) for t, s in novos
+    ]
+    ev.sort(key=lambda e: e[0])
+    r = conta(ev)
+    assert campo(r, "alvo: SPO2 grande (s,)").fracao < 0.5
+
+
+# ---------- classificação das telas e dos pixels ----------
 
 
 def test_classifica_as_telas_dos_casos():
-    for nome, esperado in [
-        ("principal", "principal"),
-        ("alvo", "alvo"),
-        ("sem_dedo", "sem_dedo"),
-        ("sinal_ruim", "sinal_ruim"),
-    ]:
-        p = oc.pixels(CASOS[nome][0].paginas())
-        assert oc.classifica(p) == esperado, nome
-    assert oc.classifica(oc.pixels(RESUMO.paginas())) == "resumo"
+    for nome in ("principal", "alvo", "sem_dedo", "sinal_ruim"):
+        assert oc.classifica(oc.pixels(CASOS[nome][0].paginas())) == nome, nome
+    assert oc.classifica(oc.pixels(resumo().paginas())) == "resumo"
     assert oc.classifica(oc.pixels(CASOS["inicio"][0].paginas())) == "outra"
+
+
+def test_sinal_ruim_limiares_das_linhas_16_e_23():
+    def tela(l23, l16):
+        p = np.zeros((64, 128), np.uint8)
+        p[23, :l23] = 1
+        p[16, :l16] = 1
+        return p
+
+    assert oc.classifica(tela(128, 128)) == "sinal_ruim"  # a faixa quase cheia
+    assert oc.classifica(tela(121, 61)) == "sinal_ruim"
+    assert oc.classifica(tela(120, 61)) != "sinal_ruim"
+    assert oc.classifica(tela(121, 60)) != "sinal_ruim"
+    assert oc.classifica(tela(128, 0)) != "sinal_ruim"  # uma linha de onda não é a faixa
 
 
 def test_pixels_e_o_contrario_de_paginas():
@@ -205,47 +513,63 @@ def test_pixels_e_o_contrario_de_paginas():
     assert (oc.pixels(fb.paginas()) == fb.p).all()
 
 
+# ---------- PNGs ----------
+
+
 def test_png_sai_colorido_e_com_o_tamanho_certo(tmp_path):
-    ev = sessao()
-    amostras = oc.amostra_quadros(oc.remonta_quadros(ev))
-    tipos = [(t, oc.classifica(p)) for t, p in amostras]
-    salvas = oc.salva_pngs(amostras, tipos, tmp_path, a_partir_de=0.0)
-    assert salvas == ["principal", "resumo", "alvo"]
-
-    from matplotlib.image import imread
-
+    r = oc.confere(sessao(), tmp_path)
+    assert r is not None and r.pngs == ["principal", "resumo", "alvo"]
     img = imread(tmp_path / "oled_principal.png")
     assert img.shape[:2] == (64 * oc.ESCALA_PNG, 128 * oc.ESCALA_PNG)
     px = (img[..., :3] * 255).round().astype(int)
     aceso_cima = CASOS["principal"][0].p[: tt.CORTE_AMARELO_PX] == 1
     aceso_baixo = CASOS["principal"][0].p[tt.CORTE_AMARELO_PX :] == 1
     assert aceso_cima.any() and aceso_baixo.any()
-    cores = {tuple(c) for c in px.reshape(-1, 3)}
-    assert cores == {(0, 0, 0), (255, 215, 0), (0, 175, 255)}
-    # o pixel aceso mais acima é amarelo e o mais abaixo é azul
+    assert {tuple(c) for c in px.reshape(-1, 3)} == {(0, 0, 0), (255, 215, 0), (0, 175, 255)}
     e = oc.ESCALA_PNG
-    y_cima, x_cima = np.argwhere(aceso_cima)[0]
-    assert tuple(px[y_cima * e, x_cima * e]) == (255, 215, 0)
-    y_baixo, x_baixo = np.argwhere(aceso_baixo)[0]
-    assert tuple(px[(y_baixo + tt.CORTE_AMARELO_PX) * e, x_baixo * e]) == (0, 175, 255)
+    y, x = np.argwhere(aceso_cima)[0]
+    assert tuple(px[y * e, x * e]) == (255, 215, 0)
+    y, x = np.argwhere(aceso_baixo)[0]
+    assert tuple(px[(y + tt.CORTE_AMARELO_PX) * e, x * e]) == (0, 175, 255)
 
 
-def test_main_devolve_codigo_de_saida(tmp_path, capsys):
-    bom = tmp_path / "bom.log"
-    bom.write_text("".join(f"{t:.3f}\t{s}\n" for t, s in sessao()))
-    assert oc.main([str(bom), "--png", str(tmp_path / "png"), "--desencontros"]) == 0
-    assert "100.0%" in capsys.readouterr().out
-    assert (tmp_path / "png" / "oled_alvo.png").exists()
+def test_o_quadro_do_png_e_escolhido_de_forma_deterministica():
+    def amostras(*marcas):
+        return [(t, np.full((64, 128), i, np.uint8)) for i, t in enumerate(marcas)]
 
-    ruim = tmp_path / "ruim.log"
-    ruim.write_text("".join(f"{t:.3f}\t{s}\n" for t, s in sessao(bpm=99.0)))
-    # o BPM da placa (99) não é o da tela (72): falha
-    assert oc.main([str(ruim)]) == 1
-    assert "FALHOU" in capsys.readouterr().out
+    am = amostras(10.0, 130.0, 131.0, 140.0, 150.0)
+    ti = [(t, "alvo") for t, _ in am]
+    # bons: só o de 140 s; o de 130 s é depois de 120 s mas não é bom
+    bons = [False, False, False, True, True]
+    assert oc.escolhe_quadro(am, ti, bons, "alvo")[0] == 140.0
+    # sem nenhum bom: o primeiro depois de 120 s
+    assert oc.escolhe_quadro(am, ti, [False] * 5, "alvo")[0] == 130.0
+    # a tela só apareceu antes de 120 s: o primeiro dela
+    assert oc.escolhe_quadro(am[:1], ti[:1], [True], "alvo")[0] == 10.0
+    assert oc.escolhe_quadro(am, ti, bons, "resumo") is None
 
-    vazio = tmp_path / "vazio.log"
-    vazio.write_text("0.000\t# so comentario\n")
-    assert oc.main([str(vazio)]) == 1
+
+def bons_por_tela(ev):
+    am = oc.amostra_quadros(oc.remonta_quadros(ev))
+    ti = [(t, oc.classifica(p)) for t, p in am]
+    _, bons = oc.confere_numeros(am, ti, oc.Historico(ev))
+    out = {}
+    for (_, k), b in zip(ti, bons, strict=True):
+        out.setdefault(k, []).append(b)
+    return out
+
+
+def test_quadro_bom_exige_todos_os_campos_com_um_valor_so():
+    bons = bons_por_tela(sessao())
+    assert all(any(v) for v in bons.values())  # no caso certo as três telas têm quadro bom
+    # com 72,50 na linha do p, o PICOS e o BPM grande têm dois valores possíveis: não é "bom"
+    bons = bons_por_tela(sessao(linhas={"p": "p,10,0.5,1,833,1,72.50"}))
+    assert not any(bons["resumo"]) and not any(bons["principal"])
+    assert any(bons["alvo"])
+    # um campo "--" também não é bom (SpO2 inválida no alvo)
+    bons = bons_por_tela(sessao(telas=[CASOS["principal"][0], resumo(), alvo(spo2="--")],
+                                linhas={"s": "s,1,0,0.0,0.0"}))
+    assert not any(bons["alvo"])
 
 
 # ---------- grava_log ----------
@@ -273,9 +597,8 @@ def test_grava_log_poe_horario_e_ignora_vazias():
 
 def test_log_gravado_volta_igual_pelo_le_log(tmp_path):
     ev = sessao(ciclos=1)
-    p = tmp_path / "s.log"
-    p.write_text("".join(f"{t:.3f}\t{s}\n" for t, s in ev))
-    lido = oc.le_log(p)
+    lido, ruins = oc.le_log(escreve(tmp_path, ev))
+    assert ruins == 0
     assert len(lido) == len(ev)
     assert lido[0] == (round(ev[0][0], 3), ev[0][1])
 
@@ -283,19 +606,40 @@ def test_log_gravado_volta_igual_pelo_le_log(tmp_path):
 # ---------- o log real (fora do git) ----------
 
 
-def test_log_real_da_integracao_final():
+@pytest.fixture(scope="module")
+def log_real():
     if not LOG_REAL.exists():
         pytest.skip("analise/dados/ está fora do git: sem o log real da sessão de 24/11")
-    r = conta(oc.le_log(LOG_REAL))
+    return oc.le_log(LOG_REAL)
+
+
+def test_log_real_da_integracao_final(log_real):
+    eventos, ruins = log_real
+    r = conta_com_ruins(eventos, ruins)
     i = r.integridade
     assert (i.linhas, i.estragadas, i.d_estragadas) == (78534, 0, 0)
     assert (i.b_saltos, i.laco_perdidas, i.d_descartadas) == (0, 0, 10)
     assert r.rodizio_ok
     assert r.segundos_por_tela["sinal_ruim"] == 52  # o SINAL RUIM ganha do rodízio
     c = r.campos
-    assert (c["principal: BPM grande (t,)"].ok, c["principal: BPM grande (t,)"].total) == (897, 905)
-    assert (c["resumo: BPM PICOS (p,)"].ok, c["resumo: BPM PICOS (p,)"].total) == (328, 337)
-    for nome, campo in c.items():
-        if nome not in ("principal: BPM grande (t,)", "resumo: BPM PICOS (p,)"):
-            assert campo.ok == campo.total, nome
+    assert (c[CAMPO_BPM].ok, c[CAMPO_BPM].total) == (901, 905)
+    for nome, campo_ in c.items():
+        if nome != CAMPO_BPM:
+            assert campo_.ok == campo_.total, nome
     assert r.passou()
+
+
+def conta_com_ruins(eventos, ruins):
+    r = oc.confere(eventos, log_ruins=ruins)
+    assert r is not None
+    return r
+
+
+def test_pngs_das_docs_sao_os_que_o_comando_gera_do_log_real(log_real, tmp_path):
+    eventos, ruins = log_real
+    assert oc.confere(eventos, tmp_path, ruins) is not None
+    for tela in ("principal", "resumo", "alvo"):
+        gerado = imread(tmp_path / f"oled_{tela}.png")
+        commitado = imread(ASSETS / f"oled_{tela}.png")
+        assert gerado.shape == commitado.shape, tela
+        assert (gerado == commitado).all(), tela
