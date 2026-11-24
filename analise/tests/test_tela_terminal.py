@@ -1,6 +1,7 @@
 """O espelho do display: das linhas "d," da placa até o desenho no terminal (sem placa)."""
 
 import io
+import re
 import time
 
 import pytest
@@ -21,6 +22,16 @@ class Tty(io.StringIO):
 
     def isatty(self) -> bool:
         return True
+
+
+def sem_cores(texto: str) -> list[str]:
+    """As linhas do quadro sem os códigos de cor (só os caracteres desenhados)."""
+    return [re.sub(r"\033\[[0-9;]*m", "", linha) for linha in texto.split("\n")]
+
+
+def cores_do_quadro(texto: str) -> list[str]:
+    """O código de cor que abre cada linha do quadro."""
+    return [re.match(r"\033\[[0-9;]*m", linha).group() for linha in texto.split("\n")]
 
 
 def espelho(**kw) -> tuple[tt.Espelho, io.StringIO]:
@@ -148,10 +159,7 @@ def test_rajada_de_8_paginas_fecha_a_tela_no_tick_mesmo_sem_linha_nova(tmp_path)
     assert texto.count(tt.TOPO) >= 2
     ultimo = texto.split(tt.TOPO)[-1]
     assert ultimo.split("\n")[0].count("█") + ultimo.count("▀") > 0
-    assert tt.desenha_blocos(fb.paginas()) == [
-        linha.removeprefix(tt.CORES).removesuffix("\033[0m")
-        for linha in ultimo.removesuffix(tt.FIM).split("\n")
-    ]
+    assert tt.desenha_blocos(fb.paginas()) == sem_cores(ultimo.removesuffix(tt.FIM))
 
 
 def test_intervalo_segura_o_redesenho():
@@ -225,3 +233,29 @@ def test_captura_sem_espelho_ignora_as_linhas_d(tmp_path):
     entrada = ("d,0," + HEXA + "\nd,8," + HEXA + "\n5,1,2\n").encode()
     resumo = captura.grava(io.BytesIO(entrada), tmp_path / "x.csv", segundos=0.1)
     assert resumo.amostras == 1 and resumo.paginas_tela == 1 and resumo.invalidas == 1
+
+
+@pytest.mark.parametrize("braille,linhas,amarelas", [(False, 32, 8), (True, 16, 4)])
+def test_cor_de_cada_linha_amarelo_em_cima_azul_embaixo(braille, linhas, amarelas):
+    e, saida = espelho(braille=braille)
+    e.linha("d,0," + HEXA)
+    cores = cores_do_quadro(saida.getvalue().split(tt.TOPO)[1])
+    assert cores == [tt.COR_AMARELO] * amarelas + [tt.COR_AZUL] * (linhas - amarelas)
+    assert tt.COR_AMARELO == "\033[38;5;220;40m" and tt.COR_AZUL == "\033[38;5;39;40m"
+
+
+@pytest.mark.parametrize("caso", list(oled.casos()))
+@pytest.mark.parametrize("braille", [False, True])
+def test_cores_nao_mudam_os_caracteres(caso, braille):
+    fb = oled.casos()[caso][0]
+    e, saida = espelho(braille=braille)
+    for linha in linhas_d(fb):
+        e.linha(linha)
+    esperado = tt.desenha_braille(fb.paginas()) if braille else tt.desenha_blocos(fb.paginas())
+    assert sem_cores(saida.getvalue().split(tt.TOPO)[-1]) == esperado
+
+
+def test_quadro_de_espera_fica_numa_cor_so():
+    e, saida = espelho()
+    e.inicia()
+    assert set(cores_do_quadro(saida.getvalue().split(tt.TOPO)[1])) == {tt.CORES}

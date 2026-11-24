@@ -140,7 +140,13 @@ uv run python -m analise.captura /dev/ttyUSB0 --tela --braille   # braille, 64 x
 - O desenho é refeito no mesmo lugar (o cursor volta ao topo, sem rolar), no máximo 10 vezes por
   segundo; o redesenho que ficou esperando sai na volta seguinte do laço, mesmo sem linha nova. O
   terminal precisa de pelo menos 128 colunas e 32 linhas (64 e 16 no `--braille`), com fonte que tenha
-  os caracteres `▀ ▄ █` (ou braille). Pixel aceso é claro e o fundo é escuro.
+  os caracteres `▀ ▄ █` (ou braille), e de 256 cores. O fundo é preto.
+- As cores imitam o painel bicolor da placa: as 16 primeiras linhas de pixel (as páginas 0 e 1: BPM,
+  coração e barras de qualidade) saem em **amarelo** e as 48 de baixo em **azul**. Em meio-blocos são
+  8 linhas de caractere amarelas e 24 azuis; em braille, 4 e 12. A cor não vem nos dados `d,` (o chip
+  só recebe 1 bit por pixel), é só como o desenho aparece no terminal. O corte em 16 px fica na
+  constante `CORTE_AMARELO_PX` (e as cores em `COR_AMARELO` e `COR_AZUL`), fácil de mudar se o corte do
+  seu painel for outro.
 - Ao começar, aparece um quadro vazio com "esperando as linhas d, da placa (firmware com
   -DSERIAL_TELA=ON)". Se isso não some, o firmware não está mandando as linhas `d,`. O aviso some quando
   chega a primeira página.
