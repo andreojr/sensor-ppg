@@ -34,7 +34,12 @@ Uso:
 
 Sai com código 1 se: algum campo bater menos que --minimo; faltar algum campo de
 CAMPOS_ESPERADOS; o rodízio não bater; houver linha estragada, salto nas b, ou amostra perdida;
-ou as d, descartadas passarem de --max-descartadas (fração das d, válidas).
+ou as d, descartadas passarem de --max-descartadas (fração das d, válidas); ou faltarem os avisos de
+1 s (# laco e # tela) em boa parte da sessão (sem eles, "0 perdidas" não prova nada).
+
+Limites do formato: um corte dentro do último campo numérico de uma linha (a linha vira "p,1,0.5,1,8"
+por exemplo) não é detectável, e o horário do log não monotônico não é verificado (o grava_log
+só escreve horários crescentes).
 """
 
 from __future__ import annotations
@@ -60,6 +65,8 @@ from analise.tela_terminal import CORTE_AMARELO_PX, H, W, le_pagina
 PASSO_S = 0.25  # de quanto em quanto tempo a tela é amostrada
 ESCALA_PNG = 6  # cada pixel do OLED vira 6 x 6 no PNG (768 x 384)
 MINIMO_PADRAO = 0.95
+AVISOS_MINIMOS = 0.8  # fração dos segundos da sessão que precisa ter o aviso de 1 s
+AVISOS_FOLGA = 2.0  # e mais uns segundos de folga (começo e fim)
 MAX_DESCARTADAS_PADRAO = 0.005  # fração das d, válidas que o buffer pode descartar
 PRIMEIRA_TELA_S = 120.0  # os PNGs saem de depois da partida, quando a tela já é a de regime
 RESULTADOS = "hperstl"  # linhas de resultado que o display mostra
@@ -88,14 +95,17 @@ NCAMPOS = {
 
 # De quanto tempo pra trás e quantas linhas (as últimas) cada campo considera. As s, r, t, e
 # saem 1 vez por segundo; p, h saem a cada batimento; l a cada 5 s; o resumo mostra o último
-# valor de qualquer idade, então só limita pela quantidade.
-FRENTE_S = 0.5
+# valor de qualquer idade, então só limita pela quantidade. Só o 1,1 s (1 linha por segundo mais
+# 0,1 s de folga) tem derivação física. As quantidades (3 p, 2 e, 3 h, 2 l) e FRENTE_S foram
+# escolhidas olhando o log de 24/11: são o mínimo com que ele dá o resultado cheio; com menos,
+# campos reais caem. O resto é folga.
+FRENTE_S = 0.4
 JANELA = {
     "t": (1.1, None),
     "pt": (1.1, None),  # os p, que o BPM grande também usa
     "p": (3600.0, 3),
     "e": (3600.0, 2),
-    "h": (3600.0, 4),
+    "h": (3600.0, 3),
     "l": (3600.0, 2),
     "s": (1.1, None),
     "r": (1.1, None),
@@ -116,6 +126,8 @@ class Integridade:
     laco_avisos: int = 0  # linhas "# laco" (uma por segundo)
     laco_perdidas: int = 0  # amostras que a placa disse ter perdido
     d_descartadas: int = 0  # linhas d, que o buffer da serial descartou (# tela)
+    tela_avisos: int = 0  # linhas "# tela" (uma por segundo, só com -DSERIAL_TELA=ON)
+    duracao_s: float = 0.0  # do primeiro ao último horário do log
 
 
 def le_log(caminho: Path) -> tuple[list[tuple[float, str]], int]:
@@ -150,6 +162,8 @@ def _numeros(linha: str) -> list[float] | None:
 
 def mede_integridade(eventos: list[tuple[float, str]], log_ruins: int = 0) -> Integridade:
     r = Integridade(linhas=len(eventos), estragadas=log_ruins)
+    if eventos:
+        r.duracao_s = eventos[-1][0] - eventos[0][0]
     contador_b: list[int] = []
     for _, s in eventos:
         if s.startswith("# laco:"):
@@ -162,6 +176,7 @@ def mede_integridade(eventos: list[tuple[float, str]], log_ruins: int = 0) -> In
         elif s.startswith("# tela:"):
             try:
                 r.d_descartadas += int(s.split()[-1])
+                r.tela_avisos += 1
             except ValueError:
                 r.estragadas += 1
         elif s.startswith("d,"):
@@ -597,6 +612,12 @@ class Relatorio:
             f.append(f"{i.b_saltos} saltos no contador das b,")
         if i.laco_perdidas:
             f.append(f"{i.laco_perdidas} amostras perdidas (# laco)")
+        if i.d_validas:  # sem os avisos de 1 s, "0 perdidas" e "0 descartadas" não provam nada
+            minimo_avisos = AVISOS_MINIMOS * i.duracao_s - AVISOS_FOLGA
+            if i.laco_avisos < minimo_avisos:
+                f.append(f"só {i.laco_avisos} avisos # laco em {i.duracao_s:.0f} s")
+            if i.tela_avisos < minimo_avisos:
+                f.append(f"só {i.tela_avisos} avisos # tela em {i.duracao_s:.0f} s")
         if i.d_descartadas > max_descartadas * i.d_validas:
             f.append(f"{i.d_descartadas} d, descartadas (máximo {100 * max_descartadas:g}%)")
         return f

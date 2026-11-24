@@ -59,6 +59,7 @@ def sessao(
     duracoes: tuple[float, float, float] = (8.0, 4.0, 4.0),
     telas=None,
     linhas: dict[str, str] | None = None,
+    avisos: bool = True,
 ) -> list[tuple[float, str]]:
     """Principal, resumo e alvo repetidos. A placa manda as linhas de resultado uma vez por
     segundo, um pouco depois do começo do segundo. `linhas` troca o texto de um tipo."""
@@ -73,6 +74,9 @@ def sessao(
     ev += linhas_d(telas[0], t + 0.1)  # um quadro a mais, só pra o fim da última tela contar
     for seg in range(int(t) + 1):
         ev += [(seg + 0.5, s) for s in r.values()]
+        if avisos:  # os avisos de 1 s da placa
+            ev.append((seg + 0.6, "# laco: amostras 100 fila_max 5 fila_cheia 0 perdidas 0"))
+            ev.append((seg + 0.6, "# tela: d_descartadas 0"))
     return sorted(ev, key=lambda e: e[0])
 
 
@@ -135,6 +139,10 @@ def test_trecho_de_6_s_reprova():
     # 2 s de diferença: fora de 0,5 s (e dentro de uma tolerância frouxa de 2 s)
     assert not oc.duracao_confere({"principal": [8.0, 8.0], "resumo": [6.0, 6.0]})
     assert oc.duracao_confere({"principal": [8.0], "resumo": [4.4], "alvo": [3.6]})
+    assert oc.duracao_confere({"principal": [8.4]})  # a fronteira é 0,5 s
+    assert oc.duracao_confere({"principal": [8.5]})
+    assert not oc.duracao_confere({"principal": [8.6]})
+    assert not oc.duracao_confere({"principal": [7.4]})
     assert not oc.duracao_confere({})
 
 
@@ -278,6 +286,63 @@ def test_le_log_conta_linha_sem_tab_ou_vazia(tmp_path):
     assert eventos == [(0.1, "b,1,1.0,1.0"), (0.3, "# ok")]
     assert ruins == 4
     assert oc.mede_integridade(eventos, ruins).estragadas == 4
+
+
+def test_sem_os_avisos_de_1_s_nao_passa(tmp_path, capsys):
+    # sem "# laco" e "# tela", "0 perdidas" e "0 descartadas" seriam vazios
+    codigo, saida = sai_com(tmp_path, sessao(avisos=False), capsys)
+    assert codigo == 1
+    assert "avisos # laco" in saida and "avisos # tela" in saida
+    # só metade da sessão com aviso também reprova
+    ev = [(t, s) for t, s in sessao() if not (s.startswith(("# laco", "# tela")) and t > 24)]
+    falhas = conta(ev).falhas()
+    assert any("# laco" in f for f in falhas) and any("# tela" in f for f in falhas)
+    assert conta(sessao()).falhas() == []
+
+
+def test_b_com_contador_repetido_ou_que_volta_conta_salto():
+    def saltos(*ns):
+        return oc.mede_integridade([(i * 0.01, f"b,{n},1.0,1.0") for i, n in enumerate(ns)]).b_saltos
+
+    assert saltos(1, 2, 3, 4) == 0
+    assert saltos(1, 1, 2) == 1  # repetido
+    assert saltos(1, 2, 3, 2, 3) == 1  # volta
+    assert saltos(1, 2, 4) == 1  # pulou
+
+
+def test_minimo_por_campo_e_a_fronteira():
+    r = conta(sessao())
+    r.campos[CAMPO_BPM] = oc.Campo(ok=94, total=100)
+    assert any(CAMPO_BPM in f for f in r.falhas(0.95))
+    assert not any(CAMPO_BPM in f for f in r.falhas(0.90))
+    r.campos[CAMPO_BPM] = oc.Campo(ok=95, total=100)
+    assert r.falhas(0.95) == []  # exatamente no mínimo passa
+
+
+def test_le_log_com_tempo_inf_ou_nan(tmp_path):
+    p = tmp_path / "s.log"
+    p.write_text("inf\tb,1,1.0,1.0\nnan\t# x\n-inf\t# y\n0.5\t# ok\n")
+    eventos, ruins = oc.le_log(p)
+    assert eventos == [(0.5, "# ok")]
+    assert ruins == 3
+
+
+def test_resp_grande_do_alvo_nenhum_par_difere_so_nas_linhas_8_a_15():
+    # por isso a caixa de 16 linhas do RESP (e a do BPM e da SpO2 grandes) não precisa de teste
+    # próprio pra metade de baixo: se um par assim existisse, esta conta o acharia
+    def topo(txt):
+        fb = oled.Fb()
+        fb.text_r(100, 0, txt, 2)
+        return fb.p[:16, 72:101]
+
+    n = {t: topo(t) for t in map(str, range(100))}
+    pares = [
+        (a, b)
+        for a in n
+        for b in n
+        if (n[a][:8] == n[b][:8]).all() and not (n[a] == n[b]).all()
+    ]
+    assert pares == []
 
 
 # ---------- arredondamento, valores inválidos e teto ----------
@@ -455,7 +520,29 @@ def test_valor_de_15_s_atras_nao_vale():
     assert oc.candidatos_principal(h, 5.2) == {"72"}
     # e, pelo fim: uma linha que chega depois do quadro só vale até FRENTE_S
     assert h.ultimas("t", 19.4) == []
-    assert h.ultimas("t", 19.6) == [[2, 1, 9000]]
+    assert h.ultimas("t", 19.65) == [[2, 1, 9000]]
+
+
+def test_t_s_e_r_com_2_s_de_idade_nao_valem_e_com_1_s_valem():
+    velho = [(8.0, "t,1,1,7200"), (8.0, "s,1,1,97.2,0.5"), (8.0, "r,1,16.0,1"),
+             (8.0, "p,1,0.5,1,833,1,72.0")]
+    h = oc.Historico(velho)
+    assert oc.candidatos_principal(h, 10.1) == set()
+    assert h.ultimas("s", 10.1) == [] and h.ultimas("r", 10.1) == []
+    assert oc.candidatos_principal(h, 9.0) == {"72"}  # 1 s de idade
+    assert h.ultimas("s", 9.0) != [] and h.ultimas("r", 9.0) != []
+    # e na conferência: tela com número, mas a única linha t, tem 2 s de idade: não bate
+    ev = linhas_d(CASOS["principal"][0], 10.1) + linhas_d(CASOS["principal"][0], 20.1)
+    ev += [(8.0, "t,1,1,7200")] + [(float(k) + 0.5, "t,1,0,0") for k in range(15, 21)]
+    r = conta(sorted(ev, key=lambda e: e[0]))
+    assert r.campos[CAMPO_BPM].ok < r.campos[CAMPO_BPM].total
+
+
+def test_p_de_2_s_atras_nao_entra_nos_candidatos_do_bpm_grande():
+    h = oc.Historico([(8.0, "p,1,0.5,1,833,1,90.0"), (9.5, "t,1,1,7200")])
+    assert oc.candidatos_principal(h, 10.0) == {"72"}
+    h = oc.Historico([(9.0, "p,1,0.5,1,833,1,90.0"), (9.5, "t,1,1,7200")])
+    assert oc.candidatos_principal(h, 10.0) == {"72", "90"}
 
 
 def test_resumo_mostra_o_ultimo_valor_mesmo_antigo_mas_so_as_ultimas():
@@ -466,7 +553,7 @@ def test_resumo_mostra_o_ultimo_valor_mesmo_antigo_mas_so_as_ultimas():
         + [(float(i), f"l,{i},1,{1 + i}.000") for i in range(10)]
     )
     h = oc.Historico(ev)
-    assert [d[0] for d in h.ultimas("h", 100.0)] == [6, 7, 8, 9]  # as 4 últimas
+    assert [d[0] for d in h.ultimas("h", 100.0)] == [7, 8, 9]  # as 3 últimas
     assert [d[0] for d in h.ultimas("p", 100.0)] == [7, 8, 9]
     assert [d[0] for d in h.ultimas("e", 100.0)] == [8, 9]
     assert [d[0] for d in h.ultimas("l", 100.0)] == [8, 9]
@@ -593,6 +680,14 @@ def test_grava_log_poe_horario_e_ignora_vazias():
     assert linhas[0].split("\t") == ["0.200", "b,1,2.0,3.0"]
     assert linhas[1].split("\t")[1] == "# laco: ok"
     assert linhas[2].split("\t")[1].startswith("d,0,")  # byte fora do ASCII não derruba
+
+
+def test_grava_log_pode_descartar_a_primeira_linha_cortada():
+    fonte = SerialFalsa([b"ppg,1,2\n", b"b,1,2.0,3.0\n"])
+    relogio = iter([0.0, 0.1, 0.2, 5.0]).__next__
+    saida = io.StringIO()
+    assert grava_log.grava(fonte, saida, 1.0, relogio, descarta_primeira=True) == 1
+    assert "ppg" not in saida.getvalue() and "b,1,2.0,3.0" in saida.getvalue()
 
 
 def test_log_gravado_volta_igual_pelo_le_log(tmp_path):

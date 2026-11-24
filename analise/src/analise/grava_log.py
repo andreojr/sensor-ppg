@@ -14,6 +14,7 @@ Uso:
     uv run python -m analise.grava_log COM3 --segundos 400 -o dados/sessao.log
     uv run python -m analise.grava_log /dev/ttyUSB0 --espera 10 --segundos 400 -o dados/sessao.log
 
+A primeira linha lida depois de limpar o buffer é descartada (pode vir cortada no começo).
 --espera dá uns segundos pra pôr o dedo no sensor antes de começar a gravar.
 """
 
@@ -36,13 +37,18 @@ def grava(
     saida: TextIO,
     segundos: float,
     relogio: Callable[[], float] = time.monotonic,
+    descarta_primeira: bool = False,
 ) -> int:
     """Lê linhas de `fonte` por `segundos` e escreve "tempo<TAB>linha" em `saida`.
 
-    O tempo conta desde a primeira chamada. Linha vazia é ignorada. Devolve quantas
-    linhas gravou. `relogio` existe só pra os testes não dependerem do relógio de verdade."""
+    O tempo conta desde a primeira chamada. Linha vazia é ignorada. Com `descarta_primeira`,
+    a primeira linha lida é jogada fora: logo depois de limpar o buffer da serial ela pode vir
+    cortada no começo. Devolve quantas linhas gravou. `relogio` existe só pra os testes não
+    dependerem do relógio de verdade."""
     inicio = relogio()
     n = 0
+    if descarta_primeira:
+        fonte.readline()
     while relogio() - inicio < segundos:
         linha = fonte.readline().decode("ascii", "replace").rstrip("\r\n")
         if linha:
@@ -67,7 +73,7 @@ def main(argv: list[str] | None = None) -> int:
     with serial.Serial(args.porta, args.baud, timeout=0.5) as porta, args.saida.open("w") as f:
         porta.reset_input_buffer()
         print("gravando...", flush=True)
-        n = grava(porta, f, args.segundos)
+        n = grava(porta, f, args.segundos, descarta_primeira=True)
     print(f"fim: {n} linhas em {args.saida}")
     return 0
 

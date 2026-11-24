@@ -380,13 +380,15 @@ cadeia calcula e se o espelho não atrapalha a leitura. O horário de cada linha
 | Amostras `b,` | 39 941, **0 saltos** no contador |
 | Amostras perdidas (`# laco`, 400 avisos de 1 s) | **0** |
 | Linhas `d,` do display | 34 284 válidas, 0 estragadas |
-| Linhas `d,` descartadas pelo buffer (`# tela`) | **10** em 400 s (a página volta no reenvio de 10 s) |
+| Linhas `d,` descartadas pelo buffer (`# tela`) | **10** em 400 s (pelo projeto do `display.c`, a página volta no reenvio de 10 s; isso não foi verificado nesta captura) |
 | Taxa de amostragem | 99,85 amostras/s |
 | Fila (`fila_max`) | no máximo 5 de 16 |
 | Volta do laço mais longa | 1,90 M ciclos, ~19 ms (orçamento 3,6 M, 36 ms) |
 | Maior intervalo entre leituras do sensor | 45 ms (limite 80) |
 
-O espelho não trouxe linhas perdidas novas: é a salvaguarda do 460800 (#136, [Por que 460800](#por-que-460800)).
+**0 amostras perdidas na sessão com o espelho ligado** (a salvaguarda do 460800, #136, [Por que 460800](#por-que-460800)).
+Não há captura de referência sem o espelho para comparar, então isso não mede quanto ele pesa, só que não
+perdeu nada nesta sessão.
 
 ### Os números na tela batem com os da serial
 
@@ -395,12 +397,27 @@ desenha de novo o texto de cada campo pelo `oled.py` a partir das linhas de resu
 **pixel a pixel** com o quadro. Um campo bate se algum dos valores que a placa mandou por perto no tempo
 desenha exatamente os pixels que estavam na tela.
 
-**Janela de "por perto"** (as últimas linhas do tipo, não mais velhas que o limite, e até 0,5 s *depois* do
-quadro, porque a linha pode ter sido calculada antes do quadro e chegado ao PC depois): `t,` e `p,` do BPM
-grande: 1,1 s; `s,` e `r,`: 1,1 s; no resumo, que mostra o último valor, só pela quantidade: as 3 últimas `p,`,
-as 2 últimas `e,`, as 4 últimas `h,` e as 2 últimas `l,`. Foram os menores valores que ainda dão o resultado
-abaixo (com menos, `p,` cai para 85%, `h,` para 88%, `e,` para 42%). Quando a linha traz x,50 (2 casas), o
-valor real pode ter arredondado para qualquer lado, e os dois textos valem.
+**Janela de "por perto"**: as últimas linhas do tipo, não mais velhas que o limite, e até 0,4 s *depois* do
+quadro, porque a linha pode ter sido calculada antes do quadro e chegado ao PC depois. Valores usados: `t,` e
+`p,` do BPM grande e `s,` e `r,`: 1,1 s (a cadência é 1 linha por segundo, mais 0,1 s de folga: **só esse
+número tem derivação física**); no resumo, que mostra o último valor, só pela quantidade: as 3 últimas `p,`, as
+2 últimas `e,`, as 3 últimas `h,` e as 2 últimas `l,`.
+
+**Esses valores foram escolhidos olhando este log** (os menores com que ele dá o resultado cheio), não vêm de
+uma regra. Medi mudando um por vez, com o código commitado (o resto fica como acima):
+
+| Mudança | Efeito no log de 24/11 |
+|---|---|
+| 2 `p,` em vez de 3 | BPM PICOS 336/337 (99,7%); com 1 `p,`: 147/337 (44%) |
+| 2 `h,` em vez de 3 | SDNN 309/337 (92%), RMSSD 321/337 (95%); com 1: 267 e 302 |
+| 1 `e,` em vez de 2 | BPM FFT 196/337 (58%) |
+| 1 `l,` em vez de 2 | LF/HF 335/337 |
+| `s,` e `r,` com 1,0 s em vez de 1,1 | SPO2~ 336/337 e SPO2 grande 356/358, RESP grande 357/358 |
+| 0 a 0,3 s para a frente em vez de 0,4 | BPM grande 899 a 900/905 (com 0,4 a 0,7 s: 901/905) |
+| 1,0 s para a frente | BPM FFT 331/337 (98%), SDNN e RMSSD 335/337 (99,4%) |
+
+A conferência continua capaz de falhar: se a tela for comparada com os resultados de 15 s antes (abaixo), os
+campos de BPM e SDNN caem para 12% a 38%.
 
 | Campo conferido | Linha da placa | Bate |
 |---|---|---|
@@ -435,7 +452,8 @@ medir isso, comparei a tela com os resultados de 15 s antes:
 | RESP e RESP grande | 55% e 51% | 23% a 30% |
 | LF/HF | 93% | 88% |
 
-SpO2 e respiração variam pouco nessa sessão (SpO2 96 a 100%, respiração 5 a 7 rpm ou `--`), e o LF/HF é `--`
+SpO2 e respiração variam pouco nessa sessão (SpO2 de 93 a 100%, mas 96 a 100% em 90% do tempo; respiração
+5 a 7 rpm ou `--`), e o LF/HF é `--`
 em 315 dos 337 quadros do resumo (só 22 quadros, de 2 trechos, mostraram valor). Por isso os 100% desses
 campos dizem **menos** que os do BPM e do SDNN, onde um valor velho quase nunca bate.
 
@@ -447,7 +465,8 @@ interrompem a conta): saem com código 1 se não baterem.
 
 Dos trechos completos (todos menos o primeiro e o último, que podem estar cortados), 22 são da principal, 24 do
 resumo e 24 do alvo. Só 20, 19 e 20 estão a 0,5 s do nominal. Os outros 11 (de 0,75 a 3,25 s) foram
-**encurtados pelo SINAL RUIM**, que ganha do rodízio (dedo mexendo) e aparece colado a todos eles. Medianas:
+**encurtados pelo SINAL RUIM**, que ganha do rodízio (dedo mexendo) e aparece colado a todos eles (isso foi
+conferido à parte, num script avulso: o `oled_confere` imprime só quantos trechos estão no nominal). Medianas:
 8,0 / 4,0 / 4,0 s.
 
 | Tela | Tempo na sessão |
@@ -472,18 +491,21 @@ Extremos de verdade, tirados das linhas da serial:
   mostra `--`, certo).
 - **LF/HF:** válido de 320 a 355 s (8 linhas, de 5,97 a 6,56) e volta a `--` até o fim; só 22 quadros do
   resumo mostraram valor.
-- **O pulso sobe a cada batimento:** conferido de dois jeitos. Visualmente (subida rápida, queda lenta, e o
-  coração acende no topo). E numericamente, **à parte, fora do script**, na revisão do PR: a onda desenhada
-  tem correlação de 0,97 com o IR filtrado invertido (mediana de 256 quadros da tela principal, atraso de
-  ~1 s); sem inverter, daria −0,97. É o que confirma o sinal invertido do `display_amostra`.
+- **O pulso sobe a cada batimento:** o que sustenta isso é a morfologia visível na tela: subida rápida e
+  queda lenta, e o coração acende no topo da onda (conferido no instante do batimento, em 13 batimentos do
+  log). Como indício a mais, medi **à parte, fora do script**, a correlação da onda desenhada com o IR
+  filtrado invertido: 0,97 (mediana de 256 quadros da principal) no atraso que a maximiza, de ~1 s; sem
+  inverter, −0,97. Essa correlação é só **indicativa**: foi calculada com o atraso ajustado para
+  maximizá-la, e o pulso tem período de ~0,6 s, então em outros atrasos o sinal oscila (de +0,85 a −0,5).
 
 ### As telas reais
 
 Quadros do espelho, pintados como o painel bicolor (amarelo nas 16 linhas de cima, azul nas outras 48), em
 sequência no rodízio. O quadro de cada imagem é escolhido sempre do mesmo jeito: o primeiro, depois de 120 s,
-em que todos os campos da tela batem, têm um único valor possível e valem número.
+em que todos os campos da tela batem, têm um único valor possível e valem número (no resumo, o LF/HF não
+conta: ele fica `--` quase sempre).
 
-![Tela principal: BPM 97, as barras de qualidade e a onda do pulso](../../assets/oled_principal.png)
+![Tela principal: BPM 113 com o coração aceso, as barras de qualidade e a onda do pulso](../../assets/oled_principal.png)
 
 ![Tela de resumo: BPM PICOS 98, FFT 98, SDNN 34 ms, RMSSD 16 ms, LF/HF sem valor, qualidade 100%, SpO2 95 e respiração 6](../../assets/oled_resumo.png)
 
@@ -495,6 +517,10 @@ em que todos os campos da tela batem, têm um único valor possível e valem nú
   que o display mostra o que a cadeia calcula, não que o número está certo contra uma referência.
 - O dedo foi apoiado à mão, sem suporte; os 52 s de SINAL RUIM são em parte isso.
 - Uma sessão de 400 s, uma pessoa.
+- Um corte dentro do último campo numérico de uma linha (`...,72.0` cortado em `...,7`) é indetectável: é
+  inerente ao formato (só se pega o que perde campos). O horário do log não ser crescente também não é
+  verificado (o `grava_log` só escreve horários crescentes). O `grava_log` descarta a primeira linha lida,
+  que pode vir cortada no começo.
 - A conferência cobre só os campos listados acima, e os de SpO2, respiração e LF/HF discriminam pouco.
 
 ### Como reproduzir
@@ -509,8 +535,9 @@ uv run python -m analise.oled_confere dados/sessao.log --png dados/oled_telas
 
 O primeiro grava todas as linhas com o horário de recebimento. O segundo imprime integridade, rodízio e os
 campos, salva os PNGs e **sai com código 1** se: algum campo bater menos de 95% (`--minimo`); faltar algum
-campo da lista; o rodízio não bater; houver linha estragada, salto nas `b,` ou amostra perdida; ou as `d,`
-descartadas passarem de 0,5% das válidas (`--max-descartadas`). `--desencontros` mostra os primeiros
+campo da lista; o rodízio não bater; houver linha estragada, salto nas `b,` ou amostra perdida; faltarem os
+avisos de 1 s (`# laco` e `# tela`) em boa parte da sessão; ou as `d,` descartadas passarem de 0,5% das válidas
+(`--max-descartadas`). `--desencontros` mostra os primeiros
 desencontros de cada campo. `dados/` fica fora do git; os 3 PNGs acima são os que esse comando gera do log de
 24/11 (um teste confere, quando o log existe).
 
