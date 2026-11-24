@@ -113,6 +113,50 @@ não foi conferida; o que está conferido é C = Python, e Python = a leitura do
 
 Os vetores e a tabela da fonte do C saem de `uv run python -m analise.oled` (em `analise/`).
 
+## Espelho no terminal (`--tela`)
+
+Dá pra ver o display no PC enquanto a placa roda. Com o firmware compilado com `-DSERIAL_TELA=ON`, a
+placa manda pela serial uma cópia de cada página enviada ao SSD1306, numa linha nova:
+
+```text
+d,<página>,<256 caracteres hexadecimais minúsculos>
+```
+
+A página vai de 0 a 7, e os 256 caracteres são os 128 bytes dela (coluna 0 a 127). Cada byte é uma
+coluna e o bit 0 é a linha de cima da página, igual à memória do SSD1306 e ao `oled.py`. Só sai a
+página que mudou, mais as 8 páginas a cada ~10 s, pra tela fechar mesmo ligando a captura no meio.
+
+No PC (da pasta `analise/`):
+
+```bash
+uv run python -m analise.captura /dev/ttyUSB0 --tela             # meio-blocos, 128 x 32 caracteres
+uv run python -m analise.captura /dev/ttyUSB0 --tela --braille   # braille, 64 x 16 caracteres
+```
+
+- Enquanto roda, o terminal mostra **só a tela do OLED**, na tela alternativa (a mesma de `vim` e
+  `less`): nada de "gravando..." antes. Ao sair (Ctrl+C, fim do `--segundos` ou erro) o terminal volta
+  ao que era antes, e só então sai o resumo, com "N páginas de tela (d,) recebidas".
+- O CSV é gravado normal ao mesmo tempo (é a evidência da #30). As linhas `d,` não entram em nenhum CSV.
+- O desenho é refeito no mesmo lugar (o cursor volta ao topo, sem rolar), no máximo 10 vezes por
+  segundo; o redesenho que ficou esperando sai na volta seguinte do laço, mesmo sem linha nova. O
+  terminal precisa de pelo menos 128 colunas e 32 linhas (64 e 16 no `--braille`), com fonte que tenha
+  os caracteres `▀ ▄ █` (ou braille). Pixel aceso é claro e o fundo é escuro.
+- Ao começar, aparece um quadro vazio com "esperando as linhas d, da placa (firmware com
+  -DSERIAL_TELA=ON)". Se isso não some, o firmware não está mandando as linhas `d,`. O aviso some quando
+  chega a primeira página.
+- O espelho só desenha se a saída for um terminal e couber nele. Se o terminal for menor, ou se a saída
+  estiver redirecionada (`> arquivo`, pipe), nada é desenhado nem escrito: a captura avisa em uma linha
+  antes de começar e de novo no resumo, e só o CSV é gravado.
+- Página que ainda não chegou aparece apagada até chegar (no máximo ~10 s, pelo reenvio).
+- Linha `d,` inválida (página fora de 0 a 7, tamanho errado, hexadecimal inválido, com espaço ou em maiúsculo) é ignorada e conta
+  em "linhas inválidas", como as outras.
+- `--tela` não anda junto com `--qualidade`: os dois escrevem no mesmo terminal. `--braille` só vale
+  com `--tela`.
+
+O código está em `analise/src/analise/tela_terminal.py`. O teste (`analise/tests/test_tela_terminal.py`)
+não usa a placa: monta as linhas `d,` a partir das 10 telas do `oled.py`, e confere que a tela remontada
+é byte a byte igual e que o desenho tem o tamanho certo, além das linhas inválidas.
+
 ## Custo
 
 Firmware compilado com o `arm-none-eabi-gcc` 14.2.1, sem avisos. Release (`-Os`), sobre a `main` da v0.4.0:
