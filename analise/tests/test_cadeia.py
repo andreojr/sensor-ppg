@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from analise import cadeia, espectral, filtro, picos, qualidade, respiracao, vetores
+from analise import cadeia, espectral, filtro, picos, qualidade, respiracao, spo2, vetores
 
 FS = 100
 
@@ -75,6 +75,14 @@ def test_espectral_e_respiracao_iguais_aos_modulos(caso):
         (int(i), bool(v), float(rpm)) for i, v, rpm, _ in resp]
 
 
+def test_spo2_igual_ao_modulo_no_bruto(caso):
+    """A SpO2 roda sobre o bruto (com DC), IR e vermelho; no n da amostra que fechou a janela."""
+    ir, vm, s = caso
+    esperado = spo2.estima(ir, vm)
+    assert len(s.spo2) > 50 and any(o.valido for o in s.spo2)
+    assert [tuple(o) for o in s.spo2] == [(e.n, e.valido, e.spo2, e.r) for e in esperado]
+
+
 def test_vetor_em_dia():
     """O Python de hoje, na entrada gravada no vetor, dá a saída gravada (sem PhysioNet)."""
     caminho = vetores.TESTES / "cadeia" / "vetores" / "physionet.h"
@@ -102,9 +110,10 @@ LINHAS_PLACA = (
     "h,120,1,41.50,30.25,1\n"
     "e,800,1,72.10\n"
     "r,2400,15.20,1\n"
+    "s,899,1,96.35,0.546\n"
     "t,99,1,7385\n"
 )
-TIPOS = {"picos": 0, "hrv": 0, "espectral": 0, "respiracao": 0, "tela": 0}
+TIPOS = {"picos": 0, "hrv": 0, "espectral": 0, "respiracao": 0, "spo2": 0, "tela": 0}
 
 
 def _captura(pasta: Path, linhas: str) -> Path:
@@ -134,6 +143,19 @@ def test_compara_replay_numero_na_tolerancia(tmp_path):
     assert cadeia.compara_replay(destino, perto)["picos"] == 0
     longe = LINHAS_PLACA.replace("812.50", "813.50")
     assert cadeia.compara_replay(destino, longe)["picos"] == 1
+
+
+def test_compara_replay_spo2(tmp_path):
+    from analise import captura
+
+    destino = _captura(tmp_path, LINHAS_PLACA)
+    assert captura.destino_ponto(destino, "spo2").exists()
+    perto = LINHAS_PLACA.replace("96.35,0.546", "96.36,0.547")  # um dígito no fim
+    assert cadeia.compara_replay(destino, perto)["spo2"] == 0
+    longe = LINHAS_PLACA.replace("96.35,0.546", "96.35,0.550")
+    assert cadeia.compara_replay(destino, longe)["spo2"] == 1
+    invalida = LINHAS_PLACA.replace("s,899,1,", "s,899,0,")
+    assert cadeia.compara_replay(destino, invalida)["spo2"] == 1
 
 
 def test_compara_replay_conta_o_que_falta_na_captura(tmp_path):

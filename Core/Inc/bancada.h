@@ -3,7 +3,7 @@
  *
  * As bancadas só existem com a opção do CMake ligada (-DBANCADA_DECIMACAO=ON,
  * -DBANCADA_FILTRO=ON, -DBANCADA_PICOS=ON, -DBANCADA_ESPECTRAL=ON,
- * -DBANCADA_RESPIRACAO=ON, -DBANCADA_DISPLAY=ON): tocam a fonte falsa (o vetor do teste no PC) no
+ * -DBANCADA_RESPIRACAO=ON, -DBANCADA_SPO2=ON, -DBANCADA_DISPLAY=ON): tocam a fonte falsa (o vetor do teste no PC) no
  * módulo, conferem com a saída do Python e medem os ciclos. O resultado sai
  * pela serial como comentário ("# bancada ...").
  */
@@ -33,6 +33,10 @@
    caber num período de amostra inteiro (96 MHz / 100 Hz = 960 000 ciclos). */
 #define BANCADA_ORCAMENTO_ESPECTRAL 9600u
 #define BANCADA_ORCAMENTO_ESPECTRAL_MAX 960000u
+
+/* Orçamento do spo2: 1% da CPU por amostra a 100 Hz (96 MHz / 100 Hz / 100), na média e no pior
+   caso (a amostra que fecha um segundo: um pouco mais de conta, uma vez por segundo). */
+#define BANCADA_ORCAMENTO_SPO2 9600u
 
 /* Liga o contador de ciclos do núcleo (DWT->CYCCNT). */
 void ciclos_liga(void);
@@ -78,6 +82,11 @@ bool bancada_respiracao(void);
 #ifdef BANCADA_DISPLAY
 /* Demonstração das telas com dados de mentira, sem o sensor. Não volta (false se não há display). */
 bool bancada_display(void);
+#endif
+
+#ifdef BANCADA_SPO2
+/* Roda o bruto da fonte falsa no spo2 e manda o resultado pela serial. true se passou. */
+bool bancada_spo2(void);
 #endif
 
 #endif /* BANCADA_H */

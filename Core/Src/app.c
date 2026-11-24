@@ -33,7 +33,7 @@ static void para(const char *msg, uint32_t tam, bool na_tela, oled_erro_t erro)
 
 static void cabecalho(void)
 {
-    char texto[512];
+    char texto[640];
     int n = snprintf(texto, sizeof texto,
                      "# sensor-ppg: laco principal, serial %s\n"
                      "# MAX30102 %u Hz: n,ir,vermelho (so na completa)\n"
@@ -43,6 +43,7 @@ static void cabecalho(void)
                      "# espectral: e,n,bpm_valido,bpm\n"
                      "# hrv: h,n_pico,valido,sdnn,rmssd,rr_usado\n"
                      "# respiracao 1 Hz: r,n,rpm,valido\n"
+                     "# spo2 (ESTIMADA, reta 110 - 25 R, sem calibracao): s,n,valido,spo2,r\n"
                      "# tela 1 Hz: t,n,mostra,bpm x100\n"
                      "# laco 1 Hz (TIM2): amostras, fila_max, fila_cheia, perdidas\n",
                      APP_SERIAL_COMPLETA ? "completa" : "padrao", MAX30102_FS_HZ, PPG_FS_HZ,
@@ -109,6 +110,9 @@ void app_init(I2C_HandleTypeDef *sensor, I2C_HandleTypeDef *display, UART_Handle
 #endif
 #ifdef BANCADA_RESPIRACAO
     (void)bancada_respiracao();
+#endif
+#ifdef BANCADA_SPO2
+    (void)bancada_spo2();
 #endif
 #ifdef BANCADA_CADEIA
     (void)bancada_cadeia(&cadeia); /* a cadeia é reiniciada logo abaixo */

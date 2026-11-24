@@ -2,10 +2,14 @@
 
 Entra o bruto (saída da decimação, a 100 Hz, com DC) e saem as mesmas coisas
 que a placa manda pela serial: batimentos (p,), BPM espectral (e,), HRV (h,),
-respiração (r,) e o BPM que a tela mostra (t,). Os módulos são os do Python
-que já existem; aqui só a ordem e as regras do laço, iguais às do C:
+respiração (r,), SpO2 estimada (s,) e o BPM que a tela mostra (t,). Os módulos
+são os do Python que já existem; aqui só a ordem e as regras do laço, iguais às
+do C:
 
-    filtro -> picos -> espectral -> respiração -> qualidade
+    filtro -> picos -> espectral -> respiração -> spo2 -> qualidade
+
+- SpO2: roda sobre o bruto (com DC), IR e vermelho; não depende de nenhum outro
+  módulo (quem decide se ela aparece na tela é a qualidade, fora da cadeia).
 
 - Batimento: guarda o BPM cru do picos e entra na fila do HRV com o julgamento
   da qualidade "de antes"; fila cheia solta o mais antigo direto pro HRV, com o
@@ -38,12 +42,12 @@ from typing import NamedTuple
 
 import numpy as np
 
-from analise import espectral, filtro, hrv, picos, qualidade, respiracao
+from analise import espectral, filtro, hrv, picos, qualidade, respiracao, spo2
 
 FS_HZ = 100
 VETOR_INICIO_S = 60
 VETOR_DURACAO_S = 90
-TOL_VETOR = 0.01  # a maior entre as dos vetores do picos e do hrv (rr_ms, bpm, sdnn, rmssd)
+TOL_VETOR = 0.01  # a maior entre as dos vetores dos módulos (picos e hrv; a do spo2 é 1e-3)
 
 
 class Bat(NamedTuple):
@@ -83,6 +87,15 @@ class Resp(NamedTuple):
     rpm: float
 
 
+class Oxi(NamedTuple):
+    """Linha s,: a SpO2 estimada (0 se inválida) e o R da janela."""
+
+    n: int
+    valido: bool
+    spo2: float
+    r: float
+
+
 class Tela(NamedTuple):
     """Linha t,: o BPM do picos só se a qualidade e o picos concordam (0 se não)."""
 
@@ -97,6 +110,7 @@ class Saidas:
     espectral: list[Esp] = field(default_factory=list)
     hrv: list[Hrv] = field(default_factory=list)
     respiracao: list[Resp] = field(default_factory=list)
+    spo2: list[Oxi] = field(default_factory=list)
     tela: list[Tela] = field(default_factory=list)
 
 
@@ -106,7 +120,7 @@ def roda(ir: np.ndarray, vm: np.ndarray) -> Saidas:
     vm = np.asarray(vm, dtype=np.float64)
     f_ir = filtro.filtra(ir)
     p, h, q, fila = picos.Picos(), hrv.Hrv(), qualidade.Qualidade(), qualidade.Fila()
-    e, r = espectral.Espectral(), respiracao.Estimador()
+    e, r, o2 = espectral.Espectral(), respiracao.Estimador(), spo2.Spo2()
     s = Saidas()
     julg: tuple[int, bool] | None = None   # (n, usavel) do último julgamento
     ultimo: Bat | None = None             # último batimento, com o BPM cru
@@ -134,6 +148,10 @@ def roda(ir: np.ndarray, vm: np.ndarray) -> Saidas:
         saiu, valido, rpm, _ = r.processa(float(ir[n]))
         if saiu:
             s.respiracao.append(Resp(n, valido, rpm))
+
+        oxi = o2.processa(float(ir[n]), float(vm[n]))  # o bruto, não o filtrado
+        if oxi is not None:
+            s.spo2.append(Oxi(n, oxi.valido, oxi.spo2, oxi.r))
 
         j = q.processa(n, float(ir[n]), float(vm[n]))
         if j is not None:
@@ -170,6 +188,10 @@ def arrays(s: Saidas) -> dict[str, np.ndarray]:
         "resp_n": col(s.respiracao, "n", np.int32),
         "resp_valido": col(s.respiracao, "valido", np.int32),
         "resp_rpm": col(s.respiracao, "rpm", np.float32),
+        "spo2_n": col(s.spo2, "n", np.int32),
+        "spo2_valido": col(s.spo2, "valido", np.int32),
+        "spo2_pct": col(s.spo2, "spo2", np.float32),
+        "spo2_r": col(s.spo2, "r", np.float32),
         "tela_n": col(s.tela, "n", np.int32),
         "tela_mostra": col(s.tela, "mostra", np.int32),
         "tela_bpm": col(s.tela, "bpm", np.float32),
@@ -205,6 +227,9 @@ COLUNAS_NUMERO = {
     "hrv": {2: 0.1, 3: 0.1},              # sdnn, rmssd
     "espectral": {2: 0.1},                # bpm
     "respiracao": {1: 0.1},               # rpm
+    # A linha s, tem a spo2 com 2 casas e o R com 3: um arredondamento que vira no último
+    # dígito (mais a folga do float na diferença).
+    "spo2": {2: 0.02, 3: 0.002},          # spo2, r
     "tela": {2: 0.1},                     # bpm
 }
 REPLAY_BIN = Path(__file__).resolve().parents[3] / "build" / "testes" / "replay_cadeia"

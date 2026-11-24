@@ -29,7 +29,7 @@ TESTES = Path(__file__).resolve().parents[3] / "testes"
 FONTE_H = Path(__file__).resolve().parents[3] / "Core" / "Inc" / "pds" / "oled" / "oled_fonte.h"
 
 # Fonte 5x7: cada letra cabe numa célula 6x8 (1 coluna e 1 linha vazias de espaço).
-# Sem acento nem cedilha. '*' é o coração.
+# Sem acento nem cedilha. '*' é o coração; '~' marca a SpO2 como estimada (sem calibração).
 FONTE = {
     " ": [".....", ".....", ".....", ".....", ".....", ".....", "....."],
     "0": [".###.", "#...#", "#..##", "#.#.#", "##..#", "#...#", ".###."],
@@ -81,6 +81,7 @@ FONTE = {
     ">": [".#...", "..#..", "...#.", "....#", "...#.", "..#..", ".#..."],
     "=": [".....", ".....", "#####", ".....", "#####", ".....", "....."],
     "*": [".....", ".#.#.", "#####", "#####", ".###.", "..#..", "....."],
+    "~": [".....", ".....", ".#...", "#.#.#", "...#.", ".....", "....."],
 }
 
 
@@ -275,7 +276,7 @@ def tela_resumo(linhas: list[tuple[str, str]], pos: str, spo2: str, resp: str) -
     for i, (rotulo, valor) in enumerate(linhas):
         fb.text(0, 8 * (i + 1), rotulo)
         fb.text_r(128, 8 * (i + 1), valor)
-    fb.text(0, 56, "SPO2 " + spo2)
+    fb.text(0, 56, "SPO2~ " + spo2)
     fb.text_r(128, 56, "RESP " + resp)
     return fb
 
@@ -341,7 +342,7 @@ def tela_erro(qual: str) -> Fb:
 def tela_alvo(spo2: str, resp: str, bpm: str, sinal: str, onda: np.ndarray) -> Fb:
     fb = Fb()
     fb.text_r(36, 0, spo2, 2)
-    fb.text(40, 0, "SPO2")
+    fb.text(40, 0, "SPO2~")
     fb.text(40, 8, "%")
     fb.text_r(100, 0, resp, 2)
     fb.text(102, 0, "RESP")
@@ -405,7 +406,8 @@ def gera_fonte_c() -> str:
     linhas = [
         "/* Gerado por analise/src/analise/oled.py (uv run python -m analise.oled). Não edite à mão.",
         " * Fonte 5x7 do design do display: cada linha da letra tem 5 bits, o bit 4 é a coluna da",
-        " * esquerda. Só maiúsculas, algarismos e alguns sinais; '*' é o coração. */",
+        " * esquerda. Só maiúsculas, algarismos e alguns sinais; '*' é o coração e '~' marca a",
+        " * SpO2 como estimada. */",
         "#ifndef PDS_OLED_OLED_FONTE_H",
         "#define PDS_OLED_OLED_FONTE_H",
         "",

@@ -23,7 +23,7 @@ PDS própria: é a "cola" que antes ficava no `main.c`.
 |---|---|
 | 1. Python (os módulos que já existem, na ordem da placa) | feito: `analise.cadeia.roda()` |
 | 2. C sem HAL | feito: `cadeia.h`, `cadeia.c`, `linhas.c`, `fila.h` |
-| 3. Teste no PC contra o vetor | feito: `testes/cadeia/`, no CI (90 s do PhysioNet, 478 saídas iguais) |
+| 3. Teste no PC contra o vetor | feito: `testes/cadeia/`, no CI (90 s do PhysioNet, 561 saídas iguais: as 478 de antes e as 83 da SpO2) |
 | 4. Placa com o vetor | feito (23/11): `-DBANCADA_CADEIA=ON`, 478 saídas, 0 fora da tolerância |
 | 5. Sensor real | feito (23/11): `analise.cadeia --replay` numa captura de ~2 min (abaixo); usa só as linhas `b,` e as de resultado, então não precisa de `-DSERIAL_COMPLETA` |
 
@@ -32,10 +32,10 @@ PDS própria: é a "cola" que antes ficava no `main.c`.
 Por amostra do bruto (a decimação fica antes, no `sensor.c`):
 
 ```text
-bruto ─► filtro ─► picos ─► espectral ─► respiração ─► qualidade
-          │         │                                    │
-          │         └─ batimento: fila do HRV ◄──────────┘ julgamento: esvazia a fila
-          │                                                no HRV e decide o BPM da tela
+bruto ─► filtro ─► picos ─► espectral ─► respiração ─► spo2 ─► qualidade
+          │         │                                              │
+          │         └─ batimento: fila do HRV ◄────────────────────┘ julgamento: esvazia a fila
+          │                                                          no HRV e decide o BPM da tela
           └─ filtrado (onda do display)
 ```
 
@@ -70,7 +70,7 @@ mais recente):
 | `hrv` | a cada saída do HRV |
 | `respiracao` | a cada estimativa (1 por segundo) |
 | `qualidade` | a cada julgamento |
-| `spo2` | nunca: `valido = false` até a #125 |
+| `spo2` | a cada estimativa (1 por segundo, do **bruto**); é uma ESTIMATIVA, sem calibração |
 
 Entre dois julgamentos, `bpm_picos.valido` mantém a última decisão e o número
 acompanha o último batimento; se esse batimento vier com BPM inválido (o picos perdeu o
@@ -101,7 +101,9 @@ ctest --test-dir build/testes --output-on-failure
 - `teste_cadeia`: 90 s de `s1_sit` (a partir de 60 s, no nível do sensor) pela
   cadeia; batimentos, espectral, HRV, respiração e tela iguais ao Python (discretos
   exatos, números com tolerância 0,01). Também: relógio nulo não mede, relógio falso
-  conta cada módulo, e 21 amostras com duas saídas de HRV.
+  conta cada módulo, e 21 amostras com duas saídas de HRV. A SpO2 (83 saídas) também é conferida
+  aqui; na placa, a `bancada_cadeia` (`compara_cadeia.h`) ainda **não** compara a SpO2 (a `bancada_spo2`
+  confere o módulo sozinho).
 - `teste_linhas`, `teste_fila`: o texto das linhas e a fila (cheia, ordem, volta do
   anel, volta do contador de ciclos).
 - `teste_replay`: o replay (abaixo) decima igual ao vetor da decimação, preenche um

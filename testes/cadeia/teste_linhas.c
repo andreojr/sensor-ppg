@@ -2,6 +2,7 @@
  * Teste das linhas da serial: o mesmo texto que o main.c da v0.3 mandava
  * (o analise.captura lê essas linhas).
  */
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -45,6 +46,9 @@ static cadeia_saida_t saida_cheia(void)
     s.bpm_espectral = (ppg_bpm_t){false, 0.0f};
     s.respirou = true;
     s.respiracao = (ppg_respiracao_t){true, 15.2f};
+    s.oxigenou = true;
+    s.spo2 = (ppg_spo2_t){true, 96.36f};
+    s.spo2_r = 0.5464f;
     s.julgou = true;
     s.mostra = true;
     return s;
@@ -64,6 +68,7 @@ static void todas(void)
           "h,1180,0,0.00,0.00,0\n"
           "e,1500,0,0.00\n"
           "r,1500,15.20,1\n"
+          "s,1500,1,96.36,0.546\n"
           "t,1500,1,7385\n");
     if (n != strlen(buf)) {
         printf("devolveu %zu, escreveu %zu\n", n, strlen(buf));
@@ -87,6 +92,32 @@ static void so_bruto_e_tela_apagada(void)
     char buf[LINHAS_MAX];
     linhas_cadeia(&s, &bruto, false, buf, sizeof buf);
     igual("tela apagada", buf, "b,7,1.00,2.00\nt,7,0,0\n");
+}
+
+/* O R da linha s: limitado a 999.999 (um R enorme seria UB ao virar unsigned long), negativo
+   e NaN saem 0, e os normais não mudam. */
+static void r_limitado(void)
+{
+    const struct {
+        float r;
+        const char *esperado;
+    } casos[] = {
+        {0.5464f, "s,9,0,0.00,0.546\n"}, {999.0f, "s,9,0,0.00,999.000\n"},
+        {1.0e12f, "s,9,0,0.00,999.999\n"}, {INFINITY, "s,9,0,0.00,999.999\n"},
+        {-2.0f, "s,9,0,0.00,0.000\n"},     {NAN, "s,9,0,0.00,0.000\n"},
+    };
+    for (size_t k = 0; k < sizeof casos / sizeof casos[0]; k++) {
+        cadeia_saida_t s;
+        memset(&s, 0, sizeof s);
+        s.oxigenou = true;
+        s.spo2 = (ppg_spo2_t){false, 0.0f};
+        s.spo2_r = casos[k].r;
+        ppg_amostra_t bruto = {9u, 1.0f, 2.0f};
+        char buf[LINHAS_MAX];
+        linhas_cadeia(&s, &bruto, false, buf, sizeof buf);
+        const char *linha = strstr(buf, "s,");
+        igual("r limitado", linha ? linha : "", casos[k].esperado);
+    }
 }
 
 static void buffer_pequeno(void)
@@ -117,6 +148,7 @@ int main(void)
     centesimos();
     todas();
     so_bruto_e_tela_apagada();
+    r_limitado();
     buffer_pequeno();
     cru();
     printf("%s\n", falhas ? "FALHOU" : "OK");

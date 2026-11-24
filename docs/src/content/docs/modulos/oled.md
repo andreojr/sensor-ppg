@@ -34,14 +34,14 @@ Esta página é atualizada em todo PR que mexe no módulo.
 ## As telas
 
 Cada pixel é 1 bit (sem cinza). A fonte é 5×7 em células de 6×8, só maiúsculas, algarismos e
-`- . , : % / ! ? ( ) > = *` (o `*` é o coração): minúscula vira maiúscula e o que não está na
-fonte vira `?`. Texto grande é a mesma fonte com cada pixel dobrado (12×16).
+`- . , : % / ! ? ( ) > = * ~` (o `*` é o coração e o `~` marca a SpO2 como estimada): minúscula vira
+maiúscula e o que não está na fonte vira `?`. Texto grande é a mesma fonte com cada pixel dobrado (12×16).
 
 | Tela | Quando aparece | O que mostra |
 |---|---|---|
 | Principal | rodízio (8 s) | BPM grande, coração, 5 barras de qualidade e a onda (128 × 47, 2,56 s) |
-| Resumo | rodízio (4 s) | BPM picos e FFT, SDNN, RMSSD, LF/HF, qualidade, SpO2 e respiração |
-| Alvo | rodízio (4 s), só se SpO2 ou respiração têm valor | SpO2 e respiração grandes, BPM, sinal e a onda (128 × 32) |
+| Resumo | rodízio (4 s) | BPM picos e FFT, SDNN, RMSSD, LF/HF, qualidade, SpO2 (rótulo `SPO2~`) e respiração |
+| Alvo | rodízio (4 s), só se SpO2 ou respiração têm valor | SpO2 (rótulo `SPO2~`) e respiração grandes, BPM, sinal e a onda (128 × 32) |
 | Sem dedo | `qualidade.valido` e `dedo_presente = false` | "SEM DEDO" e a instrução; ganha de todas |
 | Sinal ruim | dedo presente e `usavel = false` | aviso invertido e a onda continua; ganha das do rodízio |
 | Inicialização | boot | nome, uma linha por etapa (`...` ou `OK`) e "AGUARDE" |
@@ -138,7 +138,12 @@ ocupa o barramento ~18 ms a cada 50 ms (~36%).
 ## Pendente
 
 - **Botão** pra trocar de tela, se o rodízio por tempo não servir: depende de configurar um pino no `.ioc`.
-- **SpO2:** o display já lê `spo2` em `ppg_resultados_t` e mostra `--` enquanto não houver módulo.
+- **SpO2:** o display lê `spo2` em `ppg_resultados_t`, que a cadeia preenche com o módulo
+  [SpO2](../spo2/) (uma estimativa, sem calibração); mostra `--` enquanto `spo2.valido` for falso.
+  O rótulo sai como `SPO2~` nas telas resumo e alvo: o `~` é a marca de "estimada" que a #27 pede (não há
+  oxímetro de referência). Cabe sem encostar na respiração mesmo com 3 algarismos (`SPO2~ 100` vai até a
+  coluna 52, e o `RESP 99` começa na 87; na alvo, o rótulo vai até a coluna 68 e o número grande da
+  respiração começa na 78). Quando houver calibração, sai o `~`.
 - **Rodízio:** a fase vem de `agora_ms % ciclo`, e o ciclo muda de 12 s pra 16 s quando a tela alvo entra
   ou sai (SpO2 ou respiração mudam de válido). Nessa troca a tela pode pular de uma pra outra antes do tempo.
 - O desenho foi medido no ARM emulado em `-Os`; na placa, em Debug (`-O0`), a pior chamada medida foi 4,8 ms.

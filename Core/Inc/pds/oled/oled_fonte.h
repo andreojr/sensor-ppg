@@ -1,14 +1,15 @@
 /* Gerado por analise/src/analise/oled.py (uv run python -m analise.oled). Não edite à mão.
  * Fonte 5x7 do design do display: cada linha da letra tem 5 bits, o bit 4 é a coluna da
- * esquerda. Só maiúsculas, algarismos e alguns sinais; '*' é o coração. */
+ * esquerda. Só maiúsculas, algarismos e alguns sinais; '*' é o coração e '~' marca a
+ * SpO2 como estimada. */
 #ifndef PDS_OLED_OLED_FONTE_H
 #define PDS_OLED_OLED_FONTE_H
 
 #include <stdint.h>
 
-#define OLED_FONTE_N 50u
+#define OLED_FONTE_N 51u
 
-static const char OLED_FONTE_CHAVES[OLED_FONTE_N + 1u] = " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-.,:%/!?()>=*";
+static const char OLED_FONTE_CHAVES[OLED_FONTE_N + 1u] = " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-.,:%/!?()>=*~";
 
 static const uint8_t OLED_FONTE[OLED_FONTE_N][7] = {
     {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, /* ' ' */
@@ -61,6 +62,7 @@ static const uint8_t OLED_FONTE[OLED_FONTE_N][7] = {
     {0x08, 0x04, 0x02, 0x01, 0x02, 0x04, 0x08}, /* '>' */
     {0x00, 0x00, 0x1F, 0x00, 0x1F, 0x00, 0x00}, /* '=' */
     {0x00, 0x0A, 0x1F, 0x1F, 0x0E, 0x04, 0x00}, /* '*' */
+    {0x00, 0x00, 0x08, 0x15, 0x02, 0x00, 0x00}, /* '~' */
 };
 
 #endif /* PDS_OLED_OLED_FONTE_H */

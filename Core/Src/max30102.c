@@ -14,8 +14,8 @@
 #define REG_FIFO_CONFIG 0x08u
 #define REG_MODE_CONFIG 0x09u
 #define REG_SPO2_CONFIG 0x0Au
-#define REG_LED1_PA 0x0Cu /* vermelho */
-#define REG_LED2_PA 0x0Du /* IR */
+#define REG_LED1_PA 0x0Cu /* LED1: vermelho no datasheet, IR no nosso módulo */
+#define REG_LED2_PA 0x0Du /* LED2: IR no datasheet, vermelho no nosso módulo */
 #define REG_PART_ID 0xFFu
 
 #define PART_ID 0x15u
@@ -31,7 +31,18 @@
 #define LED_PA 0x24u
 #define INT_A_FULL 0x80u
 
-#define BYTES_POR_AMOSTRA 6u /* 3 do vermelho, 3 do IR */
+/*
+ * O nosso módulo (o verde "MAX30100/30102") vem com os LEDs trocados: o LED1, que o datasheet
+ * chama de vermelho, é o infravermelho, e o LED2 é o vermelho (conferido na placa em 24/11/2026:
+ * com o LED1 apagado, a luz vermelha continua acesa). Com 1, a leitura desfaz a troca, e o resto
+ * do firmware recebe ir e vermelho de verdade, como o ppg.h pede. Para um módulo certo,
+ * mude para 0.
+ */
+#ifndef MAX30102_LEDS_TROCADOS
+#define MAX30102_LEDS_TROCADOS 1
+#endif
+
+#define BYTES_POR_AMOSTRA 6u /* 3 do LED1, 3 do LED2 */
 #define MASCARA_18_BITS 0x3FFFFu
 #define PTR_MASCARA 0x1Fu
 
@@ -142,8 +153,15 @@ HAL_StatusTypeDef max30102_le_fifo(max30102_amostra_t amostras[MAX30102_FIFO_TAM
     for (uint32_t i = 0; i < disponiveis; i++)
     {
         const uint8_t *p = &bytes[i * BYTES_POR_AMOSTRA];
-        amostras[i].vermelho = amostra_de(p); /* modo SpO2: LED1 (vermelho) vem primeiro */
-        amostras[i].ir = amostra_de(p + 3);
+        /* Modo SpO2: o LED1 vem primeiro no FIFO, depois o LED2. */
+        uint32_t led1 = amostra_de(p), led2 = amostra_de(p + 3);
+#if MAX30102_LEDS_TROCADOS
+        amostras[i].ir = led1;
+        amostras[i].vermelho = led2;
+#else
+        amostras[i].vermelho = led1;
+        amostras[i].ir = led2;
+#endif
     }
     *n = disponiveis;
     *perdidas = ovf;

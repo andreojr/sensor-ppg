@@ -426,3 +426,57 @@ bool bancada_display(void)
 }
 
 #endif /* BANCADA_DISPLAY */
+
+#ifdef BANCADA_SPO2
+
+#include <math.h>
+
+#include "spo2/spo2.h"
+/* O mesmo vetor do teste no PC: o sem_dedo tem janelas válidas e inválidas. */
+#include "spo2/vetores/sem_dedo.h"
+
+bool bancada_spo2(void)
+{
+    static spo2_t s;
+    spo2_init(&s);
+
+    ciclos_t c = {0};
+    uint32_t k = 0, fora = 0;
+    float pior = 0.0f;
+    for (uint32_t i = 0; i < SEM_DEDO_IR_N; i++) {
+        ppg_amostra_t x = {i, sem_dedo_ir[i], sem_dedo_vermelho[i]};
+        ppg_spo2_t saida;
+        uint32_t t0 = ciclos_agora();
+        bool saiu = spo2_processa(&s, &x, &saida);
+        ciclos_conta(&c, ciclos_agora() - t0);
+        if (!saiu)
+            continue;
+        if (k < SEM_DEDO_VALIDO_N) {
+            float erro = fmaxf(fabsf(saida.spo2_pct - sem_dedo_spo2[k]), fabsf(spo2_r(&s) - sem_dedo_r[k]));
+            if (erro > pior)
+                pior = erro;
+            fora += (int32_t)saida.valido != sem_dedo_valido[k] || !(erro <= SEM_DEDO_TOL);
+        }
+        k++;
+    }
+
+    uint32_t media = (uint32_t)(c.soma / c.conta);
+    bool ok = k == SEM_DEDO_VALIDO_N && fora == 0 && media <= BANCADA_ORCAMENTO_SPO2 &&
+              c.max <= BANCADA_ORCAMENTO_SPO2;
+    char linha[160];
+    int n = snprintf(linha, sizeof linha,
+                     "# bancada spo2: %lu saidas (esperado %lu), %lu fora da tolerancia, "
+                     "erro max %lu milesimos\n",
+                     (unsigned long)k, (unsigned long)SEM_DEDO_VALIDO_N, (unsigned long)fora,
+                     (unsigned long)(pior * 1000.0f + 0.5f));
+    serial_escreve(linha, (uint32_t)n);
+    n = snprintf(linha, sizeof linha,
+                 "# bancada spo2: ciclos por amostra med %lu max %lu (orcamento %lu): %s\n",
+                 (unsigned long)media, (unsigned long)c.max,
+                 (unsigned long)BANCADA_ORCAMENTO_SPO2, ok ? "OK" : "FALHOU");
+    serial_escreve(linha, (uint32_t)n);
+    serial_envia();
+    return ok;
+}
+
+#endif /* BANCADA_SPO2 */

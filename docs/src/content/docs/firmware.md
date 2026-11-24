@@ -15,6 +15,7 @@ Código que usa HAL, em `Core/Inc` e `Core/Src` (fora de `pds/`).
 | HRV na placa (batimentos → SDNN e RMSSD) | André | feito: `pds/cadeia/`, linhas `h,`, bate com o Python na placa; ver [HRV](../modulos/hrv/) |
 | Espectral na placa (filtrado → BPM pela FFT) | Celso | feito: `pds/cadeia/`, linhas `e,`, bate com o Python na placa; ver [Espectral](../modulos/espectral/) e [FFT](../modulos/fft/) |
 | Respiração na placa (bruto → rpm, 1 por segundo) | João | feita: `pds/cadeia/` e `bancada.c`; ver [Respiração](../modulos/respiracao/) |
+| SpO2 na placa (bruto → SpO2 **estimada**) | Celso | bancada passou na placa (24/11: 33/33, erro 0); sensor real (24/11): 361 de 361 válidas, mediana 98,6 a 98,9%: `pds/cadeia/`, `bancada.c`, linhas `s,`; ver [SpO2](../modulos/spo2/) |
 | Bancada do HRV na placa (`-DBANCADA_HRV=ON`) | André | feita: `bancada_hrv.c`, passou na placa; ver [HRV](../modulos/hrv/) |
 | Bancada da qualidade na placa (`-DBANCADA_QUALIDADE=ON`) | André | feita: `bancada_qualidade.c`, passou na placa (55/55, pior caso 2 149 ciclos no Debug); ver [Qualidade](../modulos/qualidade/) |
 | Fonte falsa (PhysioNet em flash) | André | feita: os vetores do PhysioNet das bancadas (`-DBANCADA_*`) |
@@ -55,8 +56,29 @@ PART_ID (0x15), reseta o sensor e configura:
 | MODE_CONFIG (0x09) | 0x03, modo SpO2 | vermelho e IR alternados |
 | SPO2_CONFIG (0x0A) | 0x2F | ADC em 4096 nA, **400 Hz** (`MAX30102_FS_HZ`), pulso de 411 µs (18 bits) |
 | FIFO_CONFIG (0x08) | 0x0F | sem média no sensor (a decimação é nossa), sem rollover, INT com 17 amostras na FIFO |
-| LED1_PA / LED2_PA (0x0C / 0x0D) | 0x24 | 7,2 mA no vermelho e no IR |
+| LED1_PA / LED2_PA (0x0C / 0x0D) | 0x24 | 7,2 mA nos dois LEDs (LED1 é o IR e LED2 o vermelho no nosso módulo, abaixo) |
 | INT_ENABLE1 (0x02) | 0x80 | só o A_FULL (FIFO quase cheia) |
+
+**LEDs trocados no nosso módulo.** No módulo verde "MAX30100/30102" que usamos, o LED1 (o
+"vermelho" do datasheet) é o infravermelho, e o LED2 é o vermelho. Conferido na placa em
+24/11/2026: com o LED1 apagado (LED1_PA = 0), a luz vermelha continua acesa. Por isso a leitura
+desfaz a troca (`MAX30102_LEDS_TROCADOS` em `max30102.c`, 1 por padrão; para um módulo certo,
+mude para 0), e o resto do firmware recebe `ir` e `vermelho` de verdade, como o `ppg.h` pede.
+
+Como se notou: com a ordem antiga, a razão das razões da SpO2 nas capturas de 22 e 23/11 dava
+R de 1,9 a 2,7 (SpO2 em torno de 50%, impossível em repouso); com os canais trocados, R de
+0,37 a 0,54 (SpO2 de 97 a 100%). Passando essas capturas pela cadeia do Python com os canais
+trocados, o BPM fica igual, o BPM confiável sai igual ou mais vezes em todas (ex.: 48 → 73 de 120
+linhas `t,` numa captura) e o HRV válido fica praticamente igual ou sobe (40 → 39 na pior).
+
+O teste de 05/10 do relatório 1 (desligar um LED de cada vez) mostrou só que o LED1 cai na
+primeira coluna do FIFO, como o datasheet diz; ele não olhava a cor do LED. Por isso a troca
+só apareceu com a SpO2.
+
+**Capturas de antes de 24/11 têm `ir` e `vermelho` trocados** (as colunas das linhas `b,` e
+das cruas). O `--replay` continua valendo (ele passa o bruto da própria captura pela cadeia),
+mas qualquer análise que dependa de qual canal é qual (a SpO2, por exemplo) precisa trocar as
+colunas antes.
 
 Antes do init, o `destrava_i2c1()` (em `main.c`) solta o barramento. Se a placa
 resetar no meio de uma leitura (F5, botão de reset, mau contato), o sensor fica
@@ -113,6 +135,7 @@ INT ficar baixo, não vem outra borda de descida, e sem isso a leitura travaria.
 # espectral: e,n,bpm_valido,bpm
 # hrv: h,n_pico,valido,sdnn,rmssd,rr_usado
 # respiracao 1 Hz: r,n,rpm,valido
+# spo2 (ESTIMADA, reta 110 - 25 R, sem calibracao): s,n,valido,spo2,r
 # tela 1 Hz: t,n,mostra,bpm x100
 # laco 1 Hz (TIM2): amostras, fila_max, fila_cheia, perdidas
 0,112034,98765
@@ -127,6 +150,7 @@ r,99,0.00,0
 ...
 e,799,1,73.85
 ...
+s,799,1,96.36,0.546
 t,1199,1,6420
 ...
 # laco: amostras 100 fila_max 5 fila_cheia 0 perdidas 0
@@ -137,6 +161,7 @@ t,1199,1,6420
 # espectral: ciclos med ... (orcamento 9600) max ... (orcamento 960000)
 # hrv: ciclos med ... max ... (orcamento 20000)
 # respiracao: ciclos med ... max ... (orcamento 9600)
+# spo2: ciclos med ... max ... (orcamento 9600)
 # qualidade: ciclos med ... max ... (orcamento 3000)
 # cadeia: ciclos med ... (orcamento 51000) max ... (orcamento 960000)
 # volta: ciclos med ... max ... (orcamento 3600000)
@@ -178,7 +203,7 @@ t,1199,1,6420
   `valido` 0.
 - A cada 1 s do TIM2, `# laco: ...` (ver [Laço principal](#laço-principal)).
 - A cada 10 s, `# decimacao: ...`, `# filtro: ...`, `# picos: ...`,
-  `# espectral: ...`, `# hrv: ...`, `# qualidade: ...` e
+  `# espectral: ...`, `# hrv: ...`, `# qualidade: ...`, `# spo2: ...` e
   `# respiracao: ciclos med X max Y` medem cada `_processa()`
   com o contador de ciclos do núcleo (DWT). Os orçamentos são 1% da CPU pra
   decimação (96 MHz / 400 Hz / 100 = 2400 ciclos por amostra do sensor), 2%
@@ -190,6 +215,10 @@ t,1199,1,6420
   amostra: 96 MHz / 100 Hz); `# espectral: ...` mostra os dois. Depois vêm a
   cadeia inteira por amostra, a volta do laço e o maior intervalo entre duas
   leituras da FIFO (ver [Laço principal](#laço-principal)).
+- Uma linha `s,` por segundo (a partir de 8 s de sinal), com a **SpO2 estimada** (`spo2_processa()` sobre o
+  **bruto**, não o filtrado): `n` (o do bruto em que a janela terminou), `valido` (0/1), `spo2` em % com 2 casas
+  (0 quando inválida) e o `r` (a razão das razões) com 3 casas. Sem calibração com oxímetro, é uma estimativa:
+  serve para a tendência e a ordem de grandeza. Só confie com o sinal bom.
 - Linhas que começam com `#` são comentário. Se o display não responder no
   boot, sai `# aviso: display nao respondeu na I2C3: segue sem ele` e a placa segue sem ele.
   Se o sensor não responder no
@@ -251,7 +280,9 @@ do módulo). O módulo tem os pull-ups na plaquinha e funciona a 3,3 V, no mesmo
 - **Resultados:** o `app.c` passa a ficha da cadeia (`cadeia_resultados()`) e a onda filtrada
   (`display_amostra()`, uma amostra por saída da cadeia, 100 Hz). O BPM segue a regra do BPM confiável:
   aparece só quando `bpm_picos.valido`, que a cadeia liga com `qualidade_bpm_confiavel()` (a mesma decisão
-  da linha `t,`), senão `--`. O SpO2 ainda não existe e sai sempre `--`.
+  da linha `t,`), senão `--`. A SpO2 (**estimada**) aparece quando `spo2.valido` (a última saída do
+  `spo2_processa()`, a mesma da linha `s,`), senão `--`; com a qualidade julgando sem dedo ou `!usavel`, a tela
+  inteira vira SEM DEDO ou SINAL RUIM.
 
 ### Bancada do display (demonstração)
 
@@ -443,6 +474,20 @@ firmware não linka: ligue só as que for usar.
 # bancada respiracao: 299 estimativas (esperado 299), 0 diferentes, erro max 0 milesimos de rpm
 # bancada respiracao: ciclos por amostra med ... max ... (orcamento 9600): OK
 ```
+### Bancada do spo2 (fonte falsa)
+
+Com `-DBANCADA_SPO2=ON`: os 40 s do bruto do vetor `sem_dedo` (`testes/spo2/vetores/sem_dedo.h`, ~32 KB na flash,
+com janelas válidas, inválidas e de transição) passam pelo spo2 e são conferidos com o Python (`valido` exato; `spo2`
+e `r` com tolerância de 0,001). Confere também o orçamento de ciclos. Pode ser ligada junto com as outras.
+
+```text
+# bancada spo2: 33 saidas (esperado 33), 0 fora da tolerancia, erro max ... milesimos
+# bancada spo2: ciclos por amostra med ... max ... (orcamento 9600): OK
+```
+
+**Medido na placa (24/11/2026):** 33 de 33 saídas, 0 fora da tolerância, erro 0; ciclos por amostra med 131 e
+max 1 532 em Release, 420 e 3 822 em Debug (orçamento 9 600). O emulador do PC dá 197 e 1 701 (sem a espera da
+flash). Com o sensor real (24/11): 361 de 361 saídas válidas, mediana 98,6 a 98,9%. Ver [SpO2](../modulos/spo2/).
 
 ### O BPM que a tela mostraria (linha `t,`)
 

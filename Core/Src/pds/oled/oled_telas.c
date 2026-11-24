@@ -155,7 +155,7 @@ void oled_tela_resumo(oled_t *o, const ppg_resultados_t *r, unsigned total)
 
     int spo2 = r->spo2.valido ? arredonda(r->spo2.spo2_pct, 100) : -1;
     int resp = r->respiracao.valido ? arredonda(r->respiracao.rpm, 99) : -1;
-    oled_texto(o, 0, 56, rotulo_valor(s, "SPO2", numero(t, spo2)), 1, true);
+    oled_texto(o, 0, 56, rotulo_valor(s, "SPO2~", numero(t, spo2)), 1, true);
     oled_texto_dir(o, 128, 56, rotulo_valor(s, "RESP", numero(t, resp)), 1, true);
 }
 
@@ -185,7 +185,7 @@ void oled_tela_alvo(oled_t *o, const ppg_resultados_t *r)
     int qual = r->qualidade.valido ? arredonda(r->qualidade.indice * 100.0f, 100) : -1;
     oled_limpa(o);
     oled_texto_dir(o, 36, 0, numero(s, spo2), 2, true);
-    oled_texto(o, 40, 0, "SPO2", 1, true);
+    oled_texto(o, 40, 0, "SPO2~", 1, true); /* "~": estimada, sem calibração */
     oled_texto(o, 40, 8, "%", 1, true);
     oled_texto_dir(o, 100, 0, numero(s, resp), 2, true);
     oled_texto(o, 102, 0, "RESP", 1, true);
