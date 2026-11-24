@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import shutil
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -446,8 +447,11 @@ def main(argv: list[str] | None = None) -> None:
     destino = args.saida or DADOS / f"sensor_{datetime.now().astimezone():%Y%m%d_%H%M%S}.csv"
     with serial.Serial(args.porta, BAUD, timeout=0.5) as porta:
         porta.reset_input_buffer()
-        print(f"gravando {args.porta} em {destino} (Ctrl+C pra parar)")
-        espelho = Espelho(braille=args.braille) if args.tela else None
+        espelho = None
+        if args.tela:  # só o desenho na tela; o resumo sai depois
+            espelho = Espelho(braille=args.braille, terminal=tuple(shutil.get_terminal_size()))
+        else:
+            print(f"gravando {args.porta} em {destino} (Ctrl+C pra parar)")
         try:
             resumo = grava(
                 AoVivo(porta) if args.qualidade else porta, destino, args.segundos, espelho
@@ -458,7 +462,9 @@ def main(argv: list[str] | None = None) -> None:
 
     for linha in resumo.texto():
         print(linha)
-    if args.tela:
+    if espelho is not None:
+        if espelho.aviso():
+            print(espelho.aviso())
         print(f"{resumo.paginas_tela} páginas de tela (d,) recebidas")
     for ponto, linhas in resumo.por_ponto.items():
         print(f"{linhas} linhas do {ponto} da placa em {destino_ponto(destino, ponto)}")

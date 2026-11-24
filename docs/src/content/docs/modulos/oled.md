@@ -126,10 +126,14 @@ uv run python -m analise.captura /dev/ttyUSB0 --tela             # meio-blocos, 
 uv run python -m analise.captura /dev/ttyUSB0 --tela --braille   # braille, 64 x 16 caracteres
 ```
 
-- A captura grava o CSV normal ao mesmo tempo. As linhas `d,` não entram em nenhum CSV.
+- Enquanto roda, o terminal mostra **só a tela do OLED**, na tela alternativa (a mesma de `vim` e
+  `less`): nada de "gravando..." antes. Ao sair (Ctrl+C, fim do `--segundos` ou erro) o terminal volta
+  ao que era antes, e só então sai o resumo, com "N páginas de tela (d,) recebidas".
+- O CSV é gravado normal ao mesmo tempo (é a evidência da #30). As linhas `d,` não entram em nenhum CSV.
 - O desenho é refeito no mesmo lugar (o cursor volta ao topo, sem rolar), no máximo 10 vezes por
-  segundo. O terminal precisa de pelo menos 128 colunas e 33 linhas (ou 64 e 17 no `--braille`),
-  com fonte que tenha os caracteres `▀ ▄ █` (ou braille). Pixel aceso é claro e o fundo é escuro.
+  segundo. O terminal precisa de pelo menos 128 colunas e 32 linhas (64 e 16 no `--braille`), com fonte
+  que tenha os caracteres `▀ ▄ █` (ou braille). Pixel aceso é claro e o fundo é escuro. Se o terminal
+  for menor, nada é desenhado e o resumo final avisa em uma linha (a gravação segue normal).
 - Página que ainda não chegou aparece apagada até chegar (no máximo ~10 s, pelo reenvio).
 - Linha `d,` inválida (página fora de 0 a 7, tamanho errado, hexadecimal inválido) é ignorada e conta
   em "linhas inválidas", como as outras.

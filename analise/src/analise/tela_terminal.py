@@ -28,9 +28,9 @@ W, H = 128, 64
 PAGINAS = H // 8
 BYTES_PAGINA = W
 
-INICIO = "\033[2J\033[?25l"  # limpa a tela e esconde o cursor
+INICIO = "\033[?1049h\033[?25l\033[2J"  # tela alternativa, sem cursor, limpa
 TOPO = "\033[H"  # cursor no canto de cima à esquerda
-FIM = "\033[0m\033[?25h"  # volta as cores e mostra o cursor
+FIM = "\033[0m\033[?25h\033[?1049l"  # volta as cores, o cursor e a tela de antes
 CORES = "\033[97;40m"  # letra branca (pixel aceso) sobre fundo preto
 
 # Braille: o bit de cada ponto da célula 2 x 4, indexado por [linha][coluna].
@@ -105,10 +105,13 @@ class Espelho:
         saida: TextIO | None = None,
         braille: bool = False,
         intervalo: float = 0.1,
+        terminal: tuple[int, int] | None = None,
     ) -> None:
         self.saida = saida if saida is not None else sys.stdout
         self.braille = braille
         self.intervalo = intervalo
+        # terminal = (colunas, linhas), se quem chama quiser conferir que o desenho cabe
+        self.terminal = terminal
         self.paginas: list[bytes | None] = [None] * PAGINAS
         self.recebidas = 0
         self._sujo = False
@@ -120,6 +123,27 @@ class Espelho:
         """Os 1024 bytes da tela; página que não chegou vale zero (apagada)."""
         zero = bytes(BYTES_PAGINA)
         return b"".join(p if p is not None else zero for p in self.paginas)
+
+    @property
+    def tamanho(self) -> tuple[int, int]:
+        """Colunas e linhas do terminal que o desenho pede."""
+        return (W // 2, H // 4) if self.braille else (W, H // 2)
+
+    @property
+    def cabe(self) -> bool:
+        return self.terminal is None or (
+            self.terminal[0] >= self.tamanho[0] and self.terminal[1] >= self.tamanho[1]
+        )
+
+    def aviso(self) -> str | None:
+        """Uma linha pro resumo final, se o terminal é pequeno e o desenho não saiu."""
+        if self.cabe:
+            return None
+        c, ln = self.tamanho
+        return (
+            f"terminal pequeno ({self.terminal[0]}x{self.terminal[1]}): o espelho precisa de "
+            f"{c}x{ln}, então não foi desenhado (o CSV foi gravado normal)"
+        )
 
     def completa(self) -> bool:
         return all(p is not None for p in self.paginas)
@@ -144,7 +168,7 @@ class Espelho:
         return desenha_braille(memoria) if self.braille else desenha_blocos(memoria)
 
     def desenha_se_precisar(self) -> None:
-        if not self._sujo:
+        if not self._sujo or not self.cabe:
             return
         agora = time.monotonic()
         if self._ultimo is not None and agora - self._ultimo < self.intervalo:
@@ -158,13 +182,13 @@ class Espelho:
             self._comecou = True
         # cada linha acaba com as cores zeradas, pra não pintar o resto do terminal
         corpo = "\n".join(f"{CORES}{linha}\033[0m" for linha in self.quadro())
-        self.saida.write(TOPO + corpo + "\n")
+        self.saida.write(TOPO + corpo)  # sem \n no fim: não rola nem com o terminal justo
         self.saida.flush()
         self._sujo = False
 
     def fecha(self) -> None:
         """Desenha o que faltou, volta as cores e o cursor."""
-        if self._sujo:
+        if self._sujo and self.cabe:
             self.desenha()
         if self._comecou:
             self.saida.write(FIM)

@@ -73,7 +73,8 @@ def test_redesenha_no_mesmo_lugar_sem_rolar():
     assert texto.startswith(tt.INICIO + tt.TOPO)  # limpa só no primeiro desenho
     assert texto.count(tt.INICIO) == 1
     assert texto.count(tt.TOPO) == 2  # um cursor ao topo por desenho
-    assert texto.split(tt.TOPO)[1].count("\n") == 32  # 32 linhas, sem linha extra que role
+    assert texto.split(tt.TOPO)[1].count("\n") == 31  # 32 linhas, sem \n no fim: não rola
+    assert "\033[?1049h" in tt.INICIO and "\033[?1049l" in tt.FIM  # tela alternativa
     e.fecha()
     assert saida.getvalue().endswith(tt.FIM)
 
@@ -81,7 +82,21 @@ def test_redesenha_no_mesmo_lugar_sem_rolar():
 def test_braille_desenha_16_linhas():
     e, saida = espelho(braille=True)
     e.linha("d,0," + HEXA)
-    assert saida.getvalue().split(tt.TOPO)[1].count("\n") == 16
+    assert saida.getvalue().split(tt.TOPO)[1].count("\n") == 15
+
+
+def test_terminal_pequeno_nao_desenha_e_avisa():
+    saida = io.StringIO()
+    e = tt.Espelho(saida=saida, intervalo=0, terminal=(100, 40))
+    e.linha("d,0," + HEXA)
+    e.fecha()
+    assert saida.getvalue() == ""
+    assert e.recebidas == 1
+    assert "100x40" in e.aviso() and "128x32" in e.aviso()
+    assert tt.Espelho(braille=True, terminal=(64, 16)).aviso() is None
+    assert tt.Espelho(terminal=(128, 32)).aviso() is None
+    assert tt.Espelho(braille=True, terminal=(63, 16)).aviso() is not None
+    assert tt.Espelho(terminal=(128, 31)).aviso() is not None
 
 
 def test_intervalo_segura_o_redesenho():
