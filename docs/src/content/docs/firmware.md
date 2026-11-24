@@ -55,8 +55,29 @@ PART_ID (0x15), reseta o sensor e configura:
 | MODE_CONFIG (0x09) | 0x03, modo SpO2 | vermelho e IR alternados |
 | SPO2_CONFIG (0x0A) | 0x2F | ADC em 4096 nA, **400 Hz** (`MAX30102_FS_HZ`), pulso de 411 µs (18 bits) |
 | FIFO_CONFIG (0x08) | 0x0F | sem média no sensor (a decimação é nossa), sem rollover, INT com 17 amostras na FIFO |
-| LED1_PA / LED2_PA (0x0C / 0x0D) | 0x24 | 7,2 mA no vermelho e no IR |
+| LED1_PA / LED2_PA (0x0C / 0x0D) | 0x24 | 7,2 mA nos dois LEDs (LED1 é o IR e LED2 o vermelho no nosso módulo, abaixo) |
 | INT_ENABLE1 (0x02) | 0x80 | só o A_FULL (FIFO quase cheia) |
+
+**LEDs trocados no nosso módulo.** No módulo verde "MAX30100/30102" que usamos, o LED1 (o
+"vermelho" do datasheet) é o infravermelho, e o LED2 é o vermelho. Conferido na placa em
+24/11/2026: com o LED1 apagado (LED1_PA = 0), a luz vermelha continua acesa. Por isso a leitura
+desfaz a troca (`MAX30102_LEDS_TROCADOS` em `max30102.c`, 1 por padrão; para um módulo certo,
+mude para 0), e o resto do firmware recebe `ir` e `vermelho` de verdade, como o `ppg.h` pede.
+
+Como se notou: com a ordem antiga, a razão das razões da SpO2 nas capturas de 22 e 23/11 dava
+R de 1,9 a 2,7 (SpO2 em torno de 50%, impossível em repouso); com os canais trocados, R de
+0,37 a 0,54 (SpO2 de 97 a 100%). Passando essas capturas pela cadeia do Python com os canais
+trocados, o BPM fica igual, o BPM confiável sai igual ou mais vezes em todas (ex.: 48 → 73 de 120
+linhas `t,` numa captura) e o HRV válido fica praticamente igual ou sobe (40 → 39 na pior).
+
+O teste de 05/10 do relatório 1 (desligar um LED de cada vez) mostrou só que o LED1 cai na
+primeira coluna do FIFO, como o datasheet diz; ele não olhava a cor do LED. Por isso a troca
+só apareceu com a SpO2.
+
+**Capturas de antes de 24/11 têm `ir` e `vermelho` trocados** (as colunas das linhas `b,` e
+das cruas). O `--replay` continua valendo (ele passa o bruto da própria captura pela cadeia),
+mas qualquer análise que dependa de qual canal é qual (a SpO2, por exemplo) precisa trocar as
+colunas antes.
 
 Antes do init, o `destrava_i2c1()` (em `main.c`) solta o barramento. Se a placa
 resetar no meio de uma leitura (F5, botão de reset, mau contato), o sensor fica
