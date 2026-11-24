@@ -11,7 +11,8 @@
  *   r,n,rpm,valido
  *   s,n,valido,spo2,r                     SpO2 estimada, R com 3 casas
  *   t,n,mostra,bpm x100
- * Números com 2 casas (fracao com 4), sem printf de float (o nano.specs não tem).
+ *   l,n,valido,lf_hf                      LF/HF, a cada 5 s (n: onde a conta terminou)
+ * Números com 2 casas (fracao com 4, lf_hf com 3), sem printf de float (o nano.specs não tem).
  * Fica aqui, e não no app, pra o replay no PC escrever o mesmo texto que a placa.
  */
 #ifndef PDS_CADEIA_LINHAS_H
@@ -23,15 +24,18 @@
 
 #include "cadeia/cadeia.h"
 
-/* Cabe uma amostra com tudo: b, f, p, CADEIA_HRV_MAX linhas h, e, r, s e t (no pior caso
-   uns 640 bytes, com as 9 linhas h). */
+/* Cabe uma amostra com tudo: b, f, p, CADEIA_HRV_MAX linhas h, e, r, s, t e l (no pior
+   caso uns 670 bytes, com as 9 linhas h). */
 #define LINHAS_MAX 1024u
 
 /* v com 2 casas e sinal, ex. "-0.25". Devolve o tamanho (como o snprintf). */
 int linhas_centesimos(char *s, size_t tam, float v);
 
+/* Igual, com 3 casas: "1.234". */
+int linhas_milesimos(char *s, size_t tam, float v);
+
 /* As linhas de uma amostra da cadeia, nesta ordem: b, f (só completa), p, cada h, e,
-   r, s, t. Só entram linhas inteiras: a que não cabe em tam fica de fora (e as
+   r, s, t, l. Só entram linhas inteiras: a que não cabe em tam fica de fora (e as
    seguintes também). Devolve os bytes escritos, sem o \0. */
 size_t linhas_cadeia(const cadeia_saida_t *s, const ppg_amostra_t *bruto, bool completa,
                      char *buf, size_t tam);

@@ -3,15 +3,26 @@
 
 #include <stdio.h>
 
-/* Parte inteira e fração separadas: v * 100 perto de 2,6e7 já perde os centésimos
-   no float. */
-int linhas_centesimos(char *s, size_t tam, float v)
+/* v com `casas` casas (escala = 10^casas). Parte inteira e fração separadas: v * 100
+   perto de 2,6e7 já perde os centésimos no float. */
+static int decimal(char *s, size_t tam, float v, long escala, int casas)
 {
     long inteira = (long)v;
     float fracao = v - (float)inteira; /* exata, mesmo sinal de v */
-    long c = inteira * 100L + (long)(fracao * 100.0f + (v < 0.0f ? -0.5f : 0.5f));
+    long c = inteira * escala + (long)(fracao * (float)escala + (v < 0.0f ? -0.5f : 0.5f));
     unsigned long a = (unsigned long)(c < 0 ? -c : c);
-    return snprintf(s, tam, "%s%lu.%02lu", c < 0 ? "-" : "", a / 100u, a % 100u);
+    return snprintf(s, tam, "%s%lu.%0*lu", c < 0 ? "-" : "", a / (unsigned long)escala, casas,
+                    a % (unsigned long)escala);
+}
+
+int linhas_centesimos(char *s, size_t tam, float v)
+{
+    return decimal(s, tam, v, 100L, 2);
+}
+
+int linhas_milesimos(char *s, size_t tam, float v)
+{
+    return decimal(s, tam, v, 1000L, 3);
 }
 
 /* Acrescenta a linha se ela couber inteira (com o \0). */
@@ -99,6 +110,14 @@ static void tela(saida_t *o, uint32_t n, bool mostra, const ppg_bpm_t *v)
                            mostra ? (unsigned long)(v->bpm * 100.0f + 0.5f) : 0ul));
 }
 
+static void lf_hf(saida_t *o, uint32_t n, bool valido, float v)
+{
+    char x[24], linha[48];
+    linhas_milesimos(x, sizeof x, valido ? v : 0.0f);
+    poe(o, linha, snprintf(linha, sizeof linha, "l,%lu,%d,%s\n", (unsigned long)n, valido ? 1 : 0,
+                           x));
+}
+
 size_t linhas_cadeia(const cadeia_saida_t *s, const ppg_amostra_t *bruto, bool completa,
                      char *buf, size_t tam)
 {
@@ -120,6 +139,8 @@ size_t linhas_cadeia(const cadeia_saida_t *s, const ppg_amostra_t *bruto, bool c
         oxigenacao(&o, bruto->n, &s->spo2, s->spo2_r);
     if (s->julgou)
         tela(&o, bruto->n, s->mostra, &s->bpm);
+    if (s->calculou_lf_hf)
+        lf_hf(&o, bruto->n, s->lf_hf_valido, s->lf_hf);
     return o.usado;
 }
 

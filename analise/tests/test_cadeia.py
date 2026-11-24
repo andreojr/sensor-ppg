@@ -6,7 +6,17 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from analise import cadeia, espectral, filtro, picos, qualidade, respiracao, spo2, vetores
+from analise import (
+    cadeia,
+    espectral,
+    filtro,
+    hrv_freq,
+    picos,
+    qualidade,
+    respiracao,
+    spo2,
+    vetores,
+)
 
 FS = 100
 
@@ -92,6 +102,25 @@ def test_vetor_em_dia():
         assert np.allclose(a[nome], np.asarray(valores, dtype=np.float32), rtol=1e-6), nome
 
 
+def test_vetor_longo_em_dia():
+    """O vetor longo (só LF/HF) também, e ele tem LF/HF válido."""
+    a = _le_vetor(vetores.TESTES / "cadeia" / "vetores" / "longo.h")
+    s = cadeia.roda(a["ir"].astype(np.float32), a["vermelho"].astype(np.float32))
+    novos = cadeia.arrays(s)
+    for nome in ("lfhf_n", "lfhf_valido", "lfhf_lf_hf"):
+        assert np.allclose(a[nome], np.asarray(novos[nome], dtype=np.float32), rtol=1e-6), nome
+    assert a["lfhf_valido"].sum() >= 5
+
+
+def test_lf_hf_na_cadencia(caso):
+    """Uma conta a cada 5 s, e o resultado sai hrv_freq.PASSOS amostras depois de começar."""
+    _, _, s = caso
+    fim = cadeia.LFHF_FASE + hrv_freq.PASSOS
+    assert [x.n for x in s.lfhf] == list(range(fim, 9000, cadeia.LFHF_PERIODO))
+    assert all(x.n % 100 != 99 for x in s.lfhf)
+    assert not any(x.valido for x in s.lfhf)  # 90 s não chegam aos 270 s de RR
+
+
 def _le_vetor(caminho: Path) -> dict[str, np.ndarray]:
     texto = caminho.read_text(encoding="utf-8")
     caso = caminho.stem
@@ -112,8 +141,10 @@ LINHAS_PLACA = (
     "r,2400,15.20,1\n"
     "s,899,1,96.35,0.546\n"
     "t,99,1,7385\n"
+    "l,537,1,1.234\n"
 )
-TIPOS = {"picos": 0, "hrv": 0, "espectral": 0, "respiracao": 0, "spo2": 0, "tela": 0}
+TIPOS = {"picos": 0, "hrv": 0, "espectral": 0, "respiracao": 0, "spo2": 0, "tela": 0,
+         "lfhf": 0}
 
 
 def _captura(pasta: Path, linhas: str) -> Path:

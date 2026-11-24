@@ -10,7 +10,13 @@
  *  - batimento: entra na fila do HRV com o julgamento "de antes"; fila cheia solta o
  *    mais antigo direto pro HRV, com o RR de fora;
  *  - julgamento da qualidade: esvazia a fila no HRV e decide o BPM da tela
- *    (qualidade_bpm_confiavel).
+ *    (qualidade_bpm_confiavel);
+ *  - cada batimento que vai pro HRV também é guardado no LF/HF (hrv_freq_guarda),
+ *    com o mesmo rr_valido;
+ *  - LF/HF: a cada CADEIA_LF_HF_PERIODO amostras, na de n % CADEIA_LF_HF_PERIODO ==
+ *    CADEIA_LF_HF_FASE (depois da qualidade), começa a conta sobre a janela que
+ *    termina no último batimento guardado; um passo por amostra nas
+ *    HRV_FREQ_PASSOS seguintes, e o resultado sai (e vai pra ficha) na última.
  *
  * A respiração e a spo2 recebem o bruto (com DC), não o filtrado; a spo2 usa o IR e o
  * vermelho e não depende dos outros módulos.
@@ -31,6 +37,7 @@
 #include "espectral/espectral.h"
 #include "filtro/filtro.h"
 #include "hrv/hrv.h"
+#include "hrv/hrv_freq.h"
 #include "picos/picos.h"
 #include "qualidade/qualidade.h"
 #include "respiracao/respiracao.h"
@@ -42,6 +49,12 @@ typedef uint32_t (*cadeia_relogio_t)(void);
 /* Saídas de HRV numa amostra: o que transbordou da fila no picos mais a fila toda
    no julgamento. */
 #define CADEIA_HRV_MAX (QUALIDADE_FILA + 1u)
+
+/* LF/HF a cada 5 s. A conta começa em n % 500 == 20 e os passos caem de 21 a 37:
+   longe da amostra pesada (n % 100 == 99: julgamento, FFT do espectral e
+   respiração) e do lote de 4 ou 5 amostras que a placa processa junto com ela. */
+#define CADEIA_LF_HF_PERIODO (5u * PPG_FS_HZ)
+#define CADEIA_LF_HF_FASE 20u
 
 typedef struct {
     uint32_t n_pico;
@@ -69,10 +82,15 @@ typedef struct {
     bool mostra;                         /* a tela mostra o BPM do picos */
     uint32_t n_hrv;
     cadeia_hrv_t hrv[CADEIA_HRV_MAX];    /* na ordem em que saíram */
+    bool calculou_lf_hf;                 /* a conta do LF/HF terminou nesta amostra */
+    bool lf_hf_valido;
+    float lf_hf;
 } cadeia_saida_t;
 
 typedef struct {
-    ciclos_t filtro, picos, espectral, respiracao, spo2, qualidade, hrv, total;
+    /* hrv: hrv_processa + hrv_freq_guarda, por batimento. hrv_freq: o começo e os
+       passos da conta do LF/HF, medidos em toda amostra (quase sempre nada). */
+    ciclos_t filtro, picos, espectral, respiracao, spo2, qualidade, hrv, hrv_freq, total;
 } cadeia_ciclos_t;
 
 typedef struct {
@@ -84,6 +102,7 @@ typedef struct {
     qualidade_t qualidade;
     qualidade_fila_t fila_hrv;   /* batimentos esperando o julgamento de depois */
     hrv_t hrv;
+    hrv_freq_t hrv_freq;         /* ~16,4 KiB */
     ppg_bpm_t bpm_cru;           /* o último BPM do picos (entra na regra) */
     bool tem_batimento;
     uint32_t n_ultimo_pico;

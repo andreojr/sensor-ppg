@@ -2,9 +2,9 @@
 
 Entra o bruto (saída da decimação, a 100 Hz, com DC) e saem as mesmas coisas
 que a placa manda pela serial: batimentos (p,), BPM espectral (e,), HRV (h,),
-respiração (r,), SpO2 estimada (s,) e o BPM que a tela mostra (t,). Os módulos
-são os do Python que já existem; aqui só a ordem e as regras do laço, iguais às
-do C:
+respiração (r,), SpO2 estimada (s,), o BPM que a tela mostra (t,) e o LF/HF (l,).
+Os módulos são os do Python que já existem; aqui só a ordem e as regras do laço,
+iguais às do C:
 
     filtro -> picos -> espectral -> respiração -> spo2 -> qualidade
 
@@ -17,6 +17,10 @@ do C:
 - Julgamento da qualidade: esvazia a fila no HRV (o RR entra se o picos aceitou
   e os julgamentos de antes e de agora dizem usável) e decide o BPM da tela
   (qualidade.bpm_confiavel).
+- Cada batimento que vai pro HRV também é guardado no LF/HF, com o mesmo rr_valido.
+  Na amostra com n % LFHF_PERIODO == LFHF_FASE (depois da qualidade), a conta do
+  LF/HF começa sobre a janela que termina no último batimento guardado; o C a
+  espalha em hrv_freq.PASSOS amostras, e o resultado sai na última delas.
 
 Uso:
     uv run python -m analise.cadeia --vetores   # gera testes/cadeia/vetores/physionet.h
@@ -42,12 +46,21 @@ from typing import NamedTuple
 
 import numpy as np
 
-from analise import espectral, filtro, hrv, picos, qualidade, respiracao, spo2
+from analise import espectral, filtro, hrv, hrv_freq, picos, qualidade, respiracao, spo2
 
 FS_HZ = 100
 VETOR_INICIO_S = 60
 VETOR_DURACAO_S = 90
 TOL_VETOR = 0.01  # a maior entre as dos vetores dos módulos (picos e hrv; a do spo2 é 1e-3)
+# LF/HF: começa a cada 5 s, em n % 500 == 20, e os passos caem de 21 a 37: longe da
+# amostra pesada (n % 100 == 99: julgamento, FFT do espectral e respiração) e do lote
+# de 4 ou 5 amostras que a placa processa junto com ela. Iguais a CADEIA_LF_HF_*
+# (cadeia.h).
+LFHF_PERIODO = 5 * FS_HZ
+LFHF_FASE = 20
+# Vetor longo, só pro LF/HF: precisa de 270 s de RR usados antes do primeiro válido.
+LONGO_INICIO_S = 0
+LONGO_DURACAO_S = 320
 
 
 class Bat(NamedTuple):
@@ -96,6 +109,14 @@ class Oxi(NamedTuple):
     r: float
 
 
+class Lfhf(NamedTuple):
+    """Linha l,: o LF/HF, na amostra em que a conta terminou."""
+
+    n: int
+    valido: bool
+    lf_hf: float
+
+
 class Tela(NamedTuple):
     """Linha t,: o BPM do picos só se a qualidade e o picos concordam (0 se não)."""
 
@@ -112,6 +133,7 @@ class Saidas:
     respiracao: list[Resp] = field(default_factory=list)
     spo2: list[Oxi] = field(default_factory=list)
     tela: list[Tela] = field(default_factory=list)
+    lfhf: list[Lfhf] = field(default_factory=list)
 
 
 def roda(ir: np.ndarray, vm: np.ndarray) -> Saidas:
@@ -121,12 +143,16 @@ def roda(ir: np.ndarray, vm: np.ndarray) -> Saidas:
     f_ir = filtro.filtra(ir)
     p, h, q, fila = picos.Picos(), hrv.Hrv(), qualidade.Qualidade(), qualidade.Fila()
     e, r, o2 = espectral.Espectral(), respiracao.Estimador(), spo2.Spo2()
+    f = hrv_freq.HrvFreq()
+    lfhf_pendente: tuple[int, hrv_freq.SaidaFreq] | None = None  # (n em que sai, saída)
     s = Saidas()
     julg: tuple[int, bool] | None = None   # (n, usavel) do último julgamento
     ultimo: Bat | None = None             # último batimento, com o BPM cru
 
     def para_hrv(b: picos.Batimento, entra: bool) -> None:
-        saida = h.processa(hrv.Batimento(True, b.n_pico, b.fracao, entra, b.rr_ms))
+        bat = hrv.Batimento(True, b.n_pico, b.fracao, entra, b.rr_ms)
+        saida = h.processa(bat)
+        f.guarda(bat)
         if saida is not None:
             s.hrv.append(Hrv(b.n_pico, saida.valido, saida.sdnn_ms, saida.rmssd_ms, entra))
 
@@ -162,6 +188,13 @@ def roda(ir: np.ndarray, vm: np.ndarray) -> Saidas:
                 j.usavel, ultimo is not None and ultimo.bpm_valido, ultimo is not None, n,
                 ultimo.n_pico if ultimo is not None else 0)
             s.tela.append(Tela(n, mostra, ultimo.bpm if mostra and ultimo else 0.0))
+
+        # LF/HF: primeiro o passo da conta em andamento, depois o começo de uma nova.
+        if lfhf_pendente is not None and n == lfhf_pendente[0]:
+            s.lfhf.append(Lfhf(n, *lfhf_pendente[1]))
+            lfhf_pendente = None
+        if n % LFHF_PERIODO == LFHF_FASE:
+            lfhf_pendente = (n + hrv_freq.PASSOS, f.calcula())
     return s
 
 
@@ -195,16 +228,27 @@ def arrays(s: Saidas) -> dict[str, np.ndarray]:
         "tela_n": col(s.tela, "n", np.int32),
         "tela_mostra": col(s.tela, "mostra", np.int32),
         "tela_bpm": col(s.tela, "bpm", np.float32),
+        "lfhf_n": col(s.lfhf, "n", np.int32),
+        "lfhf_valido": col(s.lfhf, "valido", np.int32),
+        "lfhf_lf_hf": col(s.lfhf, "lf_hf", np.float32),
     }
 
 
-def vetor_physionet(nome: str = "s1_sit") -> dict[str, np.ndarray]:
-    """90 s de s1_sit a partir de 60 s, no nível do nosso sensor (como a qualidade)."""
+def vetor_physionet(nome: str = "s1_sit", inicio_s: int = VETOR_INICIO_S,
+                    duracao_s: int = VETOR_DURACAO_S) -> dict[str, np.ndarray]:
+    """duracao_s de um registro a partir de inicio_s, no nível do nosso sensor (como a
+    qualidade)."""
     ir, vm = qualidade.registro_100hz(nome)
-    a, b = VETOR_INICIO_S * FS_HZ, (VETOR_INICIO_S + VETOR_DURACAO_S) * FS_HZ
+    a, b = inicio_s * FS_HZ, (inicio_s + duracao_s) * FS_HZ
     ir, vm = qualidade.no_sensor(ir[a:b], vm[a:b])
     ir, vm = ir.astype(np.float32), vm.astype(np.float32)
     return {"ir": ir, "vermelho": vm, **arrays(roda(ir, vm))}
+
+
+def vetor_longo(nome: str = "s1_sit") -> dict[str, np.ndarray]:
+    """O bruto de LONGO_DURACAO_S e só as saídas do LF/HF (o resto já está no outro)."""
+    v = vetor_physionet(nome, LONGO_INICIO_S, LONGO_DURACAO_S)
+    return {k: a for k, a in v.items() if k in ("ir", "vermelho") or k.startswith("lfhf_")}
 
 
 def gera_vetores(testes: Path | None = None) -> list[Path]:
@@ -215,6 +259,10 @@ def gera_vetores(testes: Path | None = None) -> list[Path]:
         vetores.gera_vetor("cadeia", "physionet", vetor_physionet(), tol=TOL_VETOR, testes=testes,
                            descricao=f"s1_sit de {VETOR_INICIO_S} a "
                                      f"{VETOR_INICIO_S + VETOR_DURACAO_S} s, no nível do sensor."),
+        vetores.gera_vetor("cadeia", "longo", vetor_longo(), tol=TOL_VETOR, testes=testes,
+                           descricao=f"s1_sit de {LONGO_INICIO_S} a "
+                                     f"{LONGO_INICIO_S + LONGO_DURACAO_S} s, no nível do "
+                                     "sensor; só as saídas do LF/HF."),
     ]
 
 
@@ -231,6 +279,7 @@ COLUNAS_NUMERO = {
     # dígito (mais a folga do float na diferença).
     "spo2": {2: 0.02, 3: 0.002},          # spo2, r
     "tela": {2: 0.1},                     # bpm
+    "lfhf": {2: 0.01},                    # lf_hf (3 casas na linha l,)
 }
 REPLAY_BIN = Path(__file__).resolve().parents[3] / "build" / "testes" / "replay_cadeia"
 SALTO_MAX = 64  # um n que pula mais que isso (ou volta sem ser reset) é linha embaralhada

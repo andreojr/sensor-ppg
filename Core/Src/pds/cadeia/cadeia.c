@@ -29,18 +29,25 @@ bool cadeia_init(cadeia_t *c, cadeia_relogio_t relogio)
     qualidade_init(&c->qualidade);
     qualidade_fila_init(&c->fila_hrv);
     hrv_init(&c->hrv);
+    hrv_freq_init(&c->hrv_freq);
     return espectral_init(&c->espectral);
 }
 
-/* Um batimento que saiu da fila vai pro HRV; rr_valido já diz se o RR entra. */
+/* Um batimento que saiu da fila vai pro HRV e é guardado no LF/HF; rr_valido já diz
+   se o RR entra. */
 static void para_hrv(cadeia_t *c, const ppg_batimento_t *b, cadeia_saida_t *s)
 {
     ppg_hrv_t h;
     uint32_t t0 = inicio(c);
     bool saiu = hrv_processa(&c->hrv, b, &h);
+    (void)hrv_freq_guarda(&c->hrv_freq, b);
     fim(c, &c->ciclos.hrv, t0);
     if (saiu) {
-        c->ficha.hrv = h;
+        /* Só os campos do HRV no tempo: hrv_processa escreve lf_hf_valido = false, e
+           o LF/HF da ficha é o da última conta (lf_hf, abaixo). */
+        c->ficha.hrv.valido = h.valido;
+        c->ficha.hrv.sdnn_ms = h.sdnn_ms;
+        c->ficha.hrv.rmssd_ms = h.rmssd_ms;
         if (s->n_hrv < CADEIA_HRV_MAX) {
             s->hrv[s->n_hrv] = (cadeia_hrv_t){b->n_pico, h, b->rr_valido};
             s->n_hrv++;
@@ -48,10 +55,29 @@ static void para_hrv(cadeia_t *c, const ppg_batimento_t *b, cadeia_saida_t *s)
     }
 }
 
+/* LF/HF: primeiro o passo da conta em andamento, depois o começo de uma nova (a
+   ordem do analise.cadeia). */
+static void lf_hf(cadeia_t *c, uint32_t n, cadeia_saida_t *s)
+{
+    uint32_t t0 = inicio(c);
+    ppg_hrv_t f;
+    s->calculou_lf_hf = hrv_freq_passo(&c->hrv_freq, &f);
+    if (n % CADEIA_LF_HF_PERIODO == CADEIA_LF_HF_FASE)
+        hrv_freq_comeca(&c->hrv_freq);
+    fim(c, &c->ciclos.hrv_freq, t0);
+    if (s->calculou_lf_hf) {
+        s->lf_hf_valido = f.lf_hf_valido;
+        s->lf_hf = f.lf_hf;
+        c->ficha.hrv.lf_hf_valido = f.lf_hf_valido;
+        c->ficha.hrv.lf_hf = f.lf_hf;
+    }
+}
+
 void cadeia_processa(cadeia_t *c, const ppg_amostra_t *bruto, cadeia_saida_t *s)
 {
     uint32_t t_total = inicio(c);
     s->bateu = s->espectral = s->respirou = s->oxigenou = s->julgou = s->mostra = false;
+    s->calculou_lf_hf = false;
     s->n_hrv = 0;
 
     uint32_t t0 = inicio(c);
@@ -119,6 +145,8 @@ void cadeia_processa(cadeia_t *c, const ppg_amostra_t *bruto, cadeia_saida_t *s)
         c->ficha.bpm_picos.bpm = c->bpm_cru.bpm;
         c->ficha.bpm_picos.valido = s->mostra;
     }
+
+    lf_hf(c, bruto->n, s);
     fim(c, &c->ciclos.total, t_total);
 }
 

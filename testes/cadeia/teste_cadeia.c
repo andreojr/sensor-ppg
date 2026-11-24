@@ -2,7 +2,9 @@
  * Teste da cadeia no PC: o bruto do vetor (90 s do PhysioNet, gerado por
  * `uv run python -m analise.cadeia --vetores`) passa por cadeia_processa e
  * todas as saídas batem com a referência em Python. Mais: relógio nulo, relógio
- * falso (ciclos) e várias saídas de HRV na mesma amostra.
+ * falso (ciclos) e várias saídas de HRV na mesma amostra. O vetor de 90 s nunca
+ * chega aos 270 s de RR do LF/HF: o LF/HF válido é conferido no vetor longo (320 s
+ * desde o começo de s1_sit, só com as saídas do LF/HF).
  */
 #include <stdint.h>
 #include <stdio.h>
@@ -10,6 +12,7 @@
 #include "cadeia/cadeia.h"
 #include "cadeia/compara_cadeia.h"
 #include "confere.h"
+#include "vetores/longo.h"
 #include "vetores/physionet.h"
 
 #define MAX 256u
@@ -26,8 +29,10 @@ static int32_t spo2_n[MAX], spo2_valido[MAX];
 static float spo2_pct[MAX], spo2_r_[MAX];
 static int32_t tela_n[MAX], tela_mostra[MAX];
 static float tela_bpm[MAX];
+static int32_t lfhf_n[MAX], lfhf_valido[MAX];
+static float lfhf_lf_hf[MAX];
 
-static cadeia_t cadeia; /* ~20 KB: static */
+static cadeia_t cadeia; /* ~41 KB: static */
 
 static uint32_t tempo_falso;
 static uint32_t relogio_falso(void)
@@ -47,7 +52,7 @@ static int vetor(void)
         printf("cadeia_init falhou\n");
         return 1;
     }
-    uint32_t nb = 0, ne = 0, nh = 0, nr = 0, no = 0, nt = 0, hrv_juntos = 0;
+    uint32_t nb = 0, ne = 0, nh = 0, nr = 0, no = 0, nt = 0, nl = 0, hrv_juntos = 0;
     int fora_de_ordem = 0;
     for (uint32_t i = 0; i < PHYSIONET_IR_N; i++) {
         ppg_amostra_t bruto = {i, physionet_ir[i], physionet_vermelho[i]};
@@ -103,6 +108,12 @@ static int vetor(void)
             tela_bpm[nt] = s.mostra ? s.bpm.bpm : 0.0f;
             nt++;
         }
+        if (s.calculou_lf_hf && POE(nl)) {
+            lfhf_n[nl] = (int32_t)i;
+            lfhf_valido[nl] = s.lf_hf_valido;
+            lfhf_lf_hf[nl] = s.lf_hf_valido ? s.lf_hf : 0.0f;
+            nl++;
+        }
     }
 
     int f = cheio + fora_de_ordem;
@@ -118,6 +129,7 @@ static int vetor(void)
     TAMANHO("respiracao", nr, PHYSIONET_RESP_N_N)
     TAMANHO("spo2", no, PHYSIONET_SPO2_N_N)
     TAMANHO("tela", nt, PHYSIONET_TELA_N_N)
+    TAMANHO("lfhf", nl, PHYSIONET_LFHF_N_N)
     if (f)
         return f;
     const float tol = PHYSIONET_TOL;
@@ -145,6 +157,9 @@ static int vetor(void)
     f += confere_int("tela_n", tela_n, physionet_tela_n, nt);
     f += confere_int("tela_mostra", tela_mostra, physionet_tela_mostra, nt);
     f += confere_float("tela_bpm", tela_bpm, physionet_tela_bpm, nt, tol);
+    f += confere_int("lfhf_n", lfhf_n, physionet_lfhf_n, nl);
+    f += confere_int("lfhf_valido", lfhf_valido, physionet_lfhf_valido, nl);
+    f += confere_float("lfhf_lf_hf", lfhf_lf_hf, physionet_lfhf_lf_hf, nl, tol);
 
     /* Ficha: o display lê o último BPM e a última decisão da regra. */
     const ppg_resultados_t *r = cadeia_resultados(&cadeia);
@@ -178,6 +193,60 @@ static int vetor(void)
     return f;
 }
 
+/*
+ * LF/HF válido pela cadeia: 320 s de s1_sit desde o começo. As saídas (n, válido e
+ * valor) batem com o Python, e a ficha guarda o LF/HF da última conta em toda amostra,
+ * mesmo com as saídas do HRV no tempo entre duas contas (hrv_processa escreve
+ * lf_hf_valido = false).
+ */
+static int longo(void)
+{
+    printf("-- longo (LF/HF)\n");
+    if (!cadeia_init(&cadeia, NULL))
+        return 1;
+    uint32_t nl = 0, validos = 0, ficha_errada = 0, hrv_entre = 0;
+    bool tem = false, valido = false;
+    float ultimo = 0.0f;
+    for (uint32_t i = 0; i < LONGO_IR_N; i++) {
+        ppg_amostra_t bruto = {i, longo_ir[i], longo_vermelho[i]};
+        cadeia_saida_t s;
+        cadeia_processa(&cadeia, &bruto, &s);
+        if (s.calculou_lf_hf && POE(nl)) {
+            lfhf_n[nl] = (int32_t)i;
+            lfhf_valido[nl] = s.lf_hf_valido;
+            lfhf_lf_hf[nl] = s.lf_hf_valido ? s.lf_hf : 0.0f;
+            validos += s.lf_hf_valido;
+            nl++;
+            tem = true;
+            valido = s.lf_hf_valido;
+            ultimo = s.lf_hf;
+        }
+        if (tem && valido)
+            hrv_entre += s.n_hrv;
+        const ppg_hrv_t *r = &cadeia_resultados(&cadeia)->hrv;
+        if (tem && (r->lf_hf_valido != valido || r->lf_hf != ultimo)) {
+            if (ficha_errada < 3u)
+                printf("n %lu: ficha lf_hf %d %.3f, última conta %d %.3f\n", (unsigned long)i,
+                       r->lf_hf_valido, (double)r->lf_hf, valido, (double)ultimo);
+            ficha_errada++;
+        }
+    }
+    int f = cheio + (int)ficha_errada;
+    TAMANHO("lfhf", nl, LONGO_LFHF_N_N)
+    if (f)
+        return f;
+    f += confere_int("lfhf_n", lfhf_n, longo_lfhf_n, nl);
+    f += confere_int("lfhf_valido", lfhf_valido, longo_lfhf_valido, nl);
+    f += confere_float("lfhf_lf_hf", lfhf_lf_hf, longo_lfhf_lf_hf, nl, LONGO_TOL);
+    printf("%lu contas, %lu válidas, %lu saídas de HRV no tempo com o LF/HF válido na ficha\n",
+           (unsigned long)nl, (unsigned long)validos, (unsigned long)hrv_entre);
+    if (validos < 5u || hrv_entre == 0u || !cadeia_resultados(&cadeia)->hrv.lf_hf_valido) {
+        printf("o LF/HF não ficou válido na cadeia\n");
+        f++;
+    }
+    return f;
+}
+
 static int ciclos(void)
 {
     printf("-- relógio falso\n");
@@ -193,7 +262,8 @@ static int ciclos(void)
     int f = 0;
     if (c->filtro.conta != amostras || c->picos.conta != amostras ||
         c->espectral.conta != amostras || c->respiracao.conta != amostras ||
-        c->spo2.conta != amostras || c->qualidade.conta != amostras || c->total.conta != amostras) {
+        c->spo2.conta != amostras || c->qualidade.conta != amostras ||
+        c->hrv_freq.conta != amostras || c->total.conta != amostras) {
         printf("contas: filtro %lu total %lu (esperado %lu)\n", (unsigned long)c->filtro.conta,
                (unsigned long)c->total.conta, (unsigned long)amostras);
         f++;
@@ -272,6 +342,7 @@ static int ficha_sem_bpm_zero_valido(void)
 int main(void)
 {
     int f = vetor();
+    f += longo();
     f += ficha_sem_bpm_zero_valido();
     f += ciclos();
     f += comparador();

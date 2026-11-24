@@ -191,6 +191,22 @@ def test_tela_vai_pro_csv_da_tela(tmp_path):
     assert t["bpm"].tolist() == [60.5, 0.0]
 
 
+def test_lf_hf_vai_pro_csv_do_lfhf(tmp_path):
+    serial_falsa = io.BytesIO(
+        b"0,100,200\n"
+        b"l,37,0,0.000\n"
+        b"l,537,1,1.234\n"
+        b"l,1037,1\n"
+    )
+    destino = tmp_path / "x.csv"
+    resumo = captura.grava(serial_falsa, destino, segundos=0.1)
+    assert resumo.por_ponto == {"lfhf": 2} and resumo.invalidas == 1
+    lf = pd.read_csv(captura.destino_ponto(destino, "lfhf"))
+    assert list(lf.columns) == list(captura.COLUNAS_LFHF)
+    assert lf["valido"].tolist() == [0, 1]
+    assert lf["lf_hf"].tolist() == [0.0, 1.234]
+
+
 def _linhas_b(n0, segundos, ir_dc, pulso):
     """Linhas "b,n,ir,vermelho" a 100 Hz: DC + um pulso de 72 bpm de altura relativa pulso."""
     t = np.arange(segundos * 100) / 100
