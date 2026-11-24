@@ -95,7 +95,13 @@ A cadeia mede cada módulo com um relógio que quem chama passa
 mede). Assim ela mede sem incluir HAL. O `hrv` mede o `hrv_processa` e o
 `hrv_freq_guarda` juntos (por batimento); o `hrv_freq` (`# lf/hf` no monitor) mede o
 passo e o começo da conta do LF/HF em toda amostra, com média (orçamento 9 600) e
-pior amostra (o pior passo: 320 000 em Debug, 160 000 em Release). Os orçamentos estão em
+pior amostra (o pior passo: 320 000 em Debug, 160 000 em Release). Na bancada da
+cadeia (`-DBANCADA_CADEIA=ON`), a linha `# bancada lf/hf` **não mede o pior passo**:
+o vetor tem 90 s, os RR nunca cobrem os 270 s, os passos não calculam nada e o
+"max" é só o do `hrv_freq_comeca` (a conferência da cobertura); a placa avisa isso
+numa linha logo abaixo. O pior passo de verdade vem da bancada do LF/HF
+(`-DBANCADA_HRV_FREQ=ON`, ver [HRV](../hrv/#validação-do-lfhf)). O vetor
+`longo` (320 s, que cobre) não vai pra placa: são 256 KB de flash só nele. Os orçamentos estão em
 [Firmware → Ciclos e orçamento](../../firmware/#ciclos-e-orçamento).
 
 ## Linhas da serial

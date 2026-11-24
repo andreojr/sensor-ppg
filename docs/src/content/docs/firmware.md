@@ -611,7 +611,8 @@ disso entra no firmware. Procedimento e orçamento em [HRV](../modulos/hrv/).
 
 Com `-DBANCADA_HRV_FREQ=ON`, o mesmo para o LF/HF: toca o vetor
 `freq_s1_sit` no `hrv_freq_processa()`, confere a conta espalhada (a da cadeia)
-a cada 10 batimentos e manda três linhas `# bancada lf/hf: ...`. Os orçamentos
+a cada 10 batimentos, mede o pior `hrv_freq_guarda` e manda quatro linhas
+`# bancada lf/hf: ...`. Os orçamentos
 são por perfil (Release ou Debug, pelo `__OPTIMIZE__`). As duas opções podem ser
 ligadas juntas. O `hrv_freq_t` da bancada (~16,4 KiB) fica `static`, fora da
 pilha, além do da cadeia.
@@ -759,7 +760,9 @@ que sumiu a 460800 (ver [Por que 460800](#por-que-460800)).
   Python, `analise/src/analise/cadeia.py`), o `teste_linhas`, o `teste_fila` e o
   `teste_replay`.
 - **Placa, fonte falsa:** `-DBANCADA_CADEIA=ON` passa o mesmo vetor pela cadeia na
-  partida e mede os ciclos.
+  partida e mede os ciclos. Em 90 s o LF/HF nunca cobre os 270 s: a linha
+  `# bancada lf/hf` dali mede só o `hrv_freq_comeca`, não o pior passo (esse vem
+  de `-DBANCADA_HRV_FREQ=ON`).
 - **Placa, sensor:** comece a captura e aperte o reset;
   `uv run python -m analise.cadeia --replay dados/<captura>.csv` refaz no PC, a
   partir do bruto que a placa mandou, todas as linhas de resultado e confere que são

@@ -486,6 +486,13 @@ if (hrv_freq_passo(&hf, &hrv)) {       /* true no 17º passo */
   `hrv_freq_processa()` daria naquele batimento, e as regras são as do HRV no
   tempo (que também só anda com batimento). Sem batimento nenhum, a janela não
   anda e o último valor fica.
+- **Sem prazo de validade:** sem batimentos novos (dedo fora, ou o `qualidade`
+  descartando tudo), a conta a cada 5 s refaz a mesma janela e o LF/HF **continua
+  válido com o valor velho**, na linha `l,` e na ficha, por quanto tempo durar
+  (o SDNN e o RMSSD da ficha também ficam). Uma regra como "inválido se o último
+  batimento guardado tiver mais de 30 s" resolveria, mas mexe na assinatura do
+  `hrv_freq_comeca` (que não recebe o `n` atual), no Python e na referência da
+  cadeia; fica anotada, não feita.
 - **`hrv_freq_guarda()`** só escreve o RR numa fila circular (como o `hrv_t`)
   e anda o início pelos que saíram da janela: nenhum vetor é movido, e o custo
   é constante por RR que entra ou sai (algumas centenas de ciclos, estimado; a
@@ -510,9 +517,12 @@ if (hrv_freq_passo(&hf, &hrv)) {       /* true no 17º passo */
   com batimentos guardados no meio da conta, e que o resultado sai no 17º passo.
 - **Pior passo (estimativa):** 8 das 109 frequências são ~7% da conta inteira
   medida: ~200 mil ciclos em Debug (~2 ms) e ~90 mil em Release (~1 ms). A
-  proporção vem de medir cada passo no PC (cada passo do Goertzel é ~9,4% do
-  total em `-O0`; os 3 primeiros, 1,5 a 2%); na placa, os `cosf` da Hann pesam
-  mais, mas ainda abaixo de um passo do Goertzel. A bancada mede (abaixo).
+  proporção vem de medir cada passo no PC: cada passo do Goertzel (8
+  frequências) é ~6,9% do total em `-O0` e ~6,5% em `-Os`; os 3 primeiros
+  (spline, reamostragem, reta e Hann), 1,3 a 1,8% em `-O0` e 3,0 a 3,4% em
+  `-Os`. Na placa, os ~600 `cosf` da Hann (passo 3) devem pesar mais do que no
+  PC; que ainda fiquem abaixo de um passo do Goertzel é **estimativa**, não
+  medida. A bancada mede (abaixo).
 
 `hrv_freq.c` é um arquivo ao lado do `hrv.c` no mesmo módulo, com estado
 próprio: o LF/HF precisa de 300 s e o SDNN/RMSSD de 60 s, e assim a bancada
@@ -581,6 +591,11 @@ no LF/HF (8 válidas viram inválidas), a ficha sem o `lf_hf` ou copiando a saí
 inteira do `hrv_processa` (a ficha perde o valor), guardar com `rr_valido`
 sempre true (7 fora da tolerância) e a fase errada (todos os `n`).
 
+Na placa, a bancada da cadeia (`-DBANCADA_CADEIA=ON`) usa só o vetor de 90 s (o
+longo tem 256 KB de flash): o LF/HF nunca cobre, os passos não calculam nada, e o
+"max" da linha `# bancada lf/hf` dela é só o do `hrv_freq_comeca`. A placa avisa
+isso na linha seguinte. O pior passo de verdade é o da bancada do LF/HF (abaixo).
+
 #### 1. Python no PhysioNet
 
 `uv run python -m analise.hrv_freq` roda os 22 registros `sit` inteiros. O
@@ -621,14 +636,16 @@ também confere, no C: senoide num bin exato cai inteira na banda certa
 (inválido até ~270 s), 1 perdido em 40 (muda < 10%) e em 20 (inválido),
 poucos batimentos, batimento inválido, RR no mesmo instante, reinício, o
 encadeamento `hrv_processa` → `hrv_freq_processa` e a conta espalhada (igual bit
-a bit, 17 passos, passo sem conta não mexe na saída). O teste de reinício confere
+a bit, 17 passos, passo sem conta não mexe na saída, `hrv_freq_comeca` no meio
+de uma conta recomeça sobre a janela nova). O teste de reinício confere
 que uma conta espalhada em andamento é largada quando o `n_pico` volta: só a
 janela não bastava pra pegar a falta do `hrv_freq_init()` no reinício, porque
 `n_pico - n[i]` dá a volta no `uint32_t` e esvazia a janela sozinho. Errar de
 propósito pega:
 spline virando reta (1568 falhas), sem tirar a reta (65), sem Hann (1558),
-0,15 Hz contado no LF (1483), janela com `>` (6) e buffer cheio sem
-descartar (350).
+0,15 Hz contado no LF (1483), janela com `>` (6), buffer cheio sem
+descartar (350) e o `hrv_freq_comeca` saindo cedo quando já há conta em
+andamento (o `recomeca`: a conta velha sai 12 passos depois do segundo começo).
 
 #### 3. Placa com a fonte falsa
 

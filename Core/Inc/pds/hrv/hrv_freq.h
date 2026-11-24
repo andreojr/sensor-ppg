@@ -37,7 +37,8 @@
  *
  * A janela é a dos HRV_FREQ_JANELA_S segundos que terminam no ÚLTIMO BATIMENTO
  * GUARDADO (com valido true), não no n atual: comeca() calcula sobre o que já
- * está guardado. Sem batimentos novos, a janela não anda (como no HRV no tempo).
+ * está guardado. Sem batimentos novos, a janela não anda (como no HRV no tempo)
+ * e o último valor continua válido: não há prazo de validade.
  *
  * Uma janela de 5 min é o padrão. Janelas curtas dão LF/HF que muda muito
  * (60 s: fator típico de 1,8 contra o de 5 min). Ver docs/.../modulos/hrv.md.
