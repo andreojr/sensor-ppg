@@ -9,7 +9,7 @@
  *   # bancada cadeia: 478 saidas, 0 fora da tolerancia
  *   # bancada filtro: ciclos med ... max ... (orcamento ...)
  *   ...
- *   # bancada cadeia: ciclos por amostra med X max Y (orcamento 60600 / 960000): OK
+ *   # bancada cadeia: ciclos por amostra med X max Y (orcamento 70200 / 960000): OK
  *
  * OK = saídas iguais e média no orçamento. O max acima de 960 000 não reprova (a fila
  * absorve); a linha acrescenta ", max acima: so registrado".

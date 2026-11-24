@@ -169,7 +169,7 @@ l,537,0,0.000
 # respiracao: ciclos med ... max ... (orcamento 9600)
 # spo2: ciclos med ... max ... (orcamento 9600)
 # qualidade: ciclos med ... max ... (orcamento 3000)
-# cadeia: ciclos med ... (orcamento 60600) max ... (orcamento 960000)
+# cadeia: ciclos med ... (orcamento 70200) max ... (orcamento 960000)
 # volta: ciclos med ... max ... (orcamento 3600000)
 # leitura: maior intervalo ... ms (limite 80)
 # taxa: 100.02 amostras/s em 10 s (TIM2)
@@ -685,7 +685,7 @@ por segundo, ou ~200 por amostra na média).
 
 | Medida | Orçamento | Por quê |
 |---|---|---|
-| Cadeia (`# cadeia`), média por amostra de 100 Hz | 60 600 | filtro 19 200 + picos 9 600 + espectral 9 600 + respiração 9 600 + qualidade 3 000 + LF/HF 9 600 (a decimação, 2 400 por amostra do sensor, é medida à parte no `sensor.c`); era 51 000 antes do LF/HF |
+| Cadeia (`# cadeia`), média por amostra de 100 Hz | 70 200 | filtro 19 200 + picos 9 600 + espectral 9 600 + respiração 9 600 + SpO2 9 600 + qualidade 3 000 + LF/HF 9 600 (a decimação, 2 400 por amostra do sensor, é medida à parte no `sensor.c`); era 51 000 antes da SpO2 e do LF/HF |
 | LF/HF (`# lf/hf`), pior amostra | 320 000 (Debug) / 160 000 (Release) | o pior passo da conta espalhada (8 das 109 frequências), nas amostras de `n % 500` de 21 a 37, longe da de `n` terminado em 99 |
 | Cadeia, pior amostra | 960 000 | um período (10 ms); a respiração (~0,8 milhão) e a FFT (~0,41 milhão) calculam o espectro **sempre na mesma amostra**, uma vez por segundo (a de `n` terminado em 99): estoura (ver abaixo) |
 | Volta do laço (`# volta`) | 3 600 000 (37,5 ms) | a folga do sensor depois do INT |

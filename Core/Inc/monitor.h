@@ -31,7 +31,7 @@
    O pior caso é comparado com um período (960 000), mas passa dele uma vez por
    segundo, quando a respiração e o espectral calculam juntos: só se registra
    (firmware.md, "Se estourar"). */
-#define MONITOR_ORCAMENTO_CADEIA 60600u
+#define MONITOR_ORCAMENTO_CADEIA 70200u
 #define MONITOR_ORCAMENTO_CADEIA_MAX 960000u
 /* A volta do laço tem que caber na folga do sensor depois do INT: 37,5 ms. */
 #define MONITOR_ORCAMENTO_VOLTA 3600000u
