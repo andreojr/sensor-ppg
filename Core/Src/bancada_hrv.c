@@ -77,6 +77,7 @@ bool bancada_hrv_freq(void)
     hrv_freq_init(&h);
 
     uint32_t fora = 0, validos = 0, max_ciclos = 0;
+    uint32_t contas = 0, diferentes = 0, max_passo = 0, max_comeca = 0;
     uint64_t soma_ciclos = 0;
     float pior = 0.0f;
     for (uint32_t i = 0; i < FREQ_S1_SIT_VALIDO_N; i++) {
@@ -91,6 +92,27 @@ bool bancada_hrv_freq(void)
         if (dt > max_ciclos)
             max_ciclos = dt;
 
+        /* A mesma conta, espalhada: sobre a mesma janela (o batimento acabou de ser
+           guardado), tem que dar o mesmo float. */
+        if (escreveu && i % BANCADA_HRV_FREQ_CADA == 0u) {
+            t0 = ciclos_agora();
+            hrv_freq_comeca(&h);
+            dt = ciclos_agora() - t0;
+            if (dt > max_comeca)
+                max_comeca = dt;
+            ppg_hrv_t e = {0};
+            bool saiu = false;
+            for (uint32_t k = 0; k < HRV_FREQ_PASSOS; k++) {
+                t0 = ciclos_agora();
+                saiu = hrv_freq_passo(&h, &e);
+                dt = ciclos_agora() - t0;
+                if (dt > max_passo)
+                    max_passo = dt;
+            }
+            contas++;
+            diferentes += !saiu || e.lf_hf_valido != s.lf_hf_valido || e.lf_hf != s.lf_hf;
+        }
+
         float erro = fabsf(s.lf_hf - freq_s1_sit_lf_hf[i]);
         if (erro > pior)
             pior = erro;
@@ -101,7 +123,9 @@ bool bancada_hrv_freq(void)
     }
 
     uint32_t media = (uint32_t)(soma_ciclos / FREQ_S1_SIT_VALIDO_N);
-    bool ok = fora == 0 && max_ciclos <= BANCADA_ORCAMENTO_HRV_FREQ;
+    uint32_t pior_passo = max_passo > max_comeca ? max_passo : max_comeca;
+    bool ok_espalhada = diferentes == 0u && pior_passo <= BANCADA_ORCAMENTO_HRV_FREQ_PASSO;
+    bool ok = fora == 0 && max_ciclos <= BANCADA_ORCAMENTO_HRV_FREQ && ok_espalhada;
     char linha[160];
     int n = snprintf(linha, sizeof linha,
                      "# bancada lf/hf: %lu batimentos, %lu validos, %lu fora da tolerancia, "
@@ -110,9 +134,16 @@ bool bancada_hrv_freq(void)
                      (unsigned long)fora, (unsigned long)(pior * 1e6f + 0.5f));
     serial_escreve(linha, (uint32_t)n);
     n = snprintf(linha, sizeof linha,
-                 "# bancada lf/hf: ciclos por batimento med %lu max %lu (orcamento %lu): %s\n",
+                 "# bancada lf/hf: ciclos por batimento med %lu max %lu (orcamento %lu)\n",
                  (unsigned long)media, (unsigned long)max_ciclos,
-                 (unsigned long)BANCADA_ORCAMENTO_HRV_FREQ, ok ? "OK" : "FALHOU");
+                 (unsigned long)BANCADA_ORCAMENTO_HRV_FREQ);
+    serial_escreve(linha, (uint32_t)n);
+    n = snprintf(linha, sizeof linha,
+                 "# bancada lf/hf: espalhada em %u passos, %lu contas, %lu diferentes; "
+                 "pior passo %lu, comeca %lu (orcamento %lu): %s\n",
+                 (unsigned)HRV_FREQ_PASSOS, (unsigned long)contas, (unsigned long)diferentes,
+                 (unsigned long)max_passo, (unsigned long)max_comeca,
+                 (unsigned long)BANCADA_ORCAMENTO_HRV_FREQ_PASSO, ok ? "OK" : "FALHOU");
     serial_escreve(linha, (uint32_t)n);
     serial_envia();
     return ok;

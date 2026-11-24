@@ -17,7 +17,7 @@
 #include "serial.h"
 
 static fila_t fila;       /* sensor -> cadeia */
-static cadeia_t cadeia;   /* ~20 KB: static */
+static cadeia_t cadeia;   /* ~41 KB (16 KB do LF/HF): static */
 static TIM_HandleTypeDef *tim_regua;
 
 /* Para a placa: avisa na serial (e na tela, se houver display) e cai no Error_Handler. */
@@ -45,6 +45,7 @@ static void cabecalho(void)
                      "# respiracao 1 Hz: r,n,rpm,valido\n"
                      "# spo2 (ESTIMADA, reta 110 - 25 R, sem calibracao): s,n,valido,spo2,r\n"
                      "# tela 1 Hz: t,n,mostra,bpm x100\n"
+                     "# lf/hf a cada 5 s: l,n,valido,lf_hf\n"
                      "# laco 1 Hz (TIM2): amostras, fila_max, fila_cheia, perdidas\n",
                      APP_SERIAL_COMPLETA ? "completa" : "padrao", MAX30102_FS_HZ, PPG_FS_HZ,
                      PPG_FS_HZ, (unsigned)PPG_ATRASO_AMOSTRAS);

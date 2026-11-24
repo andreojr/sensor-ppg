@@ -8,7 +8,10 @@
  * comentário ("# bancada hrv ...").
  *
  * Com -DBANCADA_HRV_FREQ=ON, o mesmo para o LF/HF (hrv_freq_processa(), vetor
- * testes/hrv/vetores/freq_s1_sit.h), em linhas "# bancada lf/hf ...".
+ * testes/hrv/vetores/freq_s1_sit.h), em linhas "# bancada lf/hf ...". A cada
+ * BANCADA_HRV_FREQ_CADA batimentos, a mesma conta também é feita espalhada
+ * (hrv_freq_comeca() e os HRV_FREQ_PASSOS hrv_freq_passo(), como na cadeia):
+ * confere que dá o mesmo número e mede o pior passo.
  */
 #ifndef BANCADA_HRV_H
 #define BANCADA_HRV_H
@@ -22,19 +25,31 @@
 #define BANCADA_ORCAMENTO_HRV 20000u
 
 /*
- * Orçamento do LF/HF por batimento, por perfil (o Release é -Os, que define
- * __OPTIMIZE__; o Debug é -O0).
+ * Orçamentos do LF/HF, por perfil (o Release é -Os, que define __OPTIMIZE__; o
+ * Debug é -O0).
  *
  * A conta inteira (hrv_freq_processa: spline, Hann e 109 frequências de Goertzel
  * em ~600 amostras, ~65 mil iterações) medida na placa em 23/11/2026, 613
  * batimentos de s1_sit: pior batimento 1 284 715 ciclos em Release (13,4 ms) e
- * 2 985 443 em Debug (31 ms). O orçamento é essa medida com folga de ~15%.
+ * 2 985 443 em Debug (31 ms). O orçamento é essa medida com folga de ~15%. Na
+ * cadeia ela não roda assim: vai espalhada.
+ *
+ * O pior passo da conta espalhada (hrv_freq_passo, um por amostra na cadeia, ou o
+ * hrv_freq_comeca): 8 das 109 frequências, ~7% da conta inteira. Estimativa: ~200
+ * mil ciclos em Debug (~2 ms) e ~90 mil em Release; o orçamento é 1/3 de um
+ * período de amostra em Debug (3,3 ms) e metade disso em Release.
  */
 #ifdef __OPTIMIZE__
 #define BANCADA_ORCAMENTO_HRV_FREQ 1500000u
+#define BANCADA_ORCAMENTO_HRV_FREQ_PASSO 160000u
 #else
 #define BANCADA_ORCAMENTO_HRV_FREQ 3400000u
+#define BANCADA_ORCAMENTO_HRV_FREQ_PASSO 320000u
 #endif
+/* Média por amostra na cadeia (uma conta a cada 500 amostras): 1% da CPU. */
+#define BANCADA_ORCAMENTO_HRV_FREQ_MED 9600u
+/* De quantos em quantos batimentos a bancada confere a conta espalhada. */
+#define BANCADA_HRV_FREQ_CADA 10u
 
 #ifdef BANCADA_HRV
 /* Roda a fonte falsa no HRV e manda o resultado pela serial. true se passou. */

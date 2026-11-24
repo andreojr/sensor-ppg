@@ -23,12 +23,13 @@
 
 /* Orçamento da cadeia por amostra a 100 Hz, SEM a decimação (medida no sensor.c):
    a soma dos orçamentos dos módulos (filtro 19 200 + picos 9 600 + espectral 9 600 +
-   respiração 9 600 + qualidade 3 000). O HRV roda dentro da medida, mas só a cada
-   batimento (~20 000 ciclos, ~1 por segundo: ~200 por amostra) e fica fora da soma.
+   respiração 9 600 + qualidade 3 000 + LF/HF 9 600). O HRV no tempo (com a guarda do
+   LF/HF) roda dentro da medida, mas só a cada batimento (~20 000 ciclos, ~1 por
+   segundo: ~200 por amostra) e fica fora da soma.
    O pior caso é comparado com um período (960 000), mas passa dele uma vez por
    segundo, quando a respiração e o espectral calculam juntos: só se registra
    (firmware.md, "Se estourar"). */
-#define MONITOR_ORCAMENTO_CADEIA 51000u
+#define MONITOR_ORCAMENTO_CADEIA 60600u
 #define MONITOR_ORCAMENTO_CADEIA_MAX 960000u
 /* A volta do laço tem que caber na folga do sensor depois do INT: 37,5 ms. */
 #define MONITOR_ORCAMENTO_VOLTA 3600000u

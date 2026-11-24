@@ -60,6 +60,8 @@ static void relata_ciclos(cadeia_t *c, sensor_medidas_t *m)
     ciclos_relata_max(&k->espectral, "espectral", BANCADA_ORCAMENTO_ESPECTRAL,
                       BANCADA_ORCAMENTO_ESPECTRAL_MAX);
     ciclos_relata(&k->hrv, "hrv", BANCADA_ORCAMENTO_HRV);
+    ciclos_relata_max(&k->hrv_freq, "lf/hf", BANCADA_ORCAMENTO_HRV_FREQ_MED,
+                      BANCADA_ORCAMENTO_HRV_FREQ_PASSO);
     ciclos_relata(&k->respiracao, "respiracao", BANCADA_ORCAMENTO_RESPIRACAO);
     ciclos_relata(&k->spo2, "spo2", BANCADA_ORCAMENTO_SPO2);
     ciclos_relata(&k->qualidade, "qualidade", BANCADA_ORCAMENTO_QUALIDADE);
