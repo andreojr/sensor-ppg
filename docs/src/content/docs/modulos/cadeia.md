@@ -101,7 +101,9 @@ ctest --test-dir build/testes --output-on-failure
 - `teste_cadeia`: 90 s de `s1_sit` (a partir de 60 s, no nível do sensor) pela
   cadeia; batimentos, espectral, HRV, respiração e tela iguais ao Python (discretos
   exatos, números com tolerância 0,01). Também: relógio nulo não mede, relógio falso
-  conta cada módulo, e 21 amostras com duas saídas de HRV.
+  conta cada módulo, e 21 amostras com duas saídas de HRV. A SpO2 (83 saídas) também é conferida
+  aqui; na placa, a `bancada_cadeia` (`compara_cadeia.h`) ainda **não** compara a SpO2 (a `bancada_spo2`
+  confere o módulo sozinho).
 - `teste_linhas`, `teste_fila`: o texto das linhas e a fila (cheia, ordem, volta do
   anel, volta do contador de ciclos).
 - `teste_replay`: o replay (abaixo) decima igual ao vetor da decimação, preenche um

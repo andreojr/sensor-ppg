@@ -73,7 +73,9 @@ módulo devolvia `valido = true` com SpO2 ~85%: um valor plausível e errado. O 
 
 O módulo **não** olha movimento nem ruído: quem decide se o trecho presta é o módulo `qualidade`, que já está
 na `main`. O display (`oled_escolhe()`) troca a tela inteira para **SEM DEDO** ou **SINAL RUIM** quando a qualidade
-julga sem dedo ou `!usavel`, então a SpO2 só aparece com sinal usável.
+julga sem dedo ou `!usavel`, então a SpO2 só aparece com sinal usável. Ressalva: a janela da SpO2 tem 8 s e a
+qualidade fica usável antes de a janela inteira ser de sinal bom; logo que a tela volta, o valor ainda inclui
+alguns segundos de antes.
 
 **Parâmetros:** janela de 8 s e passo de 1 s (uma saída por segundo, como o espectral); `ALFA = 0,02`; reta
 `110 − 25·R` (a linear usual). Uma curva quadrática, como a dos exemplos da Maxim, é a outra opção comum e não
@@ -109,9 +111,13 @@ registro a partir de 30 s do bruto da fonte falsa (`uv run python -m analise.spo
   movimento; aí depende de a qualidade marcar o trecho como não usável.
 
 **Nas capturas do nosso sensor (offline).** Passando as 8 capturas de 22 e 23/11 (`*_bruto.csv`) pelo
-`analise.spo2`, só nas janelas que a qualidade diz usáveis: com os canais na ordem que o firmware mandava, o R
-mediano deu 1,86 a 2,68 e só 0 a 1 janela por captura saiu válida (SpO2 em torno de 50%, impossível em repouso).
-Trocando os canais, o R mediano deu 0,37 a 0,54 e todas as janelas usáveis saíram válidas, com SpO2 de 96,6 a 100%.
+`analise.spo2`, só nas janelas que a qualidade (calculada na ordem de canais da captura) diz usáveis, em 6 das 8
+capturas (nas outras 2 nenhuma janela é usável): com os canais na ordem que o firmware mandava, o R mediano por
+captura deu 1,86 a 2,68 e só 0 a 1 janela por captura saiu válida (SpO2 em torno de 50%, impossível em repouso).
+Trocando só os canais da SpO2, o R mediano por captura deu 0,37 a 0,54 e todas as janelas usáveis saíram válidas,
+com a SpO2 mediana por captura de 96,6 a 100%. Calculando também a qualidade com os canais trocados (o que o
+firmware novo faz), as janelas usáveis mudam um pouco: o R mediano por captura vai de 0,40 a 0,77 (o 0,77, 90,7%,
+é de uma captura com só 2 janelas usáveis) e há janelas isoladas até 82%. Medianas por captura, não por janela.
 Conferido na placa: no nosso módulo os LEDs vêm trocados (com o LED1 apagado, a luz vermelha continua acesa).
 O driver passou a desfazer a troca (ver [Firmware](../../firmware/)), e a SpO2 depende dessa correção.
 
@@ -155,8 +161,8 @@ linker):
 | | Flash | RAM |
 |---|---|---|
 | `main` | 60.084 B | 40.152 B |
-| com o SpO2 na cadeia | 61.232 B (**+1.148 B**) | 40.392 B (**+240 B**) |
-| com a bancada (`-DBANCADA_SPO2=ON`) | 94.240 B (o vetor de 32 KB) | 40.600 B |
+| com o SpO2 na cadeia | 61.264 B (**+1.180 B**) | 40.392 B (**+240 B**) |
+| com a bancada (`-DBANCADA_SPO2=ON`) | 94.272 B (o vetor de 32 KB) | 40.600 B |
 
 **Ciclos** (código ARM emulado, modelo simples do Cortex-M4F, **sem** a espera da flash; `uv run
 testes/spo2/ciclos/ciclos.py`, precisa do `arm-none-eabi-gcc`): média de **197 ciclos por amostra** e pior caso
