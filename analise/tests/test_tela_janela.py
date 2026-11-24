@@ -13,6 +13,7 @@ class CanvasFalso:
     def __init__(self):
         self.retangulos = []
         self.cores = {}
+        self.chamadas = 0
 
     def create_rectangle(self, x0, y0, x1, y1, fill="", outline=""):
         self.retangulos.append((x0, y0, x1, y1))
@@ -20,6 +21,7 @@ class CanvasFalso:
         return len(self.retangulos) - 1
 
     def itemconfigure(self, item, fill):
+        self.chamadas += 1
         self.cores[item] = fill
 
 
@@ -29,6 +31,10 @@ class CanvasFalso:
 def test_escala_por_monitor(monitor, esperado):
     assert tj.escala(monitor) == esperado
     assert tj.escala(monitor) * 128 <= 0.4 * tj.RESOLUCOES[monitor][0]
+
+
+def test_monitor_padrao_e_fhd():
+    assert tj.MONITOR_PADRAO == "fhd"
 
 
 def test_hex_das_cores_do_painel():
@@ -66,6 +72,24 @@ def test_desenho_cria_um_quadrado_por_pixel_e_so_muda_o_que_mudou():
     assert canvas.cores[y * 128 + x] == tj.cor_da_linha_px(y)
 
 
+def test_desenho_segunda_pintura_apaga_e_so_troca_o_que_mudou():
+    casos = oled.casos()
+    a, b = casos["principal"][0].paginas(), casos["resumo"][0].paginas()
+    canvas = CanvasFalso()
+    d = tj.Desenho(canvas, 6)
+    d.pinta(a)
+    antes = canvas.chamadas
+    d.pinta(b)
+    cores_a, cores_b = tj.cores_dos_pixels(a), tj.cores_dos_pixels(b)
+    esperado = [c for linha in cores_b for c in linha]
+    assert [canvas.cores[i] for i in range(128 * 64)] == esperado  # inclui os que apagaram
+    mudaram = sum(cores_a[y][x] != cores_b[y][x] for y in range(64) for x in range(128))
+    assert 0 < mudaram < 128 * 64
+    assert canvas.chamadas - antes == mudaram
+    d.pinta(b)  # igual: nada a trocar
+    assert canvas.chamadas - antes == mudaram
+
+
 class RaizFalsa:
     def __init__(self):
         self.atualizacoes = 0
@@ -91,8 +115,9 @@ def test_janela_espelho_pinta_e_fechar_encerra(monkeypatch):
     j, raiz, canvas = janela_falsa(monkeypatch)
     j.linha("d,0," + "ff" * 128)
     assert canvas.cores[0] == tj.COR_AMARELO_HEX
+    antes = raiz.atualizacoes
     j.tick()
-    assert raiz.atualizacoes >= 1 and not j.encerrado
+    assert raiz.atualizacoes == antes + 1 and not j.encerrado
     raiz.f()  # o usuário fecha a janela
     assert j.encerrado
     j.fecha()

@@ -239,7 +239,9 @@ def test_captura_sem_espelho_ignora_as_linhas_d(tmp_path):
 def test_cor_de_cada_linha_amarelo_em_cima_azul_embaixo(braille, linhas, amarelas):
     e, saida = espelho(braille=braille)
     e.linha("d,0," + HEXA)
-    cores = cores_do_quadro(saida.getvalue().split(tt.TOPO)[1])
+    quadro = saida.getvalue().split(tt.TOPO)[1]
+    assert all(linha.endswith("\033[0m") for linha in quadro.split("\n"))  # zera as cores
+    cores = cores_do_quadro(quadro)
     assert cores == [tt.COR_AMARELO] * amarelas + [tt.COR_AZUL] * (linhas - amarelas)
     assert tt.COR_AMARELO == "\033[38;5;220;40m" and tt.COR_AZUL == "\033[38;5;39;40m"
 
