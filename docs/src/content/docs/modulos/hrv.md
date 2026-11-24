@@ -20,16 +20,17 @@ sidebar:
 
 Duas partes. **No tempo** (SDNN e RMSSD, `hrv.c`): feita até a placa.
 **Na frequência** (LF/HF, `hrv_freq.c`): feita até a placa com a fonte falsa
-(medida em 23/11). Detalhes do LF/HF na seção
-[LF/HF](#lfhf-na-frequência).
+(ciclos medidos em 23/11) e ligada na cadeia: sai na linha `l,` da serial e na
+ficha do display, uma conta a cada 5 s, espalhada em 17 amostras. Falta a
+captura com o sensor. Detalhes do LF/HF na seção [LF/HF](#lfhf-na-frequência).
 
 | Passo | No tempo (SDNN, RMSSD) | Na frequência (LF/HF) |
 |---|---|---|
 | 1. Python, validado no PhysioNet | feito | feito: `hrv_freq.py` |
 | 2. C sem HAL | feito: `hrv.h`, `hrv.c` | feito: `hrv_freq.h`, `hrv_freq.c` |
 | 3. Teste no PC contra os vetores | feito: `testes/hrv/`, no CI | feito: `teste_hrv_freq.c`, no CI |
-| 4. Placa com a fonte falsa | feito: passou na STM32 (`-DBANCADA_HRV=ON`) | feito (23/11, `-DBANCADA_HRV_FREQ=ON`): 0 fora da tolerância; pior batimento 1 284 715 ciclos em Release e 2 985 443 em Debug |
-| 5. Sensor real | feito: a placa calcula igual ao Python; o valor fisiológico depende do suporte de dedo (abaixo) | depende do `picos/`; procedimento abaixo |
+| 4. Placa com a fonte falsa | feito: passou na STM32 (`-DBANCADA_HRV=ON`) | feito (23/11, `-DBANCADA_HRV_FREQ=ON`): 0 fora da tolerância; pior batimento 1 284 715 ciclos em Release e 2 985 443 em Debug; a bancada da conta espalhada (acrescentada depois) falta rodar |
+| 5. Sensor real | feito: a placa calcula igual ao Python; o valor fisiológico depende do suporte de dedo (abaixo) | integrado na cadeia (linha `l,`, `analise.cadeia --replay`); falta a captura de 5 min ou mais; procedimento abaixo |
 
 ## Método
 
@@ -409,11 +410,14 @@ indicativo**. Mesmo 120 s ainda erra por ~1,5. Por isso a janela é de
 
 - **Atraso:** o primeiro LF/HF sai depois de os RR aceitos somarem 270 s
   (`HRV_FREQ_COBERTURA_MIN` = 90% da janela): **~4,5 min** depois de pôr o
-  dedo (o SDNN e o RMSSD saem com 45 s). Depois, um valor novo a cada
-  batimento, que muda devagar.
+  dedo (o SDNN e o RMSSD saem com 45 s). Depois, na cadeia, um valor novo a
+  cada 5 s (ver [Na cadeia](#na-cadeia-a-cada-5-s-espalhado)): ele muda devagar.
 - **Memória:** `hrv_freq_t` tem **~16,4 KiB** (600 RR com `n_pico`,
   `fracao` e RR, mais a área de trabalho da spline e a série de 601
-  amostras). O `hrv_t` do tempo tem 3,3 KiB. A F411 tem 128 KiB.
+  amostras). O `hrv_t` do tempo tem 3,3 KiB. A F411 tem 128 KiB. Medido pelo
+  linker (24/11, já com a SpO2 na cadeia): ligar o LF/HF na cadeia levou a RAM de
+  40 392 para 57 264 B (+16 872) e a flash de 61 264 para 63 344 B em Release
+  (Debug: 40 400 → 57 272 B de RAM, 89 996 → 94 048 B de flash).
 - **Batimentos rápidos:** cabem 600 RR. Acima de ~120 bpm de média em
   5 min, o buffer descarta os mais antigos, a cobertura cai abaixo de 90% e
   o LF/HF fica inválido. Em repouso (o caso que interessa) não acontece.
@@ -430,8 +434,10 @@ infinito fora, janela pelo `n_pico` (sai quando `n_atual - n_pico >=
 30000`). A mais: um RR no **mesmo instante** do último guardado (mesmo
 `n_pico` e `fracao`) não entra, porque a spline dividiria por zero.
 
-`lf_hf_valido` só quando os RR aceitos **somam pelo menos 270 s** e há pelo
-menos 4 pontos. Um batimento perdido tira **dois** RR (o dele e o seguinte,
+`lf_hf_valido` só quando os RR aceitos **somam pelo menos 270 s**. Não há um
+mínimo de pontos à parte (havia um, `HRV_FREQ_MIN_RR` = 4, e foi tirado: era
+redundante): 270 s de RR de no máximo 2000 ms já são pelo menos 135 pontos na
+spline. Um batimento perdido tira **dois** RR (o dele e o seguinte,
 que chega com `rr_valido` false): a spline passa por cima do buraco, mas com
 mais de ~1 perdido a cada 20 batimentos a cobertura cai abaixo de 90% e o
 LF/HF fica inválido. No teste, 1 perdido a cada 40 muda o LF/HF em 9%.
@@ -443,7 +449,8 @@ LF/HF fica inválido. No teste, 1 perdido a cada 40 muda o LF/HF em 9%.
 | `n_pico` menor que o anterior | reinicia |
 | buraco longo sem batimento | a janela esvazia e volta a inválido |
 | mais de 600 RR na janela | sai o mais antigo |
-| `hrv_freq_init` de novo | zera tudo |
+| `hrv_freq_init` de novo | zera tudo (e larga uma conta espalhada em andamento) |
+| `n_pico` voltando no meio de uma conta espalhada | reinicia e larga a conta: não sai resultado |
 
 ### Implementação em C
 
@@ -458,6 +465,45 @@ if (hrv_processa(&h, &batimento, &hrv)) {   /* escreve lf_hf_valido = false */
     hrv_freq_processa(&hf, &batimento, &hrv); /* DEPOIS: preenche lf_hf */
 }
 ```
+
+Esse é o jeito "de uma vez": a conta inteira a cada batimento (13,4 ms em
+Release, 31 ms em Debug no pior caso, medidos). A cadeia usa o jeito
+**espalhado**, com a mesma conta em pedaços:
+
+```c
+hrv_freq_guarda(&hf, &batimento);      /* a cada batimento: só guarda o RR */
+...
+hrv_freq_comeca(&hf);                  /* quando quiser um valor */
+...                                    /* depois, uma vez por amostra: */
+if (hrv_freq_passo(&hf, &hrv)) {       /* true no 17º passo */
+    /* hrv.lf_hf_valido e hrv.lf_hf prontos */
+}
+```
+
+- **A janela** é a dos 300 s que terminam no **último batimento guardado**
+  (com `valido` true), não no `n` atual: `hrv_freq_comeca()` calcula sobre o
+  que já está guardado. Assim, o número é exatamente o que
+  `hrv_freq_processa()` daria naquele batimento, e as regras são as do HRV no
+  tempo (que também só anda com batimento). Sem batimento nenhum, a janela não
+  anda e o último valor fica.
+- **`hrv_freq_comeca()`** confere a cobertura e copia os instantes e os RR
+  pra área de trabalho (uma passada nos ≤ 600 RR). Os batimentos guardados
+  durante a conta não mexem nela.
+- **`hrv_freq_passo()`**, `HRV_FREQ_PASSOS` = 17 vezes: (1) spline; (2)
+  reamostragem; (3) reta e Hann; (4 a 17) o Goertzel, 8 das 109 frequências por
+  passo (`HRV_FREQ_K_POR_PASSO`). O 17º solta o resultado. São sempre 17, mesmo
+  sem cobertura (aí os passos não fazem nada e sai inválido): o resultado sai
+  numa amostra previsível, que o Python repete.
+- **Igual bit a bit:** `hrv_freq_processa()` é `guarda` + `comeca` + os 17
+  passos seguidos, então as duas formas fazem as mesmas operações de float na
+  mesma ordem (as somas das bandas também vão na ordem de *k*). O
+  `teste_hrv_freq` confere a igualdade bit a bit em 152 contas dos dois vetores,
+  com batimentos guardados no meio da conta, e que o resultado sai no 17º passo.
+- **Pior passo (estimativa):** 8 das 109 frequências são ~7% da conta inteira
+  medida: ~200 mil ciclos em Debug (~2 ms) e ~90 mil em Release (~1 ms). A
+  proporção vem de medir cada passo no PC (cada passo do Goertzel é ~9,4% do
+  total em `-O0`; os 3 primeiros, 1,5 a 2%); na placa, os `cosf` da Hann pesam
+  mais, mas ainda abaixo de um passo do Goertzel. A bancada mede (abaixo).
 
 `hrv_freq.c` é um arquivo ao lado do `hrv.c` no mesmo módulo, com estado
 próprio: o LF/HF precisa de 300 s e o SDNN/RMSSD de 60 s, e assim a bancada
@@ -475,7 +521,7 @@ de um não muda o orçamento do outro. Ele preenche só `lf_hf_valido` e
   ressonador de 2ª ordem $s_j = y_j + 2\cos\omega\, s_{j-1} - s_{j-2}$, e
   no fim $|X|^2 = s_1^2 + s_2^2 - 2\cos\omega\, s_1 s_2$. Uma
   multiplicação por amostra, sem tabela de senos. 109 frequências × ~600
-  amostras ≈ 65 mil iterações por batimento.
+  amostras ≈ 65 mil iterações por conta.
 - **Trocável por FFT:** `hrv_freq_potencias(y, n, &lf, &hf)` recebe a série
   pronta e devolve as duas potências. Com o CMSIS-DSP (#25), dá pra trocar
   por uma FFT real de 1024 pontos sem mexer no resto.
@@ -491,6 +537,40 @@ Por que não as outras opções em C puro:
 | Interpolação linear + Goertzel | igual à escolhida | menos 2 vetores | infla o LF/HF em 22% (medido) |
 
 ### Validação do LF/HF
+
+#### Na cadeia: a cada 5 s, espalhado
+
+Na cadeia (`pds/cadeia/cadeia.c`), cada batimento que vai pro HRV no tempo
+também é guardado no LF/HF (`hrv_freq_guarda`), com o **mesmo `rr_valido`** (o
+`rr_usado`, que já passou pela qualidade). A conta começa a cada 5 s, na amostra
+de `n % 500 == 20`, e anda um passo por amostra (21 a 37); o resultado sai na de
+`n % 500 == 37`, vai pra ficha (`hrv.lf_hf_valido`, `hrv.lf_hf`, que o display já
+lê) e pra serial na linha `l,n,valido,lf_hf` (3 casas). Por quê:
+
+- **Uma conta a cada 5 s, e não a cada batimento:** o LF/HF de 300 s muda
+  devagar, e a conta inteira custa 13,4 ms (Release) ou 31 ms (Debug) no pior
+  batimento: junto da amostra mais pesada (16 a 19 ms de volta em Release, 26 ms
+  em Debug), estouraria a folga de 37,5 ms do sensor depois do INT.
+- **Espalhada em 17 amostras:** o pior passo fica em ~2 ms em Debug (estimado),
+  bem abaixo de 5 ms.
+- **`n % 500 == 20`:** longe da amostra de `n % 100 == 99`, onde a qualidade
+  julga (e solta os batimentos da fila do HRV, até 2 numa amostra), a FFT do
+  espectral e a respiração calculam. A placa processa as amostras em lotes de 4
+  ou 5: com os passos de 21 a 37, nenhum cai no lote da amostra pesada. A conta
+  pega os batimentos soltos no julgamento de 0,2 s antes.
+- **A ficha não perde o LF/HF:** `hrv_processa()` escreve `lf_hf_valido =
+  false` na saída dele; a cadeia copia pra ficha só `valido`, `sdnn_ms` e
+  `rmssd_ms`, e o LF/HF da ficha é sempre o da última conta.
+
+O `teste_cadeia` confere tudo contra a referência em Python
+(`analise.cadeia`, mesma ordem e mesma cadência): no vetor de 90 s, as 18 contas
+(todas inválidas: 90 s não chegam aos 270 s de RR) e, num vetor longo (320 s de
+`s1_sit` desde o começo, `testes/cadeia/vetores/longo.h`, só com as saídas do
+LF/HF), as 64 contas, 8 delas válidas (LF/HF de 1,1 a 1,3; maior erro contra o
+Python 2 × 10⁻⁶), e a ficha em toda amostra. Errar de propósito pega: não guardar
+no LF/HF (8 válidas viram inválidas), a ficha sem o `lf_hf` ou copiando a saída
+inteira do `hrv_processa` (a ficha perde o valor), guardar com `rr_valido`
+sempre true (7 fora da tolerância) e a fase errada (todos os `n`).
 
 #### 1. Python no PhysioNet
 
@@ -530,8 +610,13 @@ Tolerância de 0,002 no LF/HF; `lf_hf_valido` e o retorno exatos. O teste
 também confere, no C: senoide num bin exato cai inteira na banda certa
 ($|X|^2 = (N/2)^2$), senoides conhecidas dão LF/HF ≈ 4, janela incompleta
 (inválido até ~270 s), 1 perdido em 40 (muda < 10%) e em 20 (inválido),
-poucos batimentos, batimento inválido, RR no mesmo instante, reinício e o
-encadeamento `hrv_processa` → `hrv_freq_processa`. Errar de propósito pega:
+poucos batimentos, batimento inválido, RR no mesmo instante, reinício, o
+encadeamento `hrv_processa` → `hrv_freq_processa` e a conta espalhada (igual bit
+a bit, 17 passos, passo sem conta não mexe na saída). O teste de reinício confere
+que uma conta espalhada em andamento é largada quando o `n_pico` volta: só a
+janela não bastava pra pegar a falta do `hrv_freq_init()` no reinício, porque
+`n_pico - n[i]` dá a volta no `uint32_t` e esvazia a janela sozinho. Errar de
+propósito pega:
 spline virando reta (1568 falhas), sem tirar a reta (65), sem Hann (1558),
 0,15 Hz contado no LF (1483), janela com `>` (6) e buffer cheio sem
 descartar (350).
@@ -546,47 +631,57 @@ STM32_Programmer_CLI -c port=SWD -w build/Release/sensor-ppg.elf -v -rst
 
 Na partida, logo depois de abrir a serial (antes do sensor), a placa toca
 os 613 batimentos de `s1_sit` no `hrv_freq_processa()`, confere com o mesmo
-vetor do teste no PC e mede os ciclos de cada batimento. Esperado:
+vetor do teste no PC e mede os ciclos de cada batimento. A cada 10 batimentos
+(`BANCADA_HRV_FREQ_CADA`), faz a mesma conta espalhada (`hrv_freq_comeca` e os
+17 `hrv_freq_passo`, como na cadeia), confere que deu o mesmo float e mede o
+pior passo. Esperado:
 
 ```text
 # bancada lf/hf: 613 batimentos, 283 validos, 0 fora da tolerancia, erro max ... milionesimos
-# bancada lf/hf: ciclos por batimento med ... max ... (orcamento 1500000): OK
+# bancada lf/hf: ciclos por batimento med ... max ... (orcamento 1500000)
+# bancada lf/hf: espalhada em 17 passos, 62 contas, 0 diferentes; pior passo ..., comeca ... (orcamento 160000): OK
 ```
 
 **Orçamento, por perfil** (`bancada_hrv.h`; o Release é `-Os`, que define
-`__OPTIMIZE__`): 1 500 000 ciclos por batimento em Release e 3 400 000 em
-Debug (`-O0`), o pior batimento medido (abaixo) com folga de ~15%. O orçamento
-antigo era um só, 2 000 000, estimado sem medir pra `-O0`: o Debug medido
-passou dele (31 ms). O que preocupa mais é o **tempo de um batimento**, não a
-média: 13 ms parado no meio do laço são mais de uma amostra a 100 Hz (5 do
-sensor a 400 Hz), 31 ms em Debug são 3. Por isso, na cadeia, a conta não pode
-rodar inteira num batimento: tem que ir em pedaços ou só a cada tanto (ele
-muda devagar), ou trocar pela FFT. Com as duas bancadas do HRV ligadas,
-compila sem warnings: Release 88 632 B de flash e 60 560 B de RAM; Debug
-136 740 e 60 568 (medido em 24/11, já com a SpO2 na cadeia).
+`__OPTIMIZE__`):
 
-**Resultado na placa** (23/11/2026, 613 batimentos de `s1_sit`): 283 válidos,
-0 fora da tolerância, erro máximo 14 milionésimos. Ciclos por batimento:
-
-| | Release (`-Os`) | Debug (`-O0`) |
+| | Release | Debug (`-O0`) |
 |---|---|---|
-| Média | 587 395 | 1 368 224 |
-| Pior batimento | 1 284 715 (13,4 ms a 96 MHz) | 2 985 443 (31 ms) |
-| Orçamento | 1 500 000 | 3 400 000 |
+| Conta inteira, pior batimento (medido, 23/11) | 1 284 715 (13,4 ms) | 2 985 443 (31 ms) |
+| Orçamento da conta inteira | 1 500 000 | 3 400 000 |
+| Pior passo da conta espalhada (estimado) | ~90 000 (~1 ms) | ~200 000 (~2 ms) |
+| Orçamento do passo | 160 000 (1,7 ms) | 320 000 (3,3 ms) |
 
-A média inclui os ~270 primeiros batimentos, em que a janela ainda não cobre
-e não há conta; por isso ela é perto da metade do máximo.
+O orçamento antigo era um só, 2 000 000, estimado sem medir pra `-O0`: o Debug
+medido passou dele (31 ms). A média por batimento que a bancada imprime ("med")
+inclui os ~270 primeiros batimentos, em que a janela ainda não cobre e não há
+conta; por isso ela é perto da metade do máximo (587 395 em Release e 1 368 224
+em Debug).
 
-Passos: (1) gravar com a opção; (2) abrir a serial a 460800 e copiar as
-duas linhas; (3) conferir `0 fora da tolerancia` e `283 validos`; (4)
-anotar média e máximo dos ciclos aqui; (5) voltar com
-`-DBANCADA_HRV_FREQ=OFF`.
+**Resultado na placa** (23/11/2026, a bancada de antes da conta espalhada): 283
+válidos, 0 fora da tolerância, erro máximo 14 milionésimos; pior batimento
+1 284 715 ciclos em Release (13,4 ms a 96 MHz) e 2 985 443 em Debug (31 ms);
+média 587 395 e 1 368 224. É por esses números que, na cadeia, a conta vai espalhada e
+só a cada 5 s. **Falta rodar** a bancada nova (a terceira linha, com o pior
+passo).
+
+Com a bancada do LF/HF ligada, compila sem warnings: Release 81 556 B de flash e
+74 112 B de RAM; Debug 115 336 e 74 120 (o `hrv_freq_t` da bancada é outro, além
+do da cadeia; medido em 24/11, já com a SpO2 na cadeia).
+
+Passos: (1) gravar com a opção; (2) abrir a serial a **460800** e copiar as
+três linhas; (3) conferir `0 fora da tolerancia`, `283 validos` e `0 diferentes`;
+(4) anotar os ciclos aqui; (5) voltar com `-DBANCADA_HRV_FREQ=OFF`.
 
 #### 4. Sensor real
 
 Depende do `picos/`, como o SDNN/RMSSD. Sem ECG na placa, o teste é
 fisiológico, e precisa de **pelo menos 5 min por condição**, mais os
 ~4,5 min até o primeiro valor:
+
+Grave com `uv run python -m analise.captura <porta> --qualidade` (o LF/HF vai
+pro `<nome>_lfhf.csv`, um valor a cada 5 s) e confira com
+`uv run python -m analise.cadeia --replay`, que refaz as linhas `l,` no PC.
 
 1. **Repouso sentado, respiração livre, 8 min:** anotar o LF/HF dos
    últimos 3 min. Varia muito entre pessoas: nos 22 registros sentados do
