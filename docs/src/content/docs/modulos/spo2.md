@@ -26,7 +26,7 @@ tendência e a ordem de grandeza (95 a 100% em pessoas saudáveis), não como me
 | 2. C (`Core/*/pds/spo2/`) | feito, idêntico ao Python (erro 0) |
 | 3. Teste no PC (`testes/spo2/`) | feito: 2 vetores e os casos de comportamento |
 | 4. Placa com a fonte falsa | feito na placa (24/11/2026, `-DBANCADA_SPO2=ON`): 33 de 33 saídas, 0 fora da tolerância, erro 0; ciclos por amostra med 131 / max 1 532 (Release) e 420 / 3 822 (Debug), orçamento 9 600 |
-| 5. Sensor real | offline nas capturas de 22 e 23/11 (abaixo); falta a captura com o firmware novo (linha `s,...` na serial) |
+| 5. Sensor real | feito (24/11/2026): 6 min com o dedo, LEDs corrigidos; 361 de 361 saídas válidas, mediana 98,6 a 98,9% (abaixo) |
 
 Esta página é atualizada em todo PR que mexe no módulo.
 
@@ -110,7 +110,19 @@ registro a partir de 30 s do bruto da fonte falsa (`uv run python -m analise.spo
   A atribuição dos canais faz diferença, e o `R_MAX` protege contra LEDs trocados no sensor parado, **não** com
   movimento; aí depende de a qualidade marcar o trecho como não usável.
 
-**Nas capturas do nosso sensor (offline).** Passando as 8 capturas de 22 e 23/11 (`*_bruto.csv`) pelo
+**Com o sensor real (24/11/2026).** Firmware padrão em Release, com os LEDs corrigidos, dedo do André pressionado,
+sentado, 6 min desde o reset: 3 min em repouso e 3 min respirando a 6 por minuto. A placa e o Python dão as mesmas
+linhas `s,` (`analise.cadeia --replay`: 0 diferenças).
+
+| Trecho | Saídas válidas | SpO2 (mediana, faixa) | R mediano |
+|---|---|---|---|
+| Repouso, 0 a 3 min | 173 de 173 | 98,9% (83,8 a 100) | 0,445 |
+| Respiração lenta, 3 a 6 min | 188 de 188 | 98,6% (97,2 a 100) | 0,456 |
+
+Plausível para uma pessoa saudável, e estável entre os dois trechos. O 83,8% é uma janela isolada. Sem oxímetro
+de referência, continua sendo uma **estimativa**: prova que a cadeia e a correção dos LEDs funcionam, não a exatidão.
+
+**Nas capturas de antes da correção (offline).** Passando as 8 capturas de 22 e 23/11 (`*_bruto.csv`) pelo
 `analise.spo2`, só nas janelas que a qualidade (calculada na ordem de canais da captura) diz usáveis, em 6 das 8
 capturas (nas outras 2 nenhuma janela é usável): com os canais na ordem que o firmware mandava, o R mediano por
 captura deu 1,86 a 2,68 e só 0 a 1 janela por captura saiu válida (SpO2 em torno de 50%, impossível em repouso).
@@ -171,6 +183,5 @@ do código ARM emulado também batem com as do Python (33 de 33).
 
 ## Pendente
 
-- **Rodar com o sensor real** no firmware com os LEDs corrigidos e ver as linhas `s,...` (passo 5, #78).
 - **Calibrar com um oxímetro de referência.** Sem isso o resultado continua "estimado".
 - **Passa-faixa no AC** (ou o AC do filtrado), para o ruído de banda larga e o movimento puxarem menos o R.
