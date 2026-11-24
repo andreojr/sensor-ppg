@@ -169,7 +169,8 @@ static int mesmo_instante(void)
 {
     senoidal(400.0f, 40.0f, 20.0f, 0u);
     uint32_t conta = h.conta;
-    ppg_batimento_t b = {true, h.n[conta - 1u], h.fracao[conta - 1u], true, 900.0f};
+    uint32_t u = (h.inicio + conta - 1u) % HRV_FREQ_CAP; /* o mais novo, na fila circular */
+    ppg_batimento_t b = {true, h.n[u], h.fracao[u], true, 900.0f};
     ppg_hrv_t s;
     hrv_freq_processa(&h, &b, &s);
     if (h.conta != conta || !s.lf_hf_valido || !isfinite(s.lf_hf))

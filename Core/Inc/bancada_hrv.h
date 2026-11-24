@@ -11,7 +11,9 @@
  * testes/hrv/vetores/freq_s1_sit.h), em linhas "# bancada lf/hf ...". A cada
  * BANCADA_HRV_FREQ_CADA batimentos, a mesma conta também é feita espalhada
  * (hrv_freq_comeca() e os HRV_FREQ_PASSOS hrv_freq_passo(), como na cadeia):
- * confere que dá o mesmo número e mede o pior passo.
+ * confere que dá o mesmo número e mede o pior passo. Depois, só o
+ * hrv_freq_guarda() (o que a cadeia faz a cada batimento), com o pior caso
+ * separado do batimento em que a janela está cheia.
  */
 #ifndef BANCADA_HRV_H
 #define BANCADA_HRV_H
@@ -46,6 +48,13 @@
 #define BANCADA_ORCAMENTO_HRV_FREQ 3400000u
 #define BANCADA_ORCAMENTO_HRV_FREQ_PASSO 320000u
 #endif
+/*
+ * O pior hrv_freq_guarda (o que a cadeia faz a cada batimento, dentro da medida
+ * "hrv", junto do hrv_processa, que tem 20 000): com a fila circular, nenhum
+ * vetor é movido, só se escreve o RR e se anda o início. Estimativa: algumas
+ * centenas de ciclos em Debug; o orçamento é 10% do do HRV.
+ */
+#define BANCADA_ORCAMENTO_HRV_FREQ_GUARDA 2000u
 /* Média por amostra na cadeia (uma conta a cada 500 amostras): 1% da CPU. */
 #define BANCADA_ORCAMENTO_HRV_FREQ_MED 9600u
 /* De quantos em quantos batimentos a bancada confere a conta espalhada. */

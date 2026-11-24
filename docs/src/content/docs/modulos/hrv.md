@@ -413,7 +413,7 @@ indicativo**. Mesmo 120 s ainda erra por ~1,5. Por isso a janela é de
   dedo (o SDNN e o RMSSD saem com 45 s). Depois, na cadeia, um valor novo a
   cada 5 s (ver [Na cadeia](#na-cadeia-a-cada-5-s-espalhado)): ele muda devagar.
 - **Memória:** `hrv_freq_t` tem **~16,4 KiB** (600 RR com `n_pico`,
-  `fracao` e RR, mais a área de trabalho da spline e a série de 601
+  `fracao` e RR numa fila circular, mais a área de trabalho da spline e a série de 601
   amostras). O `hrv_t` do tempo tem 3,3 KiB. A F411 tem 128 KiB. Medido pelo
   linker (24/11, já com a SpO2 na cadeia): ligar o LF/HF na cadeia levou a RAM de
   40 392 para 57 264 B (+16 872) e a flash de 61 264 para 63 344 B em Release
@@ -486,9 +486,18 @@ if (hrv_freq_passo(&hf, &hrv)) {       /* true no 17º passo */
   `hrv_freq_processa()` daria naquele batimento, e as regras são as do HRV no
   tempo (que também só anda com batimento). Sem batimento nenhum, a janela não
   anda e o último valor fica.
+- **`hrv_freq_guarda()`** só escreve o RR numa fila circular (como o `hrv_t`)
+  e anda o início pelos que saíram da janela: nenhum vetor é movido, e o custo
+  é constante por RR que entra ou sai (algumas centenas de ciclos, estimado; a
+  bancada mede o pior). A primeira versão guardava os RR contíguos e, com a
+  janela cheia, tirava o mais antigo com 3 `memmove` de ~1,4 KB cada (o do
+  newlib-nano vai byte a byte): ~30 a 40 mil ciclos por batimento, estimados,
+  dentro da medida `hrv` da cadeia (orçamento 20 000).
 - **`hrv_freq_comeca()`** confere a cobertura e copia os instantes e os RR
-  pra área de trabalho (uma passada nos ≤ 600 RR). Os batimentos guardados
-  durante a conta não mexem nela.
+  pra área de trabalho, desembrulhando a fila (do mais antigo ao mais novo, a
+  partir do índice 0; duas passadas nos ≤ 600 RR). Os batimentos guardados
+  durante a conta não mexem nela. A ordem das somas é a mesma da versão
+  contígua: o resultado é igual bit a bit.
 - **`hrv_freq_passo()`**, `HRV_FREQ_PASSOS` = 17 vezes: (1) spline; (2)
   reamostragem; (3) reta e Hann; (4 a 17) o Goertzel, 8 das 109 frequências por
   passo (`HRV_FREQ_K_POR_PASSO`). O 17º solta o resultado. São sempre 17, mesmo
@@ -634,11 +643,14 @@ os 613 batimentos de `s1_sit` no `hrv_freq_processa()`, confere com o mesmo
 vetor do teste no PC e mede os ciclos de cada batimento. A cada 10 batimentos
 (`BANCADA_HRV_FREQ_CADA`), faz a mesma conta espalhada (`hrv_freq_comeca` e os
 17 `hrv_freq_passo`, como na cadeia), confere que deu o mesmo float e mede o
-pior passo. Esperado:
+pior passo. Depois, roda os 613 batimentos de novo só no `hrv_freq_guarda` (o
+que a cadeia faz a cada batimento) e mede o pior, à parte o dos batimentos com a
+janela cheia (os que tiram RR da janela: 242 em `s1_sit`). Esperado:
 
 ```text
 # bancada lf/hf: 613 batimentos, 283 validos, 0 fora da tolerancia, erro max ... milionesimos
 # bancada lf/hf: ciclos por batimento med ... max ... (orcamento 1500000)
+# bancada lf/hf: guarda max ..., com a janela cheia ... em 242 batimentos (orcamento 2000)
 # bancada lf/hf: espalhada em 17 passos, 62 contas, 0 diferentes; pior passo ..., comeca ... (orcamento 160000): OK
 ```
 
@@ -651,6 +663,8 @@ pior passo. Esperado:
 | Orçamento da conta inteira | 1 500 000 | 3 400 000 |
 | Pior passo da conta espalhada (estimado) | ~90 000 (~1 ms) | ~200 000 (~2 ms) |
 | Orçamento do passo | 160 000 (1,7 ms) | 320 000 (3,3 ms) |
+| Pior `hrv_freq_guarda` (estimado) | algumas centenas | algumas centenas |
+| Orçamento da guarda (10% dos 20 000 do HRV) | 2 000 | 2 000 |
 
 O orçamento antigo era um só, 2 000 000, estimado sem medir pra `-O0`: o Debug
 medido passou dele (31 ms). A média por batimento que a bancada imprime ("med")
@@ -662,15 +676,15 @@ em Debug).
 válidos, 0 fora da tolerância, erro máximo 14 milionésimos; pior batimento
 1 284 715 ciclos em Release (13,4 ms a 96 MHz) e 2 985 443 em Debug (31 ms);
 média 587 395 e 1 368 224. É por esses números que, na cadeia, a conta vai espalhada e
-só a cada 5 s. **Falta rodar** a bancada nova (a terceira linha, com o pior
-passo).
+só a cada 5 s. **Falta rodar** a bancada nova (a terceira e a quarta linhas,
+com a guarda e o pior passo).
 
 Com a bancada do LF/HF ligada, compila sem warnings: Release 81 556 B de flash e
 74 112 B de RAM; Debug 115 336 e 74 120 (o `hrv_freq_t` da bancada é outro, além
 do da cadeia; medido em 24/11, já com a SpO2 na cadeia).
 
 Passos: (1) gravar com a opção; (2) abrir a serial a **460800** e copiar as
-três linhas; (3) conferir `0 fora da tolerancia`, `283 validos` e `0 diferentes`;
+quatro linhas; (3) conferir `0 fora da tolerancia`, `283 validos` e `0 diferentes`;
 (4) anotar os ciclos aqui; (5) voltar com `-DBANCADA_HRV_FREQ=OFF`.
 
 #### 4. Sensor real

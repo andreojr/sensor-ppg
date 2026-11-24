@@ -222,7 +222,9 @@ l,537,0,0.000
   pro filtro (19 200 ciclos por amostra a 100 Hz), 1% pro picos (9 600), 1%
   pra respiração (9 600, em média; o espectro roda numa amostra por segundo)
   e 20 000 ciclos por batimento pro HRV (o da bancada do HRV; inclui a guarda do
-  RR no LF/HF). O LF/HF tem média de 9 600 por amostra e pior amostra de 320 000 em
+  RR no LF/HF, `hrv_freq_guarda`, que é uma fila circular: escreve o RR e anda o
+  início, sem mover vetor nenhum; algumas centenas de ciclos, estimado, com
+  orçamento próprio de 2 000 na bancada do LF/HF). O LF/HF tem média de 9 600 por amostra e pior amostra de 320 000 em
   Debug (160 000 em Release): o pior passo da conta espalhada. O espectral tem
   dois orçamentos: **média** de 9 600 ciclos por amostra (1%) e **pior caso** de
   960 000 (a amostra em que sai a FFT, uma por segundo, tem que caber num período de

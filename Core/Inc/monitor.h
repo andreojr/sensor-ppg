@@ -23,9 +23,11 @@
 
 /* Orçamento da cadeia por amostra a 100 Hz, SEM a decimação (medida no sensor.c):
    a soma dos orçamentos dos módulos (filtro 19 200 + picos 9 600 + espectral 9 600 +
-   respiração 9 600 + qualidade 3 000 + LF/HF 9 600). O HRV no tempo (com a guarda do
-   LF/HF) roda dentro da medida, mas só a cada batimento (~20 000 ciclos, ~1 por
-   segundo: ~200 por amostra) e fica fora da soma.
+   respiração 9 600 + qualidade 3 000 + LF/HF 9 600). O HRV no tempo e a guarda do
+   LF/HF rodam dentro da medida, mas só a cada batimento (~1 por segundo) e ficam fora
+   da soma: o hrv_processa, até 12 876 ciclos medidos em Debug; a guarda, numa fila
+   circular (nada é movido), algumas centenas, estimado (a bancada do LF/HF mede,
+   orçamento 2 000). Juntos, dentro dos 20 000 do HRV: ~200 por amostra.
    O pior caso é comparado com um período (960 000), mas passa dele uma vez por
    segundo, quando a respiração e o espectral calculam juntos: só se registra
    (firmware.md, "Se estourar"). */

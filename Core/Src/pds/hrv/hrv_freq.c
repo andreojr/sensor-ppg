@@ -16,14 +16,18 @@ void hrv_freq_init(hrv_freq_t *h)
     memset(h, 0, sizeof *h);
 }
 
-/* Tira os `quantos` RR mais antigos (os vetores ficam contíguos). */
-static void tira_antigos(hrv_freq_t *h, uint32_t quantos)
+/* Índice na fila do i-ésimo RR mais antigo (i < HRV_FREQ_CAP). */
+static uint32_t posicao(const hrv_freq_t *h, uint32_t i)
 {
-    uint32_t resto = h->conta - quantos;
-    memmove(h->n, h->n + quantos, resto * sizeof h->n[0]);
-    memmove(h->fracao, h->fracao + quantos, resto * sizeof h->fracao[0]);
-    memmove(h->rr, h->rr + quantos, resto * sizeof h->rr[0]);
-    h->conta = resto;
+    uint32_t p = h->inicio + i;
+    return p >= HRV_FREQ_CAP ? p - HRV_FREQ_CAP : p;
+}
+
+/* Tira o RR mais antigo: só anda o início da fila. */
+static void tira_mais_antigo(hrv_freq_t *h)
+{
+    h->inicio = posicao(h, 1u);
+    h->conta--;
 }
 
 static bool aceita(const hrv_freq_t *h, const ppg_batimento_t *b)
@@ -35,7 +39,7 @@ static bool aceita(const hrv_freq_t *h, const ppg_batimento_t *b)
        no mesmo instante. */
     if (h->conta == 0)
         return true;
-    uint32_t u = h->conta - 1u;
+    uint32_t u = posicao(h, h->conta - 1u);
     return b->n_pico > h->n[u] || (b->n_pico == h->n[u] && b->fracao > h->fracao[u]);
 }
 
@@ -76,28 +80,32 @@ static float avalia(const float *t, const float *v, const float *mm, uint32_t i,
 }
 
 /*
- * Copia a janela pra área de trabalho: t[] (instantes) e aux[] (RR menos a
+ * Copia a janela pra área de trabalho, já desembrulhando a fila (do mais antigo
+ * ao mais novo, a partir do índice 0): t[] (instantes) e aux[] (RR menos a
  * média), e o tamanho da série reamostrada. Daqui em diante a conta não lê mais
  * n[], fracao[] nem rr[].
  */
 static void copia_janela(hrv_freq_t *h)
 {
     uint32_t m = h->conta;
+    uint32_t p0 = h->inicio, pu = posicao(h, m - 1u);
     /* Instantes relativos ao primeiro RR. Subtrai os inteiros antes: em
        float32, n_pico / 100 perderia os milissegundos depois de ~2 dias. */
-    for (uint32_t i = 0; i < m; i++)
-        h->t[i] = ((float)(h->n[i] - h->n[0]) + (h->fracao[i] - h->fracao[0])) / (float)PPG_FS_HZ;
+    for (uint32_t i = 0; i < m; i++) {
+        uint32_t p = posicao(h, i);
+        h->t[i] = ((float)(h->n[p] - h->n[p0]) + (h->fracao[p] - h->fracao[p0])) / (float)PPG_FS_HZ;
+    }
 
     /* A spline é linear nos valores: tirar a média antes não muda o
        resultado (a reta sai depois) e deixa os números pequenos em float32. */
     float media = 0.0f;
     for (uint32_t i = 0; i < m; i++)
-        media += h->rr[i];
+        media += h->rr[posicao(h, i)];
     media /= (float)m;
     for (uint32_t i = 0; i < m; i++)
-        h->aux[i] = h->rr[i] - media;
+        h->aux[i] = h->rr[posicao(h, i)] - media;
 
-    float d_amostras = (float)(h->n[m - 1u] - h->n[0]) + (h->fracao[m - 1u] - h->fracao[0]);
+    float d_amostras = (float)(h->n[pu] - h->n[p0]) + (h->fracao[pu] - h->fracao[p0]);
     uint32_t n = (uint32_t)floorf(d_amostras / PASSO_AMOSTRAS) + 1u;
     h->pontos = m;
     h->amostras = n > HRV_FREQ_N_MAX ? HRV_FREQ_N_MAX : n;
@@ -178,7 +186,7 @@ void hrv_freq_comeca(hrv_freq_t *h)
 {
     float soma = 0.0f;
     for (uint32_t i = 0; i < h->conta; i++)
-        soma += h->rr[i];
+        soma += h->rr[posicao(h, i)];
     h->cobre = soma >= HRV_FREQ_COBERTURA_MIN * (float)HRV_FREQ_JANELA_S * 1000.0f;
     if (h->cobre)
         copia_janela(h);
@@ -246,18 +254,18 @@ bool hrv_freq_guarda(hrv_freq_t *h, const ppg_batimento_t *b)
     h->tem_n = true;
     h->ultimo_n = b->n_pico;
 
-    uint32_t velhos = 0;
-    while (velhos < h->conta && b->n_pico - h->n[velhos] >= HRV_FREQ_JANELA_AMOSTRAS)
-        velhos++;
-    if (velhos > 0u)
-        tira_antigos(h, velhos);
+    /* Sai da janela o que ficou velho, antes de entrar o novo. Cada RR sai uma
+       vez só: em média, no máximo um por batimento. */
+    while (h->conta > 0u && b->n_pico - h->n[h->inicio] >= HRV_FREQ_JANELA_AMOSTRAS)
+        tira_mais_antigo(h);
 
     if (aceita(h, b)) {
         if (h->conta == HRV_FREQ_CAP)
-            tira_antigos(h, 1u);
-        h->n[h->conta] = b->n_pico;
-        h->fracao[h->conta] = b->fracao;
-        h->rr[h->conta] = b->rr_ms;
+            tira_mais_antigo(h);
+        uint32_t p = posicao(h, h->conta);
+        h->n[p] = b->n_pico;
+        h->fracao[p] = b->fracao;
+        h->rr[p] = b->rr_ms;
         h->conta++;
     }
     return true;

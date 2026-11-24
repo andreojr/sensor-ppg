@@ -122,10 +122,33 @@ bool bancada_hrv_freq(void)
         validos += s.lf_hf_valido;
     }
 
+    /* Só a guarda (o que a cadeia faz a cada batimento, junto do hrv_processa), de
+       novo do zero: o pior batimento com a janela cheia, quando sai RR da janela
+       a cada um que entra. */
+    hrv_freq_init(&h);
+    uint32_t max_guarda = 0, max_guarda_cheia = 0, cheias = 0;
+    for (uint32_t i = 0; i < FREQ_S1_SIT_VALIDO_N; i++) {
+        ppg_batimento_t b = {freq_s1_sit_valido[i] != 0, (uint32_t)freq_s1_sit_n_pico[i],
+                             freq_s1_sit_fracao[i], freq_s1_sit_rr_valido[i] != 0,
+                             freq_s1_sit_rr_ms[i]};
+        uint32_t antes = h.conta, inicio = h.inicio;
+        uint32_t t0 = ciclos_agora();
+        (void)hrv_freq_guarda(&h, &b);
+        uint32_t dt = ciclos_agora() - t0;
+        if (dt > max_guarda)
+            max_guarda = dt;
+        if (antes > 0u && h.inicio != inicio) { /* saiu RR: a janela estava cheia */
+            cheias++;
+            if (dt > max_guarda_cheia)
+                max_guarda_cheia = dt;
+        }
+    }
+
     uint32_t media = (uint32_t)(soma_ciclos / FREQ_S1_SIT_VALIDO_N);
     uint32_t pior_passo = max_passo > max_comeca ? max_passo : max_comeca;
     bool ok_espalhada = diferentes == 0u && pior_passo <= BANCADA_ORCAMENTO_HRV_FREQ_PASSO;
-    bool ok = fora == 0 && max_ciclos <= BANCADA_ORCAMENTO_HRV_FREQ && ok_espalhada;
+    bool ok_guarda = cheias > 0u && max_guarda <= BANCADA_ORCAMENTO_HRV_FREQ_GUARDA;
+    bool ok = fora == 0 && max_ciclos <= BANCADA_ORCAMENTO_HRV_FREQ && ok_espalhada && ok_guarda;
     char linha[160];
     int n = snprintf(linha, sizeof linha,
                      "# bancada lf/hf: %lu batimentos, %lu validos, %lu fora da tolerancia, "
@@ -137,6 +160,12 @@ bool bancada_hrv_freq(void)
                  "# bancada lf/hf: ciclos por batimento med %lu max %lu (orcamento %lu)\n",
                  (unsigned long)media, (unsigned long)max_ciclos,
                  (unsigned long)BANCADA_ORCAMENTO_HRV_FREQ);
+    serial_escreve(linha, (uint32_t)n);
+    n = snprintf(linha, sizeof linha,
+                 "# bancada lf/hf: guarda max %lu, com a janela cheia %lu em %lu batimentos "
+                 "(orcamento %lu)\n",
+                 (unsigned long)max_guarda, (unsigned long)max_guarda_cheia,
+                 (unsigned long)cheias, (unsigned long)BANCADA_ORCAMENTO_HRV_FREQ_GUARDA);
     serial_escreve(linha, (uint32_t)n);
     n = snprintf(linha, sizeof linha,
                  "# bancada lf/hf: espalhada em %u passos, %lu contas, %lu diferentes; "

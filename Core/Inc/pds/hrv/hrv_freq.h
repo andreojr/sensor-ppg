@@ -28,7 +28,8 @@
  * Duas formas de usar:
  *  - hrv_freq_processa(): guarda o batimento e faz a conta inteira na hora
  *    (13,4 ms no pior caso em Release, 31 ms em Debug, medidos na placa);
- *  - hrv_freq_guarda() a cada batimento (barato) e, quando quiser um valor,
+ *  - hrv_freq_guarda() a cada batimento (custo constante: fila circular, sem
+ *    mover vetores) e, quando quiser um valor,
  *    hrv_freq_comeca() seguido de HRV_FREQ_PASSOS chamadas de hrv_freq_passo(),
  *    uma por amostra: a mesma conta, em pedaços (é o que a cadeia usa).
  * As duas dão exatamente o mesmo número: processa() é guarda() + comeca() +
@@ -72,10 +73,12 @@
 #define HRV_FREQ_PASSOS (3u + HRV_FREQ_PASSOS_GOERTZEL) /* 17 */
 
 typedef struct {
-    /* RR aceitos na janela, do mais antigo ao mais novo (contíguos). */
+    /* Fila circular dos RR aceitos na janela, do mais antigo ao mais novo (como
+       no hrv_t): guardar e tirar não movem os outros. */
     uint32_t n[HRV_FREQ_CAP]; /* n_pico do batimento que fechou o RR */
     float fracao[HRV_FREQ_CAP];
     float rr[HRV_FREQ_CAP];   /* ms */
+    uint32_t inicio;          /* índice do mais antigo */
     uint32_t conta;
 
     bool tem_n;
@@ -89,7 +92,8 @@ typedef struct {
     uint32_t k;       /* próxima frequência do Goertzel */
     float soma_lf, soma_hf;
 
-    /* Área de trabalho da conta: uma cópia da janela no hrv_freq_comeca(), pra os
+    /* Área de trabalho da conta: uma cópia da janela no hrv_freq_comeca(), já
+       desembrulhada (do mais antigo ao mais novo, a partir do 0), pra os
        batimentos guardados no meio da conta não mexerem nela. */
     float t[HRV_FREQ_CAP];  /* instante relativo ao primeiro, s */
     float m[HRV_FREQ_CAP];  /* segunda derivada da spline */
@@ -109,9 +113,12 @@ void hrv_freq_init(hrv_freq_t *h);
 bool hrv_freq_processa(hrv_freq_t *h, const ppg_batimento_t *b, ppg_hrv_t *s);
 
 /*
- * Só guarda o batimento (as regras acima), sem conta: no máximo um memmove dos
- * RR. false (e nada muda) se b->valido for false. Pode ser chamada no meio de uma
- * conta espalhada: a conta usa a cópia que o hrv_freq_comeca() fez. Um n_pico
+ * Só guarda o batimento (as regras acima), sem conta: escreve o RR na fila
+ * circular e anda o início pelos que saíram da janela. Nenhum vetor é movido:
+ * o custo é constante por RR que entra ou sai (e cada RR sai uma vez só). A
+ * exceção é um n_pico voltando, que zera o hrv_freq_t inteiro (~16 KiB). false
+ * (e nada muda) se b->valido for false. Pode ser chamada no meio de uma conta
+ * espalhada: a conta usa a cópia que o hrv_freq_comeca() fez. Um n_pico
  * voltando reinicia tudo, e a conta em andamento é largada (não sai resultado).
  */
 bool hrv_freq_guarda(hrv_freq_t *h, const ppg_batimento_t *b);
@@ -119,7 +126,7 @@ bool hrv_freq_guarda(hrv_freq_t *h, const ppg_batimento_t *b);
 /*
  * Começa uma conta sobre a janela guardada agora (a que termina no último
  * batimento guardado): confere a cobertura e copia os instantes e os RR. Custa
- * uma passada nos RR. Se já havia uma conta em andamento, recomeça.
+ * uma passada nos RR (duas, contando a cobertura). Se já havia uma conta em andamento, recomeça.
  */
 void hrv_freq_comeca(hrv_freq_t *h);
 
