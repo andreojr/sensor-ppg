@@ -13,12 +13,13 @@ Código que usa HAL, em `Core/Inc` e `Core/Src` (fora de `pds/`).
 | Filtro na placa (bruto → filtrado) | João | feito: `pds/cadeia/` e `bancada.c`; ver [Filtro](../modulos/filtro/) |
 | Picos na placa (filtrado → batimentos e BPM) | Celso / André | feito: `pds/cadeia/` e `bancada.c`; ver [Picos](../modulos/picos/) |
 | HRV na placa (batimentos → SDNN e RMSSD) | André | feito: `pds/cadeia/`, linhas `h,`, bate com o Python na placa; ver [HRV](../modulos/hrv/) |
+| LF/HF na placa (batimentos → LF/HF, a cada 5 s) | André | ligado na cadeia: `pds/cadeia/`, linhas `l,`, conta espalhada em 17 amostras; capturado com o sensor (24/11): `--replay` com 0 diferenças, LF/HF de 6,03 a 11,05 na respiração lenta; ver [HRV](../modulos/hrv/#na-cadeia-a-cada-5-s-espalhado) |
 | Espectral na placa (filtrado → BPM pela FFT) | Celso | feito: `pds/cadeia/`, linhas `e,`, bate com o Python na placa; ver [Espectral](../modulos/espectral/) e [FFT](../modulos/fft/) |
 | Respiração na placa (bruto → rpm, 1 por segundo) | João | feita: `pds/cadeia/` e `bancada.c`; ver [Respiração](../modulos/respiracao/) |
 | SpO2 na placa (bruto → SpO2 **estimada**) | Celso | bancada passou na placa (24/11: 33/33, erro 0); sensor real (24/11): 361 de 361 válidas, mediana 98,6 a 98,9%: `pds/cadeia/`, `bancada.c`, linhas `s,`; ver [SpO2](../modulos/spo2/) |
 | Bancada do HRV na placa (`-DBANCADA_HRV=ON`) | André | feita: `bancada_hrv.c`, passou na placa; ver [HRV](../modulos/hrv/) |
 | Bancada da qualidade na placa (`-DBANCADA_QUALIDADE=ON`) | André | feita: `bancada_qualidade.c`, passou na placa (55/55, pior caso 2 149 ciclos no Debug); ver [Qualidade](../modulos/qualidade/) |
-| Bancada do LF/HF na placa (`-DBANCADA_HRV_FREQ=ON`) | André | feita: `bancada_hrv.c`, rodou na placa (23/11): 0 fora da tolerância, pior batimento 1 284 715 ciclos em Release, 2 985 443 em Debug; ver [HRV](../modulos/hrv/) |
+| Bancada do LF/HF na placa (`-DBANCADA_HRV_FREQ=ON`) | André | rodou na placa (23/11 e 24/11): 0 fora da tolerância; conta espalhada 0 diferentes em 62 contas, pior passo 136 137 ciclos em Release e 187 285 em Debug (orçamentos 160 000 e 320 000); ver [HRV](../modulos/hrv/) |
 | Fonte falsa (PhysioNet em flash) | André | feita: os vetores do PhysioNet das bancadas (`-DBANCADA_*`) |
 | Timer, filas e laço principal (#17) | André | feito e medido na placa (23/11): `app.c`, `sensor.c`, `monitor.c`, `pds/cadeia/`. Ver [Laço principal](#laço-principal) e [Cadeia](../modulos/cadeia/) |
 | Display OLED (I2C3, SSD1306) | Celso | `display.c` (chip) e `pds/oled/` (telas), chamados pelo `app.c`; ver [Display OLED](#display-oled-displayc) e [OLED](../modulos/oled/) |
@@ -120,7 +121,7 @@ INT ficar baixo, não vem outra borda de descida, e sem isso a leitura travaria.
 460800 8N1, texto, uma linha por amostra. O texto das linhas sai de
 `pds/cadeia/linhas.c` (sem HAL: o replay no PC escreve o mesmo). Dois modos:
 
-- **Padrão:** o bruto (`b,`), os resultados (`p,` `h,` `e,` `r,` `t,`) e as
+- **Padrão:** o bruto (`b,`), os resultados (`p,` `h,` `e,` `r,` `s,` `t,` `l,`) e as
   linhas `#`. É o que a aplicação usa; o `captura --qualidade` julga a qualidade no
   PC a partir do `b,`.
 - **`-DSERIAL_COMPLETA=ON`:** acrescenta as cruas a 400 Hz (`n,ir,vermelho`) e o
@@ -138,6 +139,7 @@ INT ficar baixo, não vem outra borda de descida, e sem isso a leitura travaria.
 # respiracao 1 Hz: r,n,rpm,valido
 # spo2 (ESTIMADA, reta 110 - 25 R, sem calibracao): s,n,valido,spo2,r
 # tela 1 Hz: t,n,mostra,bpm x100
+# lf/hf a cada 5 s: l,n,valido,lf_hf
 # laco 1 Hz (TIM2): amostras, fila_max, fila_cheia, perdidas
 0,112034,98765
 1,112040,98771
@@ -154,6 +156,8 @@ e,799,1,73.85
 s,799,1,96.36,0.546
 t,1199,1,6420
 ...
+l,537,0,0.000
+...
 # laco: amostras 100 fila_max 5 fila_cheia 0 perdidas 0
 ...
 # decimacao: ciclos med ... max ... (orcamento 2400)
@@ -161,10 +165,11 @@ t,1199,1,6420
 # picos: ciclos med ... max ... (orcamento 9600)
 # espectral: ciclos med ... (orcamento 9600) max ... (orcamento 960000)
 # hrv: ciclos med ... max ... (orcamento 20000)
+# lf/hf: ciclos med ... (orcamento 9600) max ... (orcamento 320000)
 # respiracao: ciclos med ... max ... (orcamento 9600)
 # spo2: ciclos med ... max ... (orcamento 9600)
 # qualidade: ciclos med ... max ... (orcamento 3000)
-# cadeia: ciclos med ... (orcamento 51000) max ... (orcamento 960000)
+# cadeia: ciclos med ... (orcamento 70200) max ... (orcamento 960000)
 # volta: ciclos med ... max ... (orcamento 3600000)
 # leitura: maior intervalo ... ms (limite 80)
 # taxa: 100.02 amostras/s em 10 s (TIM2)
@@ -198,19 +203,30 @@ t,1199,1,6420
   filtrado), uma por segundo, a partir de 8 s de sinal (a janela da FFT): `n` (o do
   filtrado em que a janela terminou), `bpm_valido` (0/1) e `bpm` (2 casas, 0 quando
   inválido). O `n` conta o atraso do filtro, como nas linhas `f,`.
+- Linhas que começam com `l,` são o **LF/HF** do HRV (`hrv_freq.h`), uma a cada
+  5 s: `n` (a amostra em que a conta terminou, `n % 500 == 37`), `valido` (0/1, só
+  com 270 s de RR usados na janela de 300 s, ~4,5 min depois de pôr o dedo) e
+  `lf_hf` (3 casas, 0 quando inválido, no máximo 999.999 para não estourar o `long` da
+  formatação; o `r` da linha `s,` tem o mesmo teto). A janela termina no último batimento que
+  foi pro HRV. A conta é espalhada em 17 amostras (ver
+  [HRV](../modulos/hrv/#na-cadeia-a-cada-5-s-espalhado)).
 - Linhas que começam com `r,` são a **respiração** (`respiracao_processa()`):
   uma por segundo, com o `n` do bruto que fechou a estimativa, as respirações
   por minuto e `valido` (0 ou 1). Nos primeiros 60 s (a janela enchendo), sai
   `valido` 0.
 - A cada 1 s do TIM2, `# laco: ...` (ver [Laço principal](#laço-principal)).
 - A cada 10 s, `# decimacao: ...`, `# filtro: ...`, `# picos: ...`,
-  `# espectral: ...`, `# hrv: ...`, `# qualidade: ...`, `# spo2: ...` e
+  `# espectral: ...`, `# hrv: ...`, `# lf/hf: ...`, `# qualidade: ...`, `# spo2: ...` e
   `# respiracao: ciclos med X max Y` medem cada `_processa()`
   com o contador de ciclos do núcleo (DWT). Os orçamentos são 1% da CPU pra
   decimação (96 MHz / 400 Hz / 100 = 2400 ciclos por amostra do sensor), 2%
   pro filtro (19 200 ciclos por amostra a 100 Hz), 1% pro picos (9 600), 1%
   pra respiração (9 600, em média; o espectro roda numa amostra por segundo)
-  e 20 000 ciclos por batimento pro HRV (o da bancada do HRV). O espectral tem
+  e 20 000 ciclos por batimento pro HRV (o da bancada do HRV; inclui a guarda do
+  RR no LF/HF, `hrv_freq_guarda`, que é uma fila circular: escreve o RR e anda o
+  início, sem mover vetor nenhum; medido na placa em 24/11, no máximo 170 ciclos em
+  Release e 624 em Debug, com orçamento próprio de 2 000 na bancada do LF/HF). O LF/HF tem média de 9 600 por amostra e pior amostra de 320 000 em
+  Debug (160 000 em Release): o pior passo da conta espalhada. O espectral tem
   dois orçamentos: **média** de 9 600 ciclos por amostra (1%) e **pior caso** de
   960 000 (a amostra em que sai a FFT, uma por segundo, tem que caber num período de
   amostra: 96 MHz / 100 Hz); `# espectral: ...` mostra os dois. Depois vêm a
@@ -345,16 +361,16 @@ configurações. Nas linhas `b,` (bruto), sem dedo IR e vermelho ficam na casa
 de 1 000; com o dedo, passam de 100 000 e oscilam ~1% com o pulso.
 
 **O que a serial manda.** No firmware padrão (o da release), só o bruto a 100 Hz
-(`b,`), os resultados (`p,`, `h,`, `e,`, `r,`, `t,`) e as linhas `#`. O sinal cru
+(`b,`), os resultados (`p,`, `h,`, `e,`, `r,`, `s,`, `t,`, `l,`) e as linhas `#`. O sinal cru
 a 400 Hz (`n,ir,vermelho`) e o filtrado (`f,`) só saem com
 `-DSERIAL_COMPLETA=ON`, e são eles que os `--confere` da decimação, do filtro,
 do picos e do HRV precisam.
 
 Pra gravar em CSV e plotar, dentro de `analise/` (o CSV vai pra
 `analise/dados/`, que não entra no git). No fim, a captura mostra a taxa medida
-e quantas linhas se perderam (pelos saltos no `n` das cruas ou, sem elas, das `b,`). As linhas `b,`, `f,`, `p,`, `h,`, `e,` e `r,` vão pra
+e quantas linhas se perderam (pelos saltos no `n` das cruas ou, sem elas, das `b,`). As linhas `b,`, `f,`, `p,`, `h,`, `e,`, `r,`, `s,` e `l,` vão pra
 `<nome>_bruto.csv`, `<nome>_filtrado.csv`, `<nome>_picos.csv`, `<nome>_hrv.csv`,
-`<nome>_espectral.csv` e `<nome>_respiracao.csv`, e cada
+`<nome>_espectral.csv`, `<nome>_respiracao.csv`, `<nome>_spo2.csv` e `<nome>_lfhf.csv`, e cada
 `--confere` compara o módulo da placa com o do Python no mesmo sinal:
 
 ```bash
@@ -595,9 +611,12 @@ saída do Python e mede os ciclos por batimento com o contador do núcleo
 disso entra no firmware. Procedimento e orçamento em [HRV](../modulos/hrv/).
 
 Com `-DBANCADA_HRV_FREQ=ON`, o mesmo para o LF/HF: toca o vetor
-`freq_s1_sit` no `hrv_freq_processa()` e manda duas linhas
-`# bancada lf/hf: ...`. As duas opções podem ser ligadas juntas. O
-`hrv_freq_t` (~16,4 KiB) fica `static`, fora da pilha.
+`freq_s1_sit` no `hrv_freq_processa()`, confere a conta espalhada (a da cadeia)
+a cada 10 batimentos, mede o pior `hrv_freq_guarda` e manda quatro linhas
+`# bancada lf/hf: ...`. Os orçamentos
+são por perfil (Release ou Debug, pelo `__OPTIMIZE__`). As duas opções podem ser
+ligadas juntas. O `hrv_freq_t` da bancada (~16,4 KiB) fica `static`, fora da
+pilha, além do da cadeia.
 
 ## Laço principal
 
@@ -667,7 +686,8 @@ por segundo, ou ~200 por amostra na média).
 
 | Medida | Orçamento | Por quê |
 |---|---|---|
-| Cadeia (`# cadeia`), média por amostra de 100 Hz | 51 000 | filtro 19 200 + picos 9 600 + espectral 9 600 + respiração 9 600 + qualidade 3 000 (a decimação, 2 400 por amostra do sensor, é medida à parte no `sensor.c`) |
+| Cadeia (`# cadeia`), média por amostra de 100 Hz | 70 200 | filtro 19 200 + picos 9 600 + espectral 9 600 + respiração 9 600 + SpO2 9 600 + qualidade 3 000 + LF/HF 9 600 (a decimação, 2 400 por amostra do sensor, é medida à parte no `sensor.c`); era 51 000 antes da SpO2 e do LF/HF |
+| LF/HF (`# lf/hf`), pior amostra | 320 000 (Debug) / 160 000 (Release) | o pior passo da conta espalhada (8 das 109 frequências), nas amostras de `n % 500` de 21 a 37, longe da de `n` terminado em 99 |
 | Cadeia, pior amostra | 960 000 | um período (10 ms); a respiração (~0,8 milhão) e a FFT (~0,41 milhão) calculam o espectro **sempre na mesma amostra**, uma vez por segundo (a de `n` terminado em 99): estoura (ver abaixo) |
 | Volta do laço (`# volta`) | 3 600 000 (37,5 ms) | a folga do sensor depois do INT |
 | Maior intervalo entre leituras da FIFO (`# leitura`) | 80 ms | 32 amostras a 400 Hz; normal ~42,5 ms |
@@ -722,6 +742,33 @@ uma das 27 linhas `b,` que chegaram ao PC cortadas ou coladas (ex.
 placa, quando descarta, descarta a linha inteira): ruído do dedo na serial a 921600,
 que sumiu a 460800 (ver [Por que 460800](#por-que-460800)).
 
+**A pilha completa na placa** (24/11/2026, já com o LF/HF e a SpO2 na cadeia e os LEDs
+corrigidos). Duas medidas:
+
+- **Bancada, sem dedo** (`-DBANCADA_HRV_FREQ=ON -DBANCADA_CADEIA=ON`): a cadeia bateu
+  com o Python em 496 saídas, 0 fora da tolerância. Em Release, `# cadeia` med 6 663
+  e max 424 454 (orçamentos 70 200 e 960 000); o `# bancada lf/hf` da cadeia, med 113
+  e max 2 037 (só o `comeca`: o vetor de 90 s não cobre). Em Debug, med 20 745 e max
+  1 252 992 (o max acima de 960 000 só é registrado, como antes). Fila_max 5 e
+  perdidas 0 nos dois. A bancada do LF/HF da mesma gravação está em
+  [HRV](../modulos/hrv/#3-placa-com-a-fonte-falsa-1).
+- **Sensor real** (firmware padrão Release, dedo pressionado com a mão, 370 s desde o
+  reset, repouso e depois respiração lenta):
+
+| Medida | Placa | Orçamento |
+|---|---|---|
+| `# lf/hf` média / pior amostra | 2 437 / 125 579 | 9 600 / 160 000 |
+| `# cadeia` média / pior amostra | 11 141 / 425 314 | 70 200 / 960 000 |
+| `# volta` pior volta | 1 840 415 (19 ms) | 3 600 000 (37,5 ms) |
+| `# leitura` maior intervalo | 46 ms | 80 ms |
+| `# laco` fila_max / perdidas | 5 / 0 | 16 / 0 |
+| `# taxa` | 99,83 amostras/s em 370 s | 100 |
+
+O `--replay` dessa captura deu 0 linhas diferentes em todas as saídas (picos, hrv,
+espectral, respiração, SpO2, tela e lfhf). O BPM mediano do picos foi ~94, e a tela
+mostrou o BPM em 168 de 179 e em 178 de 188 segundos. O LF/HF medido está em
+[HRV](../modulos/hrv/#lfhf-na-frequência).
+
 **O que não foi medido na placa** (ressalvas da v0.4.0):
 
 - O `rr_usado` do HRV no firmware da release: o `hrv --confere` precisa do filtrado,
@@ -729,7 +776,8 @@ que sumiu a 460800 (ver [Por que 460800](#por-que-460800)).
 - A linha final da bancada da cadeia nessa medida não foi guardada (só "478 saídas, 0
   fora da tolerância"). Com o critério de então, ela teria saído `FALHOU` pelo max; o critério
   mudou depois (na pré-release da v0.4.0: o max acima de 960 000 só é registrado) e o
-  novo só foi compilado, não rodado na placa.
+  novo rodou na placa em 24/11/2026 com a pilha completa (496 saídas, 0 fora; no Debug o max de
+  1 252 992 só foi registrado, ver "A pilha completa na placa").
 - Uma linha que a placa não consegue pôr no buffer da serial (cheio) é descartada sem
   contagem; no PC isso aparece como linha perdida, igual a uma perda no adaptador.
 - O `--replay` só confere numa direção: cada linha refeita no PC tem que existir na
@@ -741,7 +789,9 @@ que sumiu a 460800 (ver [Por que 460800](#por-que-460800)).
   Python, `analise/src/analise/cadeia.py`), o `teste_linhas`, o `teste_fila` e o
   `teste_replay`.
 - **Placa, fonte falsa:** `-DBANCADA_CADEIA=ON` passa o mesmo vetor pela cadeia na
-  partida e mede os ciclos.
+  partida e mede os ciclos. Em 90 s o LF/HF nunca cobre os 270 s: a linha
+  `# bancada lf/hf` dali mede só o `hrv_freq_comeca`, não o pior passo (esse vem
+  de `-DBANCADA_HRV_FREQ=ON`).
 - **Placa, sensor:** comece a captura e aperte o reset;
   `uv run python -m analise.cadeia --replay dados/<captura>.csv` refaz no PC, a
   partir do bruto que a placa mandou, todas as linhas de resultado e confere que são
@@ -749,6 +799,13 @@ que sumiu a 460800 (ver [Por que 460800](#por-que-460800)).
 
 Flash/RAM (Release): 52 724 / 35 288 B antes do laço novo, 54 284 / 37 032 B
 depois (135 KB de flash com a bancada da cadeia). Em Debug, 78 788 / 37 040 B.
+
+Com o display, a SpO2 e o LF/HF na cadeia (medido pelo linker em 24/11/2026, sem bancada):
+Release 63 472 B de flash e 57 264 B de RAM; Debug 94 152 e 57 272. O LF/HF
+acrescentou 16 872 B de RAM (o `hrv_freq_t` dentro do `cadeia_t`, que agora tem
+~41 KB) e ~2 KB de flash em Release (antes dele, já com a SpO2: 61 264 / 40 392 B).
+Com `-DBANCADA_CADEIA=ON`: Release 144 832 / 57 632 B, Debug 176 828 / 57 640 B. A F411
+tem 512 KB de flash e 128 KB de RAM.
 
 ## Laço simples, sem RTOS
 

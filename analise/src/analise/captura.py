@@ -17,6 +17,7 @@ estimada, uma por segundo: vão pra <nome>_spo2.csv.
 Linhas "q,..." (com -DBANCADA_QUALIDADE=ON) são a qualidade do bruto, uma
 por segundo: vão pra <nome>_qualidade.csv. Linhas "t,n,mostra,bpm" são o BPM
 que a tela mostraria (qualidade + picos), uma por segundo: <nome>_tela.csv.
+Linhas "l,n,valido,lf_hf" são o LF/HF do HRV, um a cada 5 s: <nome>_lfhf.csv.
 
 Com --qualidade, a captura roda a qualidade do Python (a mesma conta do C) nas
 linhas "b," enquanto grava e mostra, uma vez por segundo, se o sinal está
@@ -59,6 +60,7 @@ COLUNAS_ESPECTRAL = ("n", "bpm_valido", "bpm")
 COLUNAS_HRV = ("n_pico", "valido", "sdnn_ms", "rmssd_ms", "rr_usado")
 COLUNAS_SPO2 = ("n", "valido", "spo2", "r")
 COLUNAS_TELA = ("n", "mostra", "bpm")
+COLUNAS_LFHF = ("n", "valido", "lf_hf")
 COLUNAS_QUALIDADE = (
     "n", "dedo", "usavel", "indice", "motivo", "dc", "pi", "aspereza", "razao", "ritmo",
 )
@@ -223,6 +225,17 @@ def le_tela(linha: str) -> tuple[int, int, float] | None:
     return n, mostra, bpm / 100
 
 
+def le_lfhf(linha: str) -> tuple[int, int, float] | None:
+    """Converte "l,n,valido,lf_hf" (o LF/HF, a cada 5 s). None se não for."""
+    partes = linha.strip().split(",")
+    if len(partes) != 4 or partes[0] != "l":
+        return None
+    try:
+        return int(partes[1]), int(partes[2]), float(partes[3])
+    except ValueError:
+        return None
+
+
 # Prefixo da linha -> (ponto, leitor, colunas do CSV) das saídas que não são amostra.
 LEITORES = {
     "p,": ("picos", le_batimento, COLUNAS_PICOS),
@@ -231,6 +244,7 @@ LEITORES = {
     "q,": ("qualidade", le_qualidade, COLUNAS_QUALIDADE),
     "t,": ("tela", le_tela, COLUNAS_TELA),
     "s,": ("spo2", le_spo2, COLUNAS_SPO2),
+    "l,": ("lfhf", le_lfhf, COLUNAS_LFHF),
 }
 
 

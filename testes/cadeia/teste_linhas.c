@@ -31,6 +31,19 @@ static void centesimos(void)
     igual("131072.25", s, "131072.25");
 }
 
+static void milesimos(void)
+{
+    char s[24];
+    linhas_milesimos(s, sizeof s, 1.2345678f);
+    igual("1.2345678", s, "1.235");
+    linhas_milesimos(s, sizeof s, 0.05f);
+    igual("0.05", s, "0.050");
+    linhas_milesimos(s, sizeof s, 12.0f);
+    igual("12", s, "12.000");
+    linhas_milesimos(s, sizeof s, -0.0004f);
+    igual("-0.0004", s, "0.000");
+}
+
 static cadeia_saida_t saida_cheia(void)
 {
     cadeia_saida_t s;
@@ -51,6 +64,9 @@ static cadeia_saida_t saida_cheia(void)
     s.spo2_r = 0.5464f;
     s.julgou = true;
     s.mostra = true;
+    s.calculou_lf_hf = true;
+    s.lf_hf_valido = true;
+    s.lf_hf = 1.2345678f;
     return s;
 }
 
@@ -69,7 +85,8 @@ static void todas(void)
           "e,1500,0,0.00\n"
           "r,1500,15.20,1\n"
           "s,1500,1,96.36,0.546\n"
-          "t,1500,1,7385\n");
+          "t,1500,1,7385\n"
+          "l,1500,1,1.235\n");
     if (n != strlen(buf)) {
         printf("devolveu %zu, escreveu %zu\n", n, strlen(buf));
         falhas++;
@@ -88,10 +105,13 @@ static void so_bruto_e_tela_apagada(void)
     s.julgou = true;
     s.mostra = false;
     s.bpm = (ppg_bpm_t){true, 70.0f};
+    s.calculou_lf_hf = true;
+    s.lf_hf_valido = false;
+    s.lf_hf = 3.5f; /* inválido sai 0 */
     ppg_amostra_t bruto = {7u, 1.0f, 2.0f};
     char buf[LINHAS_MAX];
     linhas_cadeia(&s, &bruto, false, buf, sizeof buf);
-    igual("tela apagada", buf, "b,7,1.00,2.00\nt,7,0,0\n");
+    igual("tela e LF/HF apagados", buf, "b,7,1.00,2.00\nt,7,0,0\nl,7,0,0.000\n");
 }
 
 /* O R da linha s: limitado a 999.999 (um R enorme seria UB ao virar unsigned long), negativo
@@ -117,6 +137,32 @@ static void r_limitado(void)
         linhas_cadeia(&s, &bruto, false, buf, sizeof buf);
         const char *linha = strstr(buf, "s,");
         igual("r limitado", linha ? linha : "", casos[k].esperado);
+    }
+}
+
+/* O LF/HF da linha l: limitado a 999.999 (acima de ~2,1e6 estouraria o long), os normais
+   não mudam e o negativo sai como antes. */
+static void lf_hf_limitado(void)
+{
+    const struct {
+        float v;
+        const char *esperado;
+    } casos[] = {
+        {1.2345678f, "l,9,1,1.235\n"},   {999.0f, "l,9,1,999.000\n"},
+        {1.0e12f, "l,9,1,999.999\n"},    {INFINITY, "l,9,1,999.999\n"},
+        {-0.25f, "l,9,1,-0.250\n"},
+    };
+    for (size_t k = 0; k < sizeof casos / sizeof casos[0]; k++) {
+        cadeia_saida_t s;
+        memset(&s, 0, sizeof s);
+        s.calculou_lf_hf = true;
+        s.lf_hf_valido = true;
+        s.lf_hf = casos[k].v;
+        ppg_amostra_t bruto = {9u, 1.0f, 2.0f};
+        char buf[LINHAS_MAX];
+        linhas_cadeia(&s, &bruto, false, buf, sizeof buf);
+        const char *linha = strstr(buf, "l,");
+        igual("lf/hf limitado", linha ? linha : "", casos[k].esperado);
     }
 }
 
@@ -146,9 +192,11 @@ static void cru(void)
 int main(void)
 {
     centesimos();
+    milesimos();
     todas();
     so_bruto_e_tela_apagada();
     r_limitado();
+    lf_hf_limitado();
     buffer_pequeno();
     cru();
     printf("%s\n", falhas ? "FALHOU" : "OK");

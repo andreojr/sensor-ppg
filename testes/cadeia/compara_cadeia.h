@@ -18,14 +18,14 @@
 #include "vetores/physionet.h"
 
 typedef struct {
-    uint32_t nb, ne, nh, nr, nt;  /* quantas de cada já chegaram */
+    uint32_t nb, ne, nh, nr, nt, nl;  /* quantas de cada já chegaram */
     uint32_t fora;                /* saídas diferentes do vetor */
     uint32_t saidas;              /* saídas conferidas */
 } compara_cadeia_t;
 
 static inline void compara_cadeia_init(compara_cadeia_t *c)
 {
-    c->nb = c->ne = c->nh = c->nr = c->nt = c->fora = c->saidas = 0u;
+    c->nb = c->ne = c->nh = c->nr = c->nt = c->nl = c->fora = c->saidas = 0u;
 }
 
 static inline uint32_t compara_cadeia_difere(float a, float b)
@@ -78,6 +78,14 @@ static inline void compara_cadeia_amostra(compara_cadeia_t *c, const cadeia_said
                    compara_cadeia_difere(s->mostra ? s->bpm.bpm : 0.0f, physionet_tela_bpm[k]);
         c->saidas++;
     }
+    if (s->calculou_lf_hf) {
+        uint32_t k = c->nl++;
+        c->fora += k >= PHYSIONET_LFHF_N_N || n != (uint32_t)physionet_lfhf_n[k] ||
+                   (int32_t)s->lf_hf_valido != physionet_lfhf_valido[k] ||
+                   compara_cadeia_difere(s->lf_hf_valido ? s->lf_hf : 0.0f,
+                                         physionet_lfhf_lf_hf[k]);
+        c->saidas++;
+    }
 }
 
 /* Soma as que faltaram (o vetor tem mais saídas do que chegaram). */
@@ -89,6 +97,7 @@ static inline uint32_t compara_cadeia_fim(const compara_cadeia_t *c)
     falta += c->ne < PHYSIONET_ESP_N_N ? PHYSIONET_ESP_N_N - c->ne : 0u;
     falta += c->nr < PHYSIONET_RESP_N_N ? PHYSIONET_RESP_N_N - c->nr : 0u;
     falta += c->nt < PHYSIONET_TELA_N_N ? PHYSIONET_TELA_N_N - c->nt : 0u;
+    falta += c->nl < PHYSIONET_LFHF_N_N ? PHYSIONET_LFHF_N_N - c->nl : 0u;
     return c->fora + falta;
 }
 

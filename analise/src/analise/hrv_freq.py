@@ -54,12 +54,20 @@ CAP = 600  # cabe a janela de 300 s até 120 bpm de média; cheio, sai o mais an
 RR_MIN_MS = hrv.RR_MIN_MS
 RR_MAX_MS = hrv.RR_MAX_MS
 COBERTURA_MIN = 0.9
-MIN_RR = 4  # a spline precisa de pelo menos alguns pontos
+# Não há mínimo de RR à parte: a cobertura (270 s com RR de até 2000 ms) já exige 135.
+assert COBERTURA_MIN * JANELA_S * 1000.0 / RR_MAX_MS >= 135
 
 # Bandas em índices da grade f_k = k / JANELA_S (inteiros, iguais no C).
 K_LF = round(0.04 * JANELA_S)  # 12: 0,04 Hz
 K_HF = round(0.15 * JANELA_S)  # 45: 0,15 Hz (LF vai até K_HF - 1)
 K_FIM = round(0.40 * JANELA_S)  # 120: 0,40 Hz, inclusive
+
+# A conta espalhada do C (hrv_freq_comeca / hrv_freq_passo): 3 passos (spline,
+# reamostragem, reta e Hann) e as 109 frequências, K_POR_PASSO por passo. O resultado
+# é o mesmo da conta de uma vez; o Python só precisa do número de passos, pra saber
+# em que amostra da cadeia ele sai.
+K_POR_PASSO = 8
+PASSOS = 3 + math.ceil((K_FIM - K_LF + 1) / K_POR_PASSO)  # 17
 
 
 class SaidaFreq(NamedTuple):
@@ -117,7 +125,11 @@ class _Item:
 
 
 class HrvFreq:
-    """Estado do módulo. Mesmo comportamento de hrv_freq_init/hrv_freq_processa."""
+    """Estado do módulo. Mesmo comportamento de hrv_freq_init/hrv_freq_processa.
+
+    guarda() é o hrv_freq_guarda (só registra o RR) e calcula() é a conta sobre a
+    janela que está guardada, que termina no último batimento guardado (a do
+    hrv_freq_comeca). processa() = guarda() + calcula()."""
 
     def __init__(self) -> None:
         self.reinicia()
@@ -127,8 +139,14 @@ class HrvFreq:
         self.ultimo_n: int | None = None
 
     def processa(self, b: Batimento) -> SaidaFreq | None:
-        if not b.valido:
+        if not self.guarda(b):
             return None
+        return self.calcula()
+
+    def guarda(self, b: Batimento) -> bool:
+        """Registra o batimento (a janela anda até ele). False se b não é válido."""
+        if not b.valido:
+            return False
         if self.ultimo_n is not None and b.n_pico < self.ultimo_n:
             self.reinicia()
         self.ultimo_n = b.n_pico
@@ -137,7 +155,7 @@ class HrvFreq:
             if len(self.itens) == CAP:
                 self.itens.pop(0)
             self.itens.append(_Item(b.n_pico, b.fracao, b.rr_ms))
-        return self._resultado()
+        return True
 
     def _aceita(self, b: Batimento) -> bool:
         if not (b.rr_valido and math.isfinite(b.rr_ms) and RR_MIN_MS <= b.rr_ms <= RR_MAX_MS):
@@ -147,9 +165,10 @@ class HrvFreq:
         u = self.itens[-1] if self.itens else None
         return u is None or b.n_pico > u.n or (b.n_pico == u.n and b.fracao > u.fracao)
 
-    def _resultado(self) -> SaidaFreq:
+    def calcula(self) -> SaidaFreq:
+        """LF/HF dos RR guardados (a janela que termina no último batimento guardado)."""
         rr = np.array([i.rr for i in self.itens])
-        if len(rr) < MIN_RR or rr.sum() < COBERTURA_MIN * JANELA_S * 1000.0:
+        if rr.sum() < COBERTURA_MIN * JANELA_S * 1000.0:
             return SaidaFreq(False, 0.0)
         p = self.itens[0]
         # Instante relativo ao primeiro: subtrai os inteiros antes (no C, em

@@ -2667,4 +2667,25 @@ static const float physionet_tela_bpm[89] = {
     73.30046f,
 };
 
+#define PHYSIONET_LFHF_N_N 18u
+static const int32_t physionet_lfhf_n[18] = {
+    37, 537, 1037, 1537, 2037, 2537, 3037, 3537,
+    4037, 4537, 5037, 5537, 6037, 6537, 7037, 7537,
+    8037, 8537,
+};
+
+#define PHYSIONET_LFHF_VALIDO_N 18u
+static const int32_t physionet_lfhf_valido[18] = {
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0,
+};
+
+#define PHYSIONET_LFHF_LF_HF_N 18u
+static const float physionet_lfhf_lf_hf[18] = {
+    0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+    0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+    0.0f, 0.0f,
+};
+
 #endif /* VETOR_CADEIA_PHYSIONET_H */
