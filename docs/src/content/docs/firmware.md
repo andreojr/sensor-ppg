@@ -18,7 +18,7 @@ Código que usa HAL, em `Core/Inc` e `Core/Src` (fora de `pds/`).
 | SpO2 na placa (bruto → SpO2 **estimada**) | Celso | bancada passou na placa (24/11: 33/33, erro 0); sensor real (24/11): 361 de 361 válidas, mediana 98,6 a 98,9%: `pds/cadeia/`, `bancada.c`, linhas `s,`; ver [SpO2](../modulos/spo2/) |
 | Bancada do HRV na placa (`-DBANCADA_HRV=ON`) | André | feita: `bancada_hrv.c`, passou na placa; ver [HRV](../modulos/hrv/) |
 | Bancada da qualidade na placa (`-DBANCADA_QUALIDADE=ON`) | André | feita: `bancada_qualidade.c`, passou na placa (55/55, pior caso 2 149 ciclos no Debug); ver [Qualidade](../modulos/qualidade/) |
-| Bancada do LF/HF na placa (`-DBANCADA_HRV_FREQ=ON`) | André | pronta em `bancada_hrv.c`, falta rodar na placa; ver [HRV](../modulos/hrv/) |
+| Bancada do LF/HF na placa (`-DBANCADA_HRV_FREQ=ON`) | André | feita: `bancada_hrv.c`, rodou na placa (23/11): 0 fora da tolerância, pior batimento 1 284 715 ciclos em Release, 2 985 443 em Debug; ver [HRV](../modulos/hrv/) |
 | Fonte falsa (PhysioNet em flash) | André | feita: os vetores do PhysioNet das bancadas (`-DBANCADA_*`) |
 | Timer, filas e laço principal (#17) | André | feito e medido na placa (23/11): `app.c`, `sensor.c`, `monitor.c`, `pds/cadeia/`. Ver [Laço principal](#laço-principal) e [Cadeia](../modulos/cadeia/) |
 | Display OLED (I2C3, SSD1306) | Celso | `display.c` (chip) e `pds/oled/` (telas), chamados pelo `app.c`; ver [Display OLED](#display-oled-displayc) e [OLED](../modulos/oled/) |

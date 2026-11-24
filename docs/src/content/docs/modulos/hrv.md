@@ -19,8 +19,8 @@ sidebar:
 ## Estado
 
 Duas partes. **No tempo** (SDNN e RMSSD, `hrv.c`): feita até a placa.
-**Na frequência** (LF/HF, `hrv_freq.c`): feita até o teste no PC; a bancada
-da placa está pronta, mas ainda não rodou. Detalhes do LF/HF na seção
+**Na frequência** (LF/HF, `hrv_freq.c`): feita até a placa com a fonte falsa
+(medida em 23/11). Detalhes do LF/HF na seção
 [LF/HF](#lfhf-na-frequência).
 
 | Passo | No tempo (SDNN, RMSSD) | Na frequência (LF/HF) |
@@ -28,7 +28,7 @@ da placa está pronta, mas ainda não rodou. Detalhes do LF/HF na seção
 | 1. Python, validado no PhysioNet | feito | feito: `hrv_freq.py` |
 | 2. C sem HAL | feito: `hrv.h`, `hrv.c` | feito: `hrv_freq.h`, `hrv_freq.c` |
 | 3. Teste no PC contra os vetores | feito: `testes/hrv/`, no CI | feito: `teste_hrv_freq.c`, no CI |
-| 4. Placa com a fonte falsa | feito: passou na STM32 (`-DBANCADA_HRV=ON`) | bancada pronta (`-DBANCADA_HRV_FREQ=ON`), falta rodar |
+| 4. Placa com a fonte falsa | feito: passou na STM32 (`-DBANCADA_HRV=ON`) | feito (23/11, `-DBANCADA_HRV_FREQ=ON`): 0 fora da tolerância; pior batimento 1 284 715 ciclos em Release e 2 985 443 em Debug |
 | 5. Sensor real | feito: a placa calcula igual ao Python; o valor fisiológico depende do suporte de dedo (abaixo) | depende do `picos/`; procedimento abaixo |
 
 ## Método
@@ -536,12 +536,12 @@ spline virando reta (1568 falhas), sem tirar a reta (65), sem Hann (1558),
 0,15 Hz contado no LF (1483), janela com `>` (6) e buffer cheio sem
 descartar (350).
 
-#### 3. Placa com a fonte falsa (bancada pronta, falta rodar)
+#### 3. Placa com a fonte falsa
 
 ```bash
-cmake --preset Debug -DBANCADA_HRV_FREQ=ON
-cmake --build --preset Debug
-STM32_Programmer_CLI -c port=SWD -w build/Debug/sensor-ppg.elf -v -rst
+cmake --preset Release -DBANCADA_HRV_FREQ=ON   # e de novo com Debug
+cmake --build --preset Release
+STM32_Programmer_CLI -c port=SWD -w build/Release/sensor-ppg.elf -v -rst
 ```
 
 Na partida, logo depois de abrir a serial (antes do sensor), a placa toca
@@ -550,24 +550,37 @@ vetor do teste no PC e mede os ciclos de cada batimento. Esperado:
 
 ```text
 # bancada lf/hf: 613 batimentos, 283 validos, 0 fora da tolerancia, erro max ... milionesimos
-# bancada lf/hf: ciclos por batimento med ... max ... (orcamento 2000000): OK
+# bancada lf/hf: ciclos por batimento med ... max ... (orcamento 1500000): OK
 ```
 
-**Orçamento:** 2 000 000 ciclos por batimento (~21 ms a 96 MHz). É uma
-estimativa (~65 mil iterações do Goertzel, ~600 `cosf` da Hann e a spline,
-em `-O0`), não medida. A 75 bpm, 2,6% da CPU. O que preocupa mais é o
-**tempo de um batimento**, não a média: ~20 ms parado no meio do laço são
-2 amostras a 100 Hz (8 do sensor a 400 Hz). Se a placa mostrar muito mais
-que isso, dá pra calcular o LF/HF só a cada N batimentos (ele muda devagar)
-ou trocar pela FFT. Com as duas bancadas do HRV ligadas, compila sem
-warnings: flash 81 KB, RAM 33,5 KB.
+**Orçamento, por perfil** (`bancada_hrv.h`; o Release é `-Os`, que define
+`__OPTIMIZE__`): 1 500 000 ciclos por batimento em Release e 3 400 000 em
+Debug (`-O0`), o pior batimento medido (abaixo) com folga de ~15%. O orçamento
+antigo era um só, 2 000 000, estimado sem medir pra `-O0`: o Debug medido
+passou dele (31 ms). O que preocupa mais é o **tempo de um batimento**, não a
+média: 13 ms parado no meio do laço são mais de uma amostra a 100 Hz (5 do
+sensor a 400 Hz), 31 ms em Debug são 3. Por isso, na cadeia, a conta não pode
+rodar inteira num batimento: tem que ir em pedaços ou só a cada tanto (ele
+muda devagar), ou trocar pela FFT. Com as duas bancadas do HRV ligadas,
+compila sem warnings: Release 88 632 B de flash e 60 560 B de RAM; Debug
+136 740 e 60 568 (medido em 24/11, já com a SpO2 na cadeia).
 
-Passos: (1) gravar com a opção; (2) abrir a serial a 921600 e copiar as
+**Resultado na placa** (23/11/2026, 613 batimentos de `s1_sit`): 283 válidos,
+0 fora da tolerância, erro máximo 14 milionésimos. Ciclos por batimento:
+
+| | Release (`-Os`) | Debug (`-O0`) |
+|---|---|---|
+| Média | 587 395 | 1 368 224 |
+| Pior batimento | 1 284 715 (13,4 ms a 96 MHz) | 2 985 443 (31 ms) |
+| Orçamento | 1 500 000 | 3 400 000 |
+
+A média inclui os ~270 primeiros batimentos, em que a janela ainda não cobre
+e não há conta; por isso ela é perto da metade do máximo.
+
+Passos: (1) gravar com a opção; (2) abrir a serial a 460800 e copiar as
 duas linhas; (3) conferir `0 fora da tolerancia` e `283 validos`; (4)
 anotar média e máximo dos ciclos aqui; (5) voltar com
 `-DBANCADA_HRV_FREQ=OFF`.
-
-**Resultado na placa:** *(preencher)*
 
 #### 4. Sensor real
 

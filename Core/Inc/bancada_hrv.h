@@ -22,12 +22,19 @@
 #define BANCADA_ORCAMENTO_HRV 20000u
 
 /*
- * Orçamento do LF/HF por batimento: 2 000 000 ciclos (~21 ms a 96 MHz). A conta
- * inteira (spline, Hann e 109 frequências de Goertzel em ~600 amostras) roda a
- * cada batimento: ~65 mil iterações do Goertzel. A 75 bpm, ~2,6% da CPU. É
- * uma estimativa: a bancada mede.
+ * Orçamento do LF/HF por batimento, por perfil (o Release é -Os, que define
+ * __OPTIMIZE__; o Debug é -O0).
+ *
+ * A conta inteira (hrv_freq_processa: spline, Hann e 109 frequências de Goertzel
+ * em ~600 amostras, ~65 mil iterações) medida na placa em 23/11/2026, 613
+ * batimentos de s1_sit: pior batimento 1 284 715 ciclos em Release (13,4 ms) e
+ * 2 985 443 em Debug (31 ms). O orçamento é essa medida com folga de ~15%.
  */
-#define BANCADA_ORCAMENTO_HRV_FREQ 2000000u
+#ifdef __OPTIMIZE__
+#define BANCADA_ORCAMENTO_HRV_FREQ 1500000u
+#else
+#define BANCADA_ORCAMENTO_HRV_FREQ 3400000u
+#endif
 
 #ifdef BANCADA_HRV
 /* Roda a fonte falsa no HRV e manda o resultado pela serial. true se passou. */
