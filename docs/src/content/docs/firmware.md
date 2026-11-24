@@ -127,6 +127,8 @@ INT ficar baixo, não vem outra borda de descida, e sem isso a leitura travaria.
 - **`-DSERIAL_COMPLETA=ON`:** acrescenta as cruas a 400 Hz (`n,ir,vermelho`) e o
   filtrado (`f,`), pra captura e conferência contra o Python (`--confere` dos
   módulos e `analise.cadeia --replay`).
+- **`-DSERIAL_TELA=ON`:** independente das outras duas: acrescenta as linhas `d,` com as páginas do
+  display (ver [Espelho do display](#espelho-do-display--dserial_telaon)).
 
 ```text
 # sensor-ppg: laco principal, serial completa
@@ -247,6 +249,33 @@ No padrão são ~30 bytes × 100 Hz ≈ 3 kB/s mais os resultados. Na completa, 
 máximo uns 25 bytes × 400 Hz + 2 × 30 bytes × 100 Hz ≈ 16 kB/s, cerca de 35% dos
 ~46 kB/s da serial a 460800. O envio usa DMA com buffer duplo: o laço preenche um buffer de 3 KiB
 (cabe a pior leitura: FIFO cheia, linhas `b,` e `f,` e o resumo dos ciclos) enquanto o DMA manda o outro.
+
+### Espelho do display (`-DSERIAL_TELA=ON`)
+
+Opção de compilação, **desligada por padrão** (sem ela o firmware sai igual ao de antes). Com ela, cada
+página que o `display.c` manda com sucesso ao OLED sai também pela serial, numa linha `d,` (o PC remonta a
+tela e desenha no terminal; ver a issue #141):
+
+```text
+d,<página>,<256 caracteres hexadecimais minúsculos>
+```
+
+- `<página>` vai de 0 a 7. Os 256 caracteres são os 128 bytes da página, da coluna 0 à 127, na ordem da
+  memória do SSD1306: cada byte é uma coluna e o bit 0 é a linha de cima da página. A linha tem 261 bytes
+  com o `\n`. O texto sai de `oled_linha_tela()` (`pds/oled/`, sem HAL, testada no PC).
+- Só sai a página que mudou (a que foi pro chip), do mesmo jeito que o I2C. A cada ~10 s
+  (`DISPLAY_ESPELHO_MS`) o `display.c` marca as 8 páginas como não enviadas (`oled_invalida()`), e elas vão de
+  novo ao chip e à serial, uma por volta do laço (~24 ms de I2C no total, 8 linhas), pra quem liga o PC no
+  meio fechar uma tela inteira.
+- A linha entra no buffer pelo `serial_escreve()` e nunca espera: se não couber, a linha é descartada, a
+  página fica certa no OLED e volta no próximo reenvio.
+- **Custo na serial:** 261 B = 5,7 ms de fio a 460800. O reenvio é pouco (8 × 261 B a cada 10 s, ~0,2 kB/s).
+  O que pesa é a onda: no pior caso, 6 páginas por quadro a 20 quadros por segundo, ~31 kB/s (68% dos ~46 kB/s),
+  além das linhas de sempre. Por isso o buffer da serial é de **4 KiB** nesse modo (3 KiB sem a opção): no
+  tempo que o DMA leva pra mandar um buffer cheio (~67 ms) juntam-se até ~2,3 KB de linhas `d,`, e uma leitura
+  pesada (até ~1,8 KB) pode cair em cima. RAM a mais: +2 KiB, só com a opção. Esse número é conta, não
+  medida: o quanto a tela atrapalha a captura (linhas `b,` perdidas) fica para a validação na placa (#144).
+- O Python ignora o prefixo que não conhece, então as outras linhas não mudam.
 
 ### Por que 460800
 

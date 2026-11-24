@@ -35,6 +35,9 @@
 /* Quadros por segundo: o design pede 20 a 400 kHz. */
 #define DISPLAY_QUADRO_MS 50u
 
+/* Com -DSERIAL_TELA=ON: de quanto em quanto tempo a tela inteira é reenviada à serial. */
+#define DISPLAY_ESPELHO_MS 10000u
+
 /*
  * Confere se o chip responde e manda a sequência de inicialização. false se não respondeu
  * (o resto da API passa a não fazer nada).

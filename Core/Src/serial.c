@@ -8,8 +8,16 @@
 /* Pior leitura: FIFO cheia (32 linhas cruas × ~22 B), ~16 linhas b, e ~16 f,
    (× ~30 B, contando as repetidas no lugar das perdidas), # perdidas e os
    resumos dos ciclos: ~1,8 KB (as linhas p, do picos são uma por batimento,
-   ~40 B, no máximo uma por leitura). 3 KiB cabem com folga. */
+   ~40 B, no máximo uma por leitura). 3 KiB cabem com folga.
+   Com SERIAL_TELA entra também uma linha d, (261 B) por volta do laço, até uns 31 KB/s no
+   pior caso (6 páginas a 20 quadros por segundo); no tempo que o DMA leva pra esvaziar o
+   outro buffer cheio (~67 ms) juntam-se até ~2,3 KB, e uma leitura pesada ainda pode cair
+   em cima. Por isso 4 KiB nesse modo (+2 KiB de RAM, só com a opção). */
+#ifdef SERIAL_TELA
+#define BUF_TAM 4096u
+#else
 #define BUF_TAM 3072u
+#endif
 
 static UART_HandleTypeDef *uart;
 static uint8_t buf[2][BUF_TAM];

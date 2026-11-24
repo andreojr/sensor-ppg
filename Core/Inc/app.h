@@ -28,6 +28,13 @@
 #define APP_SERIAL_COMPLETA false
 #endif
 
+/* -DSERIAL_TELA=ON no CMake: cada página enviada ao OLED também sai pela serial (linha d,). */
+#ifdef SERIAL_TELA
+#define APP_SERIAL_TELA 1
+#else
+#define APP_SERIAL_TELA 0
+#endif
+
 void app_init(I2C_HandleTypeDef *sensor, I2C_HandleTypeDef *display, UART_HandleTypeDef *serial,
               TIM_HandleTypeDef *regua);
 
