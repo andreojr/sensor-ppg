@@ -159,7 +159,33 @@ uv run python -m analise.captura /dev/ttyUSB0 --tela --braille   # braille, 64 x
 - `--tela` não anda junto com `--qualidade`: os dois escrevem no mesmo terminal. `--braille` só vale
   com `--tela`.
 
-O código está em `analise/src/analise/tela_terminal.py`. O teste (`analise/tests/test_tela_terminal.py`)
+### Janela gráfica (`--janela`)
+
+Em vez de desenhar no terminal, o espelho pode abrir uma janela (tkinter, que já vem com o Python;
+sem dependência nova). Os 128 x 64 pixels viram quadrados, com fundo preto, amarelo nas 16 primeiras
+linhas de pixel e azul nas outras 48, como o painel bicolor. As cores e o corte vêm das mesmas
+constantes do terminal (`CORTE_AMARELO_PX`, `CODIGO_AMARELO` = 220 = `#ffd700` e `CODIGO_AZUL` = 39 =
+`#00afff`, em `tela_terminal.py`).
+
+```bash
+uv run python -m analise.captura /dev/ttyUSB0 --janela                  # monitor fhd (padrão)
+uv run python -m analise.captura /dev/ttyUSB0 --janela --monitor 4k     # janela maior
+```
+
+- O tamanho vem de `--monitor` (`hd`, `fhd`, `2k` ou `4k`; padrão `fhd`). A janela ocupa uns 40% da
+  largura da tela, com escala inteira (cada pixel do OLED vira N x N pixels de tela, arredondando
+  pra baixo): hd = 4 (512 x 256), fhd = 6 (768 x 384), 2k = 8 (1024 x 512), 4k = 12 (1536 x 768).
+- Pra outra resolução, é uma linha nova no dicionário `RESOLUCOES` de `analise/src/analise/tela_janela.py`
+  (por exemplo `"wuxga": (1920, 1200)`); a escala sai sozinha.
+- A leitura da serial não trava: o laço da captura chama o `update()` do tkinter a cada volta (não há
+  `mainloop`). Fecha com Ctrl+C, no fim do `--segundos` ou ao fechar a janela, e o resumo sai como
+  sempre.
+- Sem ambiente gráfico (sem `DISPLAY`/Wayland) ou sem o `tkinter` (no Linux, pacote `python3-tk`), a
+  captura avisa em uma linha e sai, sem abrir a serial.
+- `--janela` não anda junto com `--tela` nem com `--qualidade`, e `--braille` só vale com `--tela`.
+  O `--tela` (espelho no terminal) continua existindo.
+
+O código está em `analise/src/analise/tela_terminal.py`. A janela está em `analise/src/analise/tela_janela.py`. O teste (`analise/tests/test_tela_terminal.py`)
 não usa a placa: monta as linhas `d,` a partir das 10 telas do `oled.py`, e confere que a tela remontada
 é byte a byte igual e que o desenho tem o tamanho certo, além das linhas inválidas.
 

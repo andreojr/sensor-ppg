@@ -37,8 +37,10 @@ CORES = "\033[97;40m"  # branco sobre preto: só o quadro "esperando"
 
 # Cores do painel bicolor (ANSI de 256 cores, letra = pixel aceso, fundo preto).
 CORTE_AMARELO_PX = 16  # linhas de pixel 0 a 15 são amarelas; da 16 em diante, azuis
-COR_AMARELO = "\033[38;5;220;40m"
-COR_AZUL = "\033[38;5;39;40m"
+CODIGO_AMARELO = 220  # código de 256 cores; a janela (tela_janela.py) converte pra hexadecimal
+CODIGO_AZUL = 39
+COR_AMARELO = f"\033[38;5;{CODIGO_AMARELO};40m"
+COR_AZUL = f"\033[38;5;{CODIGO_AZUL};40m"
 
 HEX = frozenset("0123456789abcdef")
 ESPERA = "esperando as linhas d, da placa (firmware com -DSERIAL_TELA=ON)"
@@ -133,6 +135,7 @@ class Espelho:
         self._sujo = False
         self._ultimo: float | None = None
         self._comecou = False
+        self.encerrado = False  # a janela (se houver) liga isto ao ser fechada: a captura para
 
     @property
     def memoria(self) -> bytes:
