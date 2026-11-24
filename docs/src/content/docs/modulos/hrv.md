@@ -416,8 +416,8 @@ indicativo**. Mesmo 120 s ainda erra por ~1,5. Por isso a janela é de
   `fracao` e RR numa fila circular, mais a área de trabalho da spline e a série de 601
   amostras). O `hrv_t` do tempo tem 3,3 KiB. A F411 tem 128 KiB. Medido pelo
   linker (24/11, já com a SpO2 na cadeia): ligar o LF/HF na cadeia levou a RAM de
-  40 392 para 57 264 B (+16 872) e a flash de 61 264 para 63 448 B em Release
-  (Debug: 40 400 → 57 272 B de RAM, 89 996 → 94 112 B de flash).
+  40 392 para 57 264 B (+16 872) e a flash de 61 264 para 63 472 B em Release
+  (Debug: 40 400 → 57 272 B de RAM, 89 996 → 94 152 B de flash).
 - **Batimentos rápidos:** cabem 600 RR. Acima de ~120 bpm de média em
   5 min, o buffer descarta os mais antigos, a cobertura cai abaixo de 90% e
   o LF/HF fica inválido. Em repouso (o caso que interessa) não acontece.
@@ -502,7 +502,8 @@ if (hrv_freq_passo(&hf, &hrv)) {       /* true no 17º passo */
   dentro da medida `hrv` da cadeia (orçamento 20 000).
 - **`hrv_freq_comeca()`** confere a cobertura e copia os instantes e os RR
   pra área de trabalho, desembrulhando a fila (do mais antigo ao mais novo, a
-  partir do índice 0; duas passadas nos ≤ 600 RR). Os batimentos guardados
+  partir do índice 0; 4 passadas nos ≤ 600 RR: a soma da cobertura e, na
+  cópia, os instantes, a média e os RR menos a média). Os batimentos guardados
   durante a conta não mexem nela. A ordem das somas é a mesma da versão
   contígua: o resultado é igual bit a bit.
 - **`hrv_freq_passo()`**, `HRV_FREQ_PASSOS` = 17 vezes: (1) spline; (2)
@@ -516,7 +517,9 @@ if (hrv_freq_passo(&hf, &hrv)) {       /* true no 17º passo */
   `teste_hrv_freq` confere a igualdade bit a bit em 152 contas dos dois vetores,
   com batimentos guardados no meio da conta, e que o resultado sai no 17º passo.
 - **Pior passo (estimativa):** 8 das 109 frequências são ~7% da conta inteira
-  medida: ~200 mil ciclos em Debug (~2 ms) e ~90 mil em Release (~1 ms). A
+  medida: em Debug o pior é um passo do Goertzel, ~185 a 200 mil ciclos (~2 ms);
+  em Release, ~90 a 120 mil ciclos (estimativa; o passo da Hann, com 601 `cosf`,
+  pode ser o pior em Release). A
   proporção vem de medir cada passo no PC: cada passo do Goertzel (8
   frequências) é ~6,9% do total em `-O0` e ~6,5% em `-Os`; os 3 primeiros
   (spline, reamostragem, reta e Hann), 1,3 a 1,8% em `-O0` e 3,0 a 3,4% em

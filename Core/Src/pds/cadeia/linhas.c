@@ -110,10 +110,14 @@ static void tela(saida_t *o, uint32_t n, bool mostra, const ppg_bpm_t *v)
                            mostra ? (unsigned long)(v->bpm * 100.0f + 0.5f) : 0ul));
 }
 
+/* O LF/HF em milésimos, limitado a 999.999 como o R: acima de ~2,1e6 a conta do decimal()
+   estoura o long de 32 bits (UB). Só o teto: negativo e NaN seguem como antes. */
+#define LF_HF_TETO 999.999f
 static void lf_hf(saida_t *o, uint32_t n, bool valido, float v)
 {
     char x[24], linha[48];
-    linhas_milesimos(x, sizeof x, valido ? v : 0.0f);
+    const float limitado = v > LF_HF_TETO ? LF_HF_TETO : v;
+    linhas_milesimos(x, sizeof x, valido ? limitado : 0.0f);
     poe(o, linha, snprintf(linha, sizeof linha, "l,%lu,%d,%s\n", (unsigned long)n, valido ? 1 : 0,
                            x));
 }

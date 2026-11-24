@@ -772,10 +772,10 @@ Flash/RAM (Release): 52 724 / 35 288 B antes do laço novo, 54 284 / 37 032 B
 depois (135 KB de flash com a bancada da cadeia). Em Debug, 78 788 / 37 040 B.
 
 Com o display, a SpO2 e o LF/HF na cadeia (medido pelo linker em 24/11/2026, sem bancada):
-Release 63 448 B de flash e 57 264 B de RAM; Debug 94 112 e 57 272. O LF/HF
+Release 63 472 B de flash e 57 264 B de RAM; Debug 94 152 e 57 272. O LF/HF
 acrescentou 16 872 B de RAM (o `hrv_freq_t` dentro do `cadeia_t`, que agora tem
 ~41 KB) e ~2 KB de flash em Release (antes dele, já com a SpO2: 61 264 / 40 392 B).
-Com `-DBANCADA_CADEIA=ON`: Release 144 800 / 57 632 B, Debug 176 788 / 57 640 B. A F411
+Com `-DBANCADA_CADEIA=ON`: Release 144 832 / 57 632 B, Debug 176 828 / 57 640 B. A F411
 tem 512 KB de flash e 128 KB de RAM.
 
 ## Laço simples, sem RTOS

@@ -127,7 +127,8 @@ bool hrv_freq_guarda(hrv_freq_t *h, const ppg_batimento_t *b);
 /*
  * Começa uma conta sobre a janela guardada agora (a que termina no último
  * batimento guardado): confere a cobertura e copia os instantes e os RR. Custa
- * uma passada nos RR (duas, contando a cobertura). Se já havia uma conta em andamento, recomeça.
+ * 4 passadas nos RR (a soma da cobertura; na cópia, os instantes, a média e os
+ * RR menos a média). Se já havia uma conta em andamento, recomeça.
  */
 void hrv_freq_comeca(hrv_freq_t *h);
 

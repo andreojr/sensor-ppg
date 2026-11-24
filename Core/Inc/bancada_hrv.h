@@ -37,9 +37,11 @@
  * cadeia ela não roda assim: vai espalhada.
  *
  * O pior passo da conta espalhada (hrv_freq_passo, um por amostra na cadeia, ou o
- * hrv_freq_comeca): 8 das 109 frequências, ~7% da conta inteira. Estimativa: ~200
- * mil ciclos em Debug (~2 ms) e ~90 mil em Release; o orçamento é 1/3 de um
- * período de amostra em Debug (3,3 ms) e metade disso em Release.
+ * hrv_freq_comeca): em Debug, um passo do Goertzel (8 das 109 frequências, ~7%
+ * da conta inteira), ~185 a 200 mil ciclos (~2 ms); em Release, ~90 a 120 mil
+ * ciclos (estimativa; o passo da Hann, com 601 cosf, pode ser o pior em
+ * Release). O orçamento é 1/3 de um período de amostra em Debug (3,3 ms) e
+ * metade disso em Release.
  */
 #ifdef __OPTIMIZE__
 #define BANCADA_ORCAMENTO_HRV_FREQ 1500000u

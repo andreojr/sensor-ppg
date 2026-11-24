@@ -140,6 +140,32 @@ static void r_limitado(void)
     }
 }
 
+/* O LF/HF da linha l: limitado a 999.999 (acima de ~2,1e6 estouraria o long), os normais
+   não mudam e o negativo sai como antes. */
+static void lf_hf_limitado(void)
+{
+    const struct {
+        float v;
+        const char *esperado;
+    } casos[] = {
+        {1.2345678f, "l,9,1,1.235\n"},   {999.0f, "l,9,1,999.000\n"},
+        {1.0e12f, "l,9,1,999.999\n"},    {INFINITY, "l,9,1,999.999\n"},
+        {-0.25f, "l,9,1,-0.250\n"},
+    };
+    for (size_t k = 0; k < sizeof casos / sizeof casos[0]; k++) {
+        cadeia_saida_t s;
+        memset(&s, 0, sizeof s);
+        s.calculou_lf_hf = true;
+        s.lf_hf_valido = true;
+        s.lf_hf = casos[k].v;
+        ppg_amostra_t bruto = {9u, 1.0f, 2.0f};
+        char buf[LINHAS_MAX];
+        linhas_cadeia(&s, &bruto, false, buf, sizeof buf);
+        const char *linha = strstr(buf, "l,");
+        igual("lf/hf limitado", linha ? linha : "", casos[k].esperado);
+    }
+}
+
 static void buffer_pequeno(void)
 {
     cadeia_saida_t s = saida_cheia();
@@ -170,6 +196,7 @@ int main(void)
     todas();
     so_bruto_e_tela_apagada();
     r_limitado();
+    lf_hf_limitado();
     buffer_pequeno();
     cru();
     printf("%s\n", falhas ? "FALHOU" : "OK");

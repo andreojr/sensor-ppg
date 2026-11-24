@@ -6,7 +6,7 @@
  * physionet.h (o mesmo do teste no PC) pela cadeia, confere cada saída com o
  * Python e mede os ciclos de cada módulo e da cadeia por amostra (DWT):
  *
- *   # bancada cadeia: 478 saidas, 0 fora da tolerancia
+ *   # bancada cadeia: 496 saidas, 0 fora da tolerancia
  *   # bancada filtro: ciclos med ... max ... (orcamento ...)
  *   ...
  *   # bancada cadeia: ciclos por amostra med X max Y (orcamento 70200 / 960000): OK
