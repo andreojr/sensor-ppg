@@ -363,6 +363,110 @@ Os limites são 37,5 ms (folga do sensor depois do INT) e 80 ms (FIFO inteira); 
 Com o dedo, a serial disse "BPM confiável" em 82 das 90 linhas `t,` (79 a 95 bpm) e o OLED mostrou o
 número (86 BPM na foto da conferência), com a onda de pico pra cima: a inversão de sinal está certa.
 
+## Integração final com o sensor real (24/11)
+
+Issues #30, #144 (parte de #141). Com o MAX30102 de verdade, a cadeia inteira (decimação, filtro, qualidade,
+picos, espectral, HRV, LF/HF, SpO2, respiração) rodando junto com o display, gravei **400 s com o dedo no
+sensor**: todas as linhas da serial com horário, inclusive cada página enviada ao OLED (`d,`). Firmware Release
+da `main` (6b54cdd + #145) com `-DSERIAL_TELA=ON`, 460800 baud. O objetivo era ver se o display mostra o que a
+cadeia calcula e se o espelho não atrapalha a leitura.
+
+### A cadeia roda inteira, sem perder nada
+
+| | Medido |
+|---|---|
+| Linhas da serial | 78 534, **0 estragadas** |
+| Amostras `b,` | 39 941, **0 saltos** no contador |
+| Amostras perdidas (`# laco`, 400 avisos de 1 s) | **0** |
+| Linhas `d,` do display | 34 284 válidas, 0 estragadas |
+| Linhas `d,` descartadas pelo buffer (`# tela`) | **10** em 400 s (a página volta no reenvio de 10 s) |
+| Taxa de amostragem | 99,85 amostras/s |
+| Fila (`fila_max`) | no máximo 5 de 16 |
+| Volta do laço mais longa | 1,90 M ciclos, ~19 ms (orçamento 3,6 M, 36 ms) |
+| Maior intervalo entre leituras do sensor | 45 ms (limite 80) |
+
+O espelho não trouxe linhas perdidas novas: é a salvaguarda do 460800 (#136, [Por que 460800](#por-que-460800)).
+
+### Os números na tela batem com os da serial
+
+Refiz cada campo pelo `oled.py` a partir das linhas de resultado da placa e comparei, **pixel a pixel**, com
+o quadro remontado das linhas `d,` (amostrando a cada 0,25 s). Um campo bate se algum dos valores que a placa
+mandou por perto no tempo desenha exatamente os pixels que estavam na tela.
+
+| Campo na tela | Bate com a serial |
+|---|---|
+| BPM grande (principal; mais SINAL RUIM, onde é `--`), linha `t,` e `p,` | 897/905 (99,1%) |
+| BPM PICOS (resumo), `p,` | 328/337 (97,3%) |
+| BPM FFT (resumo), `e,` | 337/337 |
+| SDNN e RMSSD (resumo), `h,` | 337/337 cada |
+| SPO2~ (resumo), `s,` | 337/337 |
+| RESP (resumo), `r,` | 337/337 |
+| SPO2 grande (alvo), `s,` | 358/358 |
+| RESP grande (alvo), `r,` | 358/358 |
+
+Os 17 desencontros são transições: o quadro lido com algumas páginas já novas e outras ainda velhas, ou o
+BPM da linha da serial que mudou entre um quadro e o seguinte.
+
+### O rodízio segue o previsto
+
+Principal 8 s, resumo 4 s, alvo 4 s, nessa ordem (mediana de cada trecho: 8,0 / 4,0 / 4,0 s, em 22, 24 e 24
+trechos completos). A tela alvo entrou assim que a SpO2 ficou válida. Em 52 s dos 400 (6 trechos) a tela foi a
+de **SINAL RUIM**, que ganha do rodízio (dedo mexendo): a conferência trata ela como tela própria, com o BPM
+grande em `--`.
+
+| Tela | Tempo na sessão |
+|---|---|
+| Principal | 174 s |
+| Resumo | 84 s |
+| Alvo | 90 s |
+| Sinal ruim | 52 s |
+
+### Números da sessão
+
+Extremos de verdade, tirados das linhas da serial (e de onde a tela só mostrou o que a qualidade deixou):
+
+| | Mínimo a máximo | Faixa de 5% a 95% |
+|---|---|---|
+| BPM (`t,` com `mostra = 1`) | 77 a 116 | 85 a 113 |
+| SpO2 estimada | 93 a 100% | 96 a 100% |
+| SDNN | 29 a 80 ms | 32 a 77 ms |
+
+- Respiração válida em 242 dos 400 s (começa em 28 s; no resto a tela mostra `--`, certo).
+- LF/HF: primeiro valor válido em 320 s (5,97), depois ~6.
+- O pulso na tela sobe a cada batimento, com subida rápida e queda lenta: o sinal invertido do
+  `display_amostra` está certo (conferido em 24/11).
+
+### As telas reais
+
+Quadros do espelho, pintados como o painel bicolor (amarelo nas 16 linhas de cima, azul nas outras 48):
+
+![Tela principal: BPM, qualidade e onda do pulso](../../assets/oled_principal.png)
+
+![Tela de resumo: BPM, SDNN, RMSSD, LF/HF, SpO2 e respiração](../../assets/oled_resumo.png)
+
+![Tela alvo: SpO2 e respiração grandes, BPM e onda](../../assets/oled_alvo.png)
+
+### Limitações
+
+- Sem ECG nem cinta respiratória, a validação com o sensor real continua fisiológica e qualitativa: confere
+  que o display mostra o que a cadeia calcula, não que o número está certo contra uma referência.
+- O dedo foi apoiado à mão, sem suporte; os 52 s de SINAL RUIM são em parte isso.
+- Uma sessão de 400 s, uma pessoa.
+
+### Como reproduzir
+
+Com o firmware de `-DSERIAL_TELA=ON` na placa (não grave nem rode nada pra isso além da serial):
+
+```bash
+cd analise
+uv run python -m analise.grava_log /dev/ttyUSB0 --espera 10 --segundos 400 -o dados/sessao.log
+uv run python -m analise.oled_confere dados/sessao.log --png dados/oled_telas
+```
+
+O primeiro só lê a serial e grava todas as linhas com o horário. O segundo confere integridade, rodízio e os
+campos da tela, imprime um resumo, salva os PNGs e sai com código 1 se algum campo bater menos de 95%
+(`--minimo`); `--desencontros` mostra os primeiros desencontros de cada campo. `dados/` fica fora do git.
+
 ## Rodar na placa e ver a leitura
 
 O que precisa no PC:

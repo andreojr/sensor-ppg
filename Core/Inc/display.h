@@ -52,7 +52,8 @@ void display_tela_inicio(const oled_etapa_t etapas[3], bool aguarde);
 void display_tela_erro(oled_erro_t erro);
 
 /* Uma amostra do sinal filtrado (IR), a 100 Hz. O sinal é invertido aqui: no IR, sangue a
-   mais é luz a menos, e o pulso sairia de cabeça pra baixo. A confirmar na placa. */
+   mais é luz a menos, e o pulso sairia de cabeça pra baixo. Confirmado na placa (24/11): o
+   pulso sobe a cada batimento. */
 void display_amostra(float ir_filtrado);
 
 #if APP_SERIAL_TELA

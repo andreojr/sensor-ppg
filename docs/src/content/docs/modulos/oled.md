@@ -78,6 +78,14 @@ e o topo, com 8% de folga) e **cresce na hora e encolhe 5% por quadro**, pra ond
 formatação: pura, sem HAL, testada em `testes/oled/teste_oled.c` (prefixo, hex minúsculo, ida e volta
 byte a byte e página fora de 0 a 7).
 
+## Com o sensor real (24/11)
+
+Em 400 s com o dedo no MAX30102 e o espelho ligado, o OLED mostrou o que a cadeia calculou: BPM, SDNN, RMSSD,
+SpO2 e respiração bateram com as linhas da serial pixel a pixel (97% a 100% por campo, os desencontros são
+transições), o rodízio ficou em 8 / 4 / 4 s e nenhuma amostra foi perdida. Tabelas, imagens das telas e
+como reproduzir (`analise.grava_log` e `analise.oled_confere`) em
+[Integração final com o sensor real](../../firmware/#integração-final-com-o-sensor-real-2411).
+
 ## Decisões e suposições
 
 O protótipo do design deixa algumas coisas em aberto; estas são as escolhas, todas fáceis de mudar:
