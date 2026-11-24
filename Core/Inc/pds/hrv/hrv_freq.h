@@ -25,6 +25,19 @@
  * lf_hf_valido quando os RR aceitos somam HRV_FREQ_COBERTURA_MIN da janela
  * (270 s: é o atraso até o primeiro valor).
  *
+ * Duas formas de usar:
+ *  - hrv_freq_processa(): guarda o batimento e faz a conta inteira na hora
+ *    (13,4 ms no pior caso em Release, 31 ms em Debug, medidos na placa);
+ *  - hrv_freq_guarda() a cada batimento (barato) e, quando quiser um valor,
+ *    hrv_freq_comeca() seguido de HRV_FREQ_PASSOS chamadas de hrv_freq_passo(),
+ *    uma por amostra: a mesma conta, em pedaços (é o que a cadeia usa).
+ * As duas dão exatamente o mesmo número: processa() é guarda() + comeca() +
+ * os passos todos de uma vez.
+ *
+ * A janela é a dos HRV_FREQ_JANELA_S segundos que terminam no ÚLTIMO BATIMENTO
+ * GUARDADO (com valido true), não no n atual: comeca() calcula sobre o que já
+ * está guardado. Sem batimentos novos, a janela não anda (como no HRV no tempo).
+ *
  * Uma janela de 5 min é o padrão. Janelas curtas dão LF/HF que muda muito
  * (60 s: fator típico de 1,8 contra o de 5 min). Ver docs/.../modulos/hrv.md.
  */
@@ -42,13 +55,21 @@
 #define HRV_FREQ_FS_REAMOSTRA 2u /* Hz; 4 Hz dá o mesmo LF/HF (medido) */
 #define HRV_FREQ_CAP 600u        /* 300 s até 120 bpm de média; cheio, sai o mais antigo */
 #define HRV_FREQ_N_MAX (HRV_FREQ_JANELA_S * HRV_FREQ_FS_REAMOSTRA + 1u)
+/* Não há mínimo de RR à parte: 270 s de RR de até HRV_RR_MAX_MS (2000 ms) já são
+   pelo menos 135 pontos na spline. */
 #define HRV_FREQ_COBERTURA_MIN 0.9f
-#define HRV_FREQ_MIN_RR 4u
 
 /* Bandas em índices k da grade f = k / HRV_FREQ_JANELA_S. */
 #define HRV_FREQ_K_LF (4u * HRV_FREQ_JANELA_S / 100u)   /* 12:  0,04 Hz */
 #define HRV_FREQ_K_HF (15u * HRV_FREQ_JANELA_S / 100u)  /* 45:  0,15 Hz (LF vai até 44) */
 #define HRV_FREQ_K_FIM (40u * HRV_FREQ_JANELA_S / 100u) /* 120: 0,40 Hz, inclusive */
+
+/* A conta espalhada: 3 passos (spline; reamostragem; reta e Hann) e as 109
+   frequências do Goertzel, HRV_FREQ_K_POR_PASSO por passo. */
+#define HRV_FREQ_K_POR_PASSO 8u
+#define HRV_FREQ_PASSOS_GOERTZEL                                                            \
+    ((HRV_FREQ_K_FIM - HRV_FREQ_K_LF + HRV_FREQ_K_POR_PASSO) / HRV_FREQ_K_POR_PASSO) /* 14 */
+#define HRV_FREQ_PASSOS (3u + HRV_FREQ_PASSOS_GOERTZEL) /* 17 */
 
 typedef struct {
     /* RR aceitos na janela, do mais antigo ao mais novo (contíguos). */
@@ -60,22 +81,60 @@ typedef struct {
     bool tem_n;
     uint32_t ultimo_n;
 
-    /* Área de trabalho da conta (não é estado: fica aqui pra não ir à pilha). */
+    /* A conta em andamento (hrv_freq_comeca / hrv_freq_passo). */
+    uint32_t etapa;   /* 0: parada; 1 a HRV_FREQ_PASSOS: o próximo passo */
+    bool cobre;       /* a janela tinha RR o bastante (senão os passos não fazem nada) */
+    uint32_t pontos;  /* RR copiados pra t[] e aux[] */
+    uint32_t amostras; /* tamanho da série reamostrada */
+    uint32_t k;       /* próxima frequência do Goertzel */
+    float soma_lf, soma_hf;
+
+    /* Área de trabalho da conta: uma cópia da janela no hrv_freq_comeca(), pra os
+       batimentos guardados no meio da conta não mexerem nela. */
     float t[HRV_FREQ_CAP];  /* instante relativo ao primeiro, s */
     float m[HRV_FREQ_CAP];  /* segunda derivada da spline */
     float aux[HRV_FREQ_CAP]; /* RR menos a média */
     float y[HRV_FREQ_N_MAX]; /* série reamostrada (antes, rascunho da spline) */
 } hrv_freq_t;
 
-/* Zera o estado. Chamar de novo reinicia. */
+/* Zera o estado (e larga uma conta em andamento). Chamar de novo reinicia. */
 void hrv_freq_init(hrv_freq_t *h);
 
 /*
- * Um batimento. Devolve true e escreve s->lf_hf_valido e s->lf_hf para todo
- * batimento com valido true (os outros campos de *s ficam como estão);
- * false (e *s intocado) se b->valido for false.
+ * Um batimento, com a conta inteira. Devolve true e escreve s->lf_hf_valido e
+ * s->lf_hf para todo batimento com valido true (os outros campos de *s ficam
+ * como estão); false (e *s intocado) se b->valido for false. Usa a mesma área
+ * de trabalho da conta espalhada: não chame no meio de uma.
  */
 bool hrv_freq_processa(hrv_freq_t *h, const ppg_batimento_t *b, ppg_hrv_t *s);
+
+/*
+ * Só guarda o batimento (as regras acima), sem conta: no máximo um memmove dos
+ * RR. false (e nada muda) se b->valido for false. Pode ser chamada no meio de uma
+ * conta espalhada: a conta usa a cópia que o hrv_freq_comeca() fez. Um n_pico
+ * voltando reinicia tudo, e a conta em andamento é largada (não sai resultado).
+ */
+bool hrv_freq_guarda(hrv_freq_t *h, const ppg_batimento_t *b);
+
+/*
+ * Começa uma conta sobre a janela guardada agora (a que termina no último
+ * batimento guardado): confere a cobertura e copia os instantes e os RR. Custa
+ * uma passada nos RR. Se já havia uma conta em andamento, recomeça.
+ */
+void hrv_freq_comeca(hrv_freq_t *h);
+
+/*
+ * Um pedaço da conta. Na HRV_FREQ_PASSOS-ésima chamada depois do
+ * hrv_freq_comeca(), escreve s->lf_hf_valido e s->lf_hf (o mesmo que
+ * hrv_freq_processa() daria no último batimento guardado) e devolve true; nas
+ * outras (e sem conta em andamento), false e *s intocado. Sempre o mesmo número
+ * de passos, mesmo quando a janela não cobre (aí os passos não fazem nada e sai
+ * lf_hf_valido false): o resultado sai numa amostra previsível.
+ */
+bool hrv_freq_passo(hrv_freq_t *h, ppg_hrv_t *s);
+
+/* true entre o hrv_freq_comeca() e o passo que solta o resultado. */
+bool hrv_freq_calculando(const hrv_freq_t *h);
 
 /*
  * A conta do espectro, separada pra poder trocar por FFT depois: potência

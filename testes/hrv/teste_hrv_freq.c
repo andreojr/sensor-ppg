@@ -6,6 +6,7 @@
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 #include "confere.h"
 #include "hrv/hrv.h"
 #include "hrv/hrv_freq.h"
@@ -15,7 +16,8 @@
 #define BATIMENTOS_MAX 3000u
 #define PI_D 3.14159265358979
 
-static hrv_freq_t h; /* ~16,4 KiB: fora da pilha */
+static hrv_freq_t h;  /* ~16,4 KiB: fora da pilha */
+static hrv_freq_t h2; /* a conta espalhada, ao lado da de uma vez */
 static int32_t obt_escreveu[BATIMENTOS_MAX];
 static int32_t obt_valido[BATIMENTOS_MAX];
 static float obt_lf_hf[BATIMENTOS_MAX];
@@ -132,7 +134,7 @@ static int janela_incompleta(void)
     return 0;
 }
 
-/* Poucos batimentos (abaixo do mínimo da spline), e janela vazia: inválido, sem NaN. */
+/* Poucos batimentos (a cobertura não fecha), e janela vazia: inválido, sem NaN. */
 static int poucos_batimentos(void)
 {
     hrv_freq_init(&h);
@@ -176,20 +178,106 @@ static int mesmo_instante(void)
     return 0;
 }
 
-/* Reinício: n voltando reinicia; hrv_freq_init zera. */
+/*
+ * Reinício: n voltando reinicia. Conferir só a janela não pega a falta do
+ * hrv_freq_init() no reinício: com o n menor, b->n_pico - h->n[i] dá a volta no
+ * uint32_t, fica enorme e a janela esvazia sozinha. O que só o init zera é a
+ * conta em andamento: ela tem que ser largada (a janela copiada era da fonte
+ * de antes).
+ */
 static int reinicio(void)
 {
     ppg_hrv_t s = senoidal(400.0f, 40.0f, 20.0f, 0u);
     if (!s.lf_hf_valido)
         return falha("não ficou válido antes do reinício");
+    hrv_freq_comeca(&h);
+    ppg_hrv_t p = {0};
+    hrv_freq_passo(&h, &p);
     ppg_batimento_t b = {true, 10u, 0.0f, true, 900.0f};
+    hrv_freq_guarda(&h, &b);
+    if (h.conta != 1u)
+        return falha("n voltando não reiniciou a janela");
+    if (hrv_freq_calculando(&h))
+        return falha("n voltando não largou a conta em andamento");
+    for (uint32_t k = 0; k < HRV_FREQ_PASSOS; k++)
+        if (hrv_freq_passo(&h, &p))
+            return falha("a conta de antes do reinício soltou resultado");
     hrv_freq_processa(&h, &b, &s);
-    if (s.lf_hf_valido || h.conta != 1u)
-        return falha("n voltando não reiniciou");
+    if (s.lf_hf_valido)
+        return falha("depois do reinício deu válido");
     hrv_freq_init(&h);
-    if (h.conta != 0u || h.tem_n)
+    if (h.conta != 0u || h.tem_n || hrv_freq_calculando(&h))
         return falha("hrv_freq_init não zerou");
     printf("reinício: ok\n");
+    return 0;
+}
+
+/*
+ * A conta espalhada dá o mesmo float da de uma vez (bit a bit), no mesmo ponto,
+ * mesmo com batimentos guardados no meio da conta; e sai sempre no
+ * HRV_FREQ_PASSOS-ésimo passo. A cada `cada` batimentos começa uma conta em h2 e
+ * guarda os batimentos seguintes enquanto ela anda, um passo por batimento.
+ */
+static int espalhada_igual(const char *nome, uint32_t n, const int32_t *valido,
+                           const int32_t *n_pico, const float *fracao, const int32_t *rr_valido,
+                           const float *rr_ms, uint32_t cada)
+{
+    hrv_freq_init(&h);
+    hrv_freq_init(&h2);
+    ppg_hrv_t esperado = {0}, obtido = {0};
+    uint32_t passos = 0, contas = 0, validas = 0;
+    for (uint32_t i = 0; i < n; i++) {
+        ppg_batimento_t b = {valido[i] != 0, (uint32_t)n_pico[i], fracao[i], rr_valido[i] != 0,
+                             rr_ms[i]};
+        ppg_hrv_t s = {0};
+        bool escreveu = hrv_freq_processa(&h, &b, &s);
+        if (hrv_freq_guarda(&h2, &b) != escreveu)
+            return falha("hrv_freq_guarda e hrv_freq_processa discordam do batimento");
+        if (hrv_freq_calculando(&h2)) {
+            passos++;
+            if (hrv_freq_passo(&h2, &obtido)) {
+                contas++;
+                validas += obtido.lf_hf_valido;
+                if (passos != HRV_FREQ_PASSOS)
+                    return falha("a conta espalhada não saiu em HRV_FREQ_PASSOS passos");
+                if (obtido.lf_hf_valido != esperado.lf_hf_valido ||
+                    memcmp(&obtido.lf_hf, &esperado.lf_hf, sizeof obtido.lf_hf) != 0) {
+                    printf("%s, batimento %u: espalhada %d %.9g, de uma vez %d %.9g\n", nome,
+                           (unsigned)i, obtido.lf_hf_valido, (double)obtido.lf_hf,
+                           esperado.lf_hf_valido, (double)esperado.lf_hf);
+                    return falha("a conta espalhada deu outro número");
+                }
+            }
+        } else if (escreveu && i % cada == 0u) {
+            esperado = s; /* o que processa() deu neste batimento */
+            hrv_freq_comeca(&h2);
+            passos = 0;
+        }
+    }
+    if (contas < 10u || validas == 0u)
+        return falha("poucas contas espalhadas conferidas");
+    printf("espalhada %s: %u contas (%u válidas) iguais bit a bit ok\n", nome, (unsigned)contas,
+           (unsigned)validas);
+    return 0;
+}
+
+/* Sem hrv_freq_comeca(), o passo não faz nada; o resultado sai uma vez só. */
+static int passo_sem_conta(void)
+{
+    senoidal(400.0f, 40.0f, 20.0f, 0u);
+    ppg_hrv_t s = {true, 1.0f, 2.0f, true, 7.0f};
+    if (hrv_freq_calculando(&h) || hrv_freq_passo(&h, &s) || s.lf_hf != 7.0f)
+        return falha("passo sem conta mexeu na saída");
+    hrv_freq_comeca(&h);
+    uint32_t k = 1;
+    while (!hrv_freq_passo(&h, &s))
+        k++;
+    if (k != HRV_FREQ_PASSOS || !s.lf_hf_valido || s.sdnn_ms != 1.0f || !s.valido)
+        return falha("conta espalhada: passos ou campos errados");
+    s.lf_hf = 7.0f;
+    if (hrv_freq_passo(&h, &s) || s.lf_hf != 7.0f)
+        return falha("passo depois do resultado mexeu na saída");
+    printf("passo sem conta: ok (%u passos)\n", (unsigned)k);
     return 0;
 }
 
@@ -254,6 +342,13 @@ int main(void)
     falhas += batimento_invalido();
     falhas += mesmo_instante();
     falhas += reinicio();
+    falhas += espalhada_igual("freq_s1_sit", FREQ_S1_SIT_VALIDO_N, freq_s1_sit_valido,
+                              freq_s1_sit_n_pico, freq_s1_sit_fracao, freq_s1_sit_rr_valido,
+                              freq_s1_sit_rr_ms, 7u);
+    falhas += espalhada_igual("freq_bordas", FREQ_BORDAS_VALIDO_N, freq_bordas_valido,
+                              freq_bordas_n_pico, freq_bordas_fracao, freq_bordas_rr_valido,
+                              freq_bordas_rr_ms, 5u);
+    falhas += passo_sem_conta();
     falhas += encadeado();
     printf(falhas ? "FALHOU (%d)\n" : "OK\n", falhas);
     return falhas ? 1 : 0;

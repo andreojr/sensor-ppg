@@ -8,6 +8,9 @@
 /* Amostras de 100 Hz entre duas amostras da série reamostrada. */
 #define PASSO_AMOSTRAS ((float)PPG_FS_HZ / (float)HRV_FREQ_FS_REAMOSTRA)
 
+_Static_assert(HRV_FREQ_PASSOS_GOERTZEL * HRV_FREQ_K_POR_PASSO >= HRV_FREQ_K_FIM - HRV_FREQ_K_LF + 1u,
+               "os passos do Goertzel não cobrem as frequências das bandas");
+
 void hrv_freq_init(hrv_freq_t *h)
 {
     memset(h, 0, sizeof *h);
@@ -72,8 +75,12 @@ static float avalia(const float *t, const float *v, const float *mm, uint32_t i,
            ((a * a * a - a) * mm[i] + (b * b * b - b) * mm[i + 1u]) * d * d / 6.0f;
 }
 
-/* RR da janela -> série regular y[0..N-1] a HRV_FREQ_FS_REAMOSTRA. Devolve N. */
-static uint32_t reamostra(hrv_freq_t *h)
+/*
+ * Copia a janela pra área de trabalho: t[] (instantes) e aux[] (RR menos a
+ * média), e o tamanho da série reamostrada. Daqui em diante a conta não lê mais
+ * n[], fracao[] nem rr[].
+ */
+static void copia_janela(hrv_freq_t *h)
 {
     uint32_t m = h->conta;
     /* Instantes relativos ao primeiro RR. Subtrai os inteiros antes: em
@@ -87,24 +94,26 @@ static uint32_t reamostra(hrv_freq_t *h)
     for (uint32_t i = 0; i < m; i++)
         media += h->rr[i];
     media /= (float)m;
-    float *v = h->aux;
     for (uint32_t i = 0; i < m; i++)
-        v[i] = h->rr[i] - media;
-    spline(h->t, v, h->m, h->y, m); /* y de rascunho; é sobrescrito abaixo */
+        h->aux[i] = h->rr[i] - media;
 
     float d_amostras = (float)(h->n[m - 1u] - h->n[0]) + (h->fracao[m - 1u] - h->fracao[0]);
     uint32_t n = (uint32_t)floorf(d_amostras / PASSO_AMOSTRAS) + 1u;
-    if (n > HRV_FREQ_N_MAX)
-        n = HRV_FREQ_N_MAX;
+    h->pontos = m;
+    h->amostras = n > HRV_FREQ_N_MAX ? HRV_FREQ_N_MAX : n;
+}
 
+/* A spline pelos pontos copiados -> série regular y[0..amostras-1] a
+   HRV_FREQ_FS_REAMOSTRA. */
+static void reamostra(hrv_freq_t *h)
+{
     uint32_t i = 0;
-    for (uint32_t j = 0; j < n; j++) {
+    for (uint32_t j = 0; j < h->amostras; j++) {
         float x = (float)j / (float)HRV_FREQ_FS_REAMOSTRA;
-        while (i + 2u < m && x > h->t[i + 1u])
+        while (i + 2u < h->pontos && x > h->t[i + 1u])
             i++;
-        h->y[j] = avalia(h->t, v, h->m, i, x);
+        h->y[j] = avalia(h->t, h->aux, h->m, i, x);
     }
-    return n;
 }
 
 /* Tira a reta (mínimos quadrados) e aplica a janela de Hann simétrica. */
@@ -143,43 +152,92 @@ static float goertzel(const float *y, uint32_t n, float w)
     return s1 * s1 + s2 * s2 - coef * s1 * s2;
 }
 
-void hrv_freq_potencias(const float *y, uint32_t n, float *lf, float *hf)
+/* Soma |X(f_k)|² de k = k0 até k1 - 1 em *lf (k < HRV_FREQ_K_HF) ou *hf, na
+   ordem de k: a conta de uma vez e a espalhada somam na mesma ordem. */
+static void soma_bandas(const float *y, uint32_t n, uint32_t k0, uint32_t k1, float *lf,
+                        float *hf)
 {
     const float passo = 2.0f * PI_F / (float)(HRV_FREQ_JANELA_S * HRV_FREQ_FS_REAMOSTRA);
-    float soma_lf = 0.0f, soma_hf = 0.0f;
-    for (uint32_t k = HRV_FREQ_K_LF; k <= HRV_FREQ_K_FIM; k++) {
+    for (uint32_t k = k0; k < k1; k++) {
         float p = goertzel(y, n, passo * (float)k);
         if (k < HRV_FREQ_K_HF)
-            soma_lf += p;
+            *lf += p;
         else
-            soma_hf += p;
+            *hf += p;
     }
-    *lf = soma_lf;
-    *hf = soma_hf;
 }
 
-static void resultado(hrv_freq_t *h, ppg_hrv_t *s)
+void hrv_freq_potencias(const float *y, uint32_t n, float *lf, float *hf)
 {
-    s->lf_hf_valido = false;
-    s->lf_hf = 0.0f;
+    *lf = 0.0f;
+    *hf = 0.0f;
+    soma_bandas(y, n, HRV_FREQ_K_LF, HRV_FREQ_K_FIM + 1u, lf, hf);
+}
+
+void hrv_freq_comeca(hrv_freq_t *h)
+{
     float soma = 0.0f;
     for (uint32_t i = 0; i < h->conta; i++)
         soma += h->rr[i];
-    if (h->conta < HRV_FREQ_MIN_RR ||
-        soma < HRV_FREQ_COBERTURA_MIN * (float)HRV_FREQ_JANELA_S * 1000.0f)
-        return;
+    h->cobre = soma >= HRV_FREQ_COBERTURA_MIN * (float)HRV_FREQ_JANELA_S * 1000.0f;
+    if (h->cobre)
+        copia_janela(h);
+    h->k = HRV_FREQ_K_LF;
+    h->soma_lf = 0.0f;
+    h->soma_hf = 0.0f;
+    h->etapa = 1u;
+}
 
-    uint32_t n = reamostra(h);
-    prepara(h->y, n);
-    float lf, hf;
-    hrv_freq_potencias(h->y, n, &lf, &hf);
-    if (hf > 0.0f && isfinite(lf) && isfinite(hf)) {
+bool hrv_freq_calculando(const hrv_freq_t *h)
+{
+    return h->etapa != 0u;
+}
+
+bool hrv_freq_passo(hrv_freq_t *h, ppg_hrv_t *s)
+{
+    if (h->etapa == 0u)
+        return false;
+    if (h->cobre) {
+        if (h->etapa == 1u) {
+            spline(h->t, h->aux, h->m, h->y, h->pontos); /* y de rascunho */
+        } else if (h->etapa == 2u) {
+            reamostra(h); /* sobrescreve o rascunho */
+        } else if (h->etapa == 3u) {
+            prepara(h->y, h->amostras);
+        } else {
+            uint32_t fim = h->k + HRV_FREQ_K_POR_PASSO;
+            if (fim > HRV_FREQ_K_FIM + 1u)
+                fim = HRV_FREQ_K_FIM + 1u;
+            soma_bandas(h->y, h->amostras, h->k, fim, &h->soma_lf, &h->soma_hf);
+            h->k = fim;
+        }
+    }
+    if (h->etapa < HRV_FREQ_PASSOS) {
+        h->etapa++;
+        return false;
+    }
+    h->etapa = 0u;
+    s->lf_hf_valido = false;
+    s->lf_hf = 0.0f;
+    float lf = h->soma_lf, hf = h->soma_hf;
+    if (h->cobre && hf > 0.0f && isfinite(lf) && isfinite(hf)) {
         s->lf_hf_valido = true;
         s->lf_hf = lf / hf;
     }
+    return true;
 }
 
 bool hrv_freq_processa(hrv_freq_t *h, const ppg_batimento_t *b, ppg_hrv_t *s)
+{
+    if (!hrv_freq_guarda(h, b))
+        return false;
+    hrv_freq_comeca(h);
+    while (!hrv_freq_passo(h, s)) {
+    }
+    return true;
+}
+
+bool hrv_freq_guarda(hrv_freq_t *h, const ppg_batimento_t *b)
 {
     if (!b->valido)
         return false;
@@ -202,7 +260,5 @@ bool hrv_freq_processa(hrv_freq_t *h, const ppg_batimento_t *b, ppg_hrv_t *s)
         h->rr[h->conta] = b->rr_ms;
         h->conta++;
     }
-
-    resultado(h, s);
     return true;
 }

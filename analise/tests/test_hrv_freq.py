@@ -1,6 +1,8 @@
 """Protótipo do LF/HF, com sequências sintéticas (sem rede)."""
 
 import math
+import re
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -103,3 +105,24 @@ def test_vetor_bordas_passa_por_todas_as_regras():
     assert a["escreveu"].sum() == len(v) - 1  # só o inválido não escreve
     # Válido antes do reinício (k = 699), do buraco (k = 1149) e do buffer cheio.
     assert v[698] and not v[699] and v[1148] and not v[1149] and not v[-1]
+
+
+def test_guarda_e_calcula_igual_a_processa():
+    """guarda() + calcula() é o processa(); a janela é a do último batimento guardado."""
+    t, rr = hrv_freq.rr_senoidal(400.0, 40.0, 20.0)
+    a, b = hrv_freq.HrvFreq(), hrv_freq.HrvFreq()
+    for bat in batimentos(t, rr):
+        esperado = a.processa(bat)
+        assert b.guarda(bat)
+        assert b.calcula() == esperado
+    assert esperado.lf_hf_valido
+    assert b.guarda(Batimento(False, 10**7, 0.0, True, 900.0)) is False
+
+
+def test_passos_iguais_ao_c():
+    """O número de passos da conta espalhada é o do hrv_freq.h (a cadeia depende dele)."""
+    texto = (Path(__file__).resolve().parents[2] / "Core/Inc/pds/hrv/hrv_freq.h").read_text(
+        encoding="utf-8")
+    k = int(re.search(r"#define HRV_FREQ_K_POR_PASSO (\d+)u", texto).group(1))
+    assert k == hrv_freq.K_POR_PASSO
+    assert hrv_freq.PASSOS == 3 + math.ceil(109 / k) == 17
