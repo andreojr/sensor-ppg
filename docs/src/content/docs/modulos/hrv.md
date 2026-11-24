@@ -416,8 +416,8 @@ indicativo**. Mesmo 120 s ainda erra por ~1,5. Por isso a janela é de
   `fracao` e RR numa fila circular, mais a área de trabalho da spline e a série de 601
   amostras). O `hrv_t` do tempo tem 3,3 KiB. A F411 tem 128 KiB. Medido pelo
   linker (24/11, já com a SpO2 na cadeia): ligar o LF/HF na cadeia levou a RAM de
-  40 392 para 57 264 B (+16 872) e a flash de 61 264 para 63 344 B em Release
-  (Debug: 40 400 → 57 272 B de RAM, 89 996 → 94 048 B de flash).
+  40 392 para 57 264 B (+16 872) e a flash de 61 264 para 63 448 B em Release
+  (Debug: 40 400 → 57 272 B de RAM, 89 996 → 94 112 B de flash).
 - **Batimentos rápidos:** cabem 600 RR. Acima de ~120 bpm de média em
   5 min, o buffer descarta os mais antigos, a cobertura cai abaixo de 90% e
   o LF/HF fica inválido. Em repouso (o caso que interessa) não acontece.
@@ -696,9 +696,10 @@ média 587 395 e 1 368 224. É por esses números que, na cadeia, a conta vai es
 só a cada 5 s. **Falta rodar** a bancada nova (a terceira e a quarta linhas,
 com a guarda e o pior passo).
 
-Com a bancada do LF/HF ligada, compila sem warnings: Release 81 556 B de flash e
-74 112 B de RAM; Debug 115 336 e 74 120 (o `hrv_freq_t` da bancada é outro, além
-do da cadeia; medido em 24/11, já com a SpO2 na cadeia).
+Com a bancada do LF/HF ligada, compila sem warnings: Release 82 024 B de flash e
+74 112 B de RAM; Debug 115 940 e 74 120 (o `hrv_freq_t` da bancada é outro, além
+do da cadeia; medido com a fila circular e a medida da guarda, já com a SpO2 na
+cadeia, 24/11).
 
 Passos: (1) gravar com a opção; (2) abrir a serial a **460800** e copiar as
 quatro linhas; (3) conferir `0 fora da tolerancia`, `283 validos` e `0 diferentes`;
