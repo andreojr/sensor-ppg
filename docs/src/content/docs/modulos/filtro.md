@@ -25,6 +25,7 @@ sidebar:
 | 3. Teste no PC contra os vetores | feito: `testes/filtro/`, no CI |
 | 4. Placa com a fonte falsa | código pronto (`-DBANCADA_FILTRO=ON`); falta rodar na placa |
 | 5. Sensor real | código pronto (linhas `f,` na serial); falta capturar com o dedo |
+| Efeito da fase no pico, no RR e no HRV (#32) | feito: `analise/src/analise/fase_pico.py`, seção abaixo |
 
 ## Método
 
@@ -55,10 +56,12 @@ o pico "certo", sem atraso nenhum.
 
 - No IIR, o pico **muda de lugar conforme a FC**. Abaixo do centro da
   banda ($\sqrt{0{,}5 \cdot 4} \approx 1{,}4$ Hz, ou 85 bpm), a fase do
-  passa-faixa está adiantada e o pico sai antes. Acima, sai depois. A linha do
-  gráfico é a previsão pela fundamental, $-\varphi(f)/(2\pi f)$: ela explica a
-  tendência, mas não o valor exato. Os harmônicos do pulso são atrasados de
-  forma diferente, e a onda se deforma (o pico vira outro ponto da onda).
+  passa-faixa está adiantada e o pico tende a sair antes. Acima, tende a sair
+  depois. A linha do gráfico é a previsão pela fundamental,
+  $-\varphi(f)/(2\pi f)$: ela explica a tendência, mas não o valor, e nem
+  sempre o sentido. Os harmônicos do pulso são atrasados de forma diferente, e
+  a onda se deforma (o pico vira outro ponto da onda). Num pulso sintético
+  estreito, o IIR de ordem 4 atrasa o pico em ~50 ms em vez de adiantar.
   Não existe um `PPG_ATRASO_AMOSTRAS` que sirva pra todo mundo, e de
   −183 a +56 ms é bem mais que o RMSSD inteiro.
 - Dentro do mesmo registro, a FC varia de batimento a batimento, então o pico
@@ -69,6 +72,67 @@ o pico "certo", sem atraso nenhum.
 **Decisão: FIR de fase linear.** O custo é a latência de 1 s, que só atrasa
 o display, e mais memória e ciclos que um IIR. As duas coisas cabem
 (abaixo).
+
+### Com o detector e o HRV de verdade (#32)
+
+A tabela acima usa um detector simples. Com o `picos` (#23) e o `hrv` prontos,
+a comparação foi refeita com o caminho de verdade da cadeia:
+`uv run python -m analise.fase_pico`. Para cada um dos 22 registros `sit`
+(300 s, FC de 54 a 123 bpm), o bruto decimado passa por cada filtro, e o
+filtrado vai pro `picos.detecta()`, igual na cadeia. Os instantes vão pro
+`hrv.Hrv` (SDNN e RMSSD em janelas de 60 s), que é comparado batimento a
+batimento com o HRV dos picos R do ECG (mesmo método do `hrv.valida_registro`).
+O fase zero entra como controle: o que ele erra é do sinal e da detecção, não
+da fase.
+
+| Filtro | Pico − pico de fase zero (ms), mediana (mín..máx) | Variação no registro (ms) | RR − RR do ECG, RMS (ms) | Erro do SDNN (ms) | Erro do RMSSD (ms) |
+|---|---|---|---|---|---|
+| fase zero (controle) | 0 | 0 | 8,1 | 1,9 | 4,6 |
+| **FIR 201 (nosso)** | **−2,6 (−9,2..1,4)** | **3,3** | **7,4** | **2,0** | **4,5** |
+| IIR Butterworth 2 | 37,3 (−40,2..55,9) | 25,5 | 28,7 | 6,5 | 21,3 |
+| IIR Butterworth 4 | −25,0 (−156,7..52,2) | 58,9 | 61,1 | 18,8 | 52,8 |
+
+Erros RMS, mediana dos 22 registros. O HRV de referência (ECG) tem mediana de
+SDNN 49 ms e RMSSD 33 ms.
+
+![Atraso de grupo dos três filtros e erro do RMSSD por registro](../../../assets/filtro_fase_pico.png)
+
+- **O FIR não acrescenta erro nenhum.** O RR e o HRV saem iguais aos do filtro
+  de fase zero, que não existe em tempo real. Os dois registros em que o FIR
+  erra o RMSSD em 40 a 60 ms (s8 e s17) também erram com o fase zero (51 a
+  71 ms): ali o problema é o sinal, não o filtro.
+- **Com o IIR, o HRV deixa de servir.** O IIR de ordem 2 erra o RMSSD em 21
+  ms, 65% do RMSSD típico (33 ms). O de ordem 4 erra em 53 ms, mais que o
+  próprio RMSSD. O SDNN sofre menos, porque é dominado pela variação lenta,
+  mas também triplica.
+- **Por quê:** à esquerda, o atraso de grupo. O do FIR é 1000 ms em todas as
+  frequências, uma reta. O do IIR de ordem 4 vai de ~580 ms em 0,5 Hz a ~100 ms
+  em 2 Hz, justamente na faixa da fundamental do pulso (a faixa cinza). Cada
+  componente da onda atrasa diferente, a onda se deforma, e o pico se desloca
+  conforme a FC e a forma do pulso de cada pessoa. A FC varia batimento a
+  batimento, então o pico do IIR também oscila (25 a 59 ms dentro do mesmo
+  registro), e isso entra direto no RR.
+
+### Por que `PPG_ATRASO_AMOSTRAS = 100`
+
+1. **É o atraso exato do FIR.** Um FIR simétrico de $N$ coeficientes atrasa
+   todas as frequências em $(N-1)/2$ amostras: com 201, são 100 amostras = 1 s.
+   O atraso de grupo calculado é 100,000 amostras de 0,5 a 4 Hz (teste
+   `test_atraso_de_grupo`), e o `filtro.c` confere isso na compilação.
+2. **Medido, sobra menos de meia amostra.** O melhor atraso constante pra
+   alinhar o pico do FIR com o de fase zero nos 22 registros é 100 − 0,26
+   amostra (−2,6 ms). Usando 100, o que sobra é 2,4 ms RMS (pior registro:
+   6,6 ms). Isso vem da diferença de ganho entre o FIR e o Butterworth da
+   referência, não da fase, e fica abaixo da resolução de 10 ms de uma amostra.
+   Trocar pra 99 ou 101 erraria 10 ms em todo pico.
+3. **Pro IIR não existe valor certo.** O melhor atraso constante pro IIR de
+   ordem 2 seria +3,7 amostras, e mesmo assim sobram 21,7 ms RMS (pior: 77,5
+   ms). Pro de ordem 4, −2,5 amostras e 57,7 ms RMS (pior: 131,7 ms). Qualquer
+   constante deixa um erro maior que o RMSSD que se quer medir.
+4. **Pro HRV, só os intervalos importam**, e um atraso constante se cancela no
+   RR. A constante serve pro instante absoluto do pico (comparar com o ECG da
+   fonte falsa, tempo de trânsito do pulso), e por isso ela tem que ser a mesma
+   em todo batimento. É o que só a fase linear garante.
 
 ### Projeto do FIR
 
