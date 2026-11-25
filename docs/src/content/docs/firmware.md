@@ -31,6 +31,7 @@ Código que usa HAL, em `Core/Inc` e `Core/Src` (fora de `pds/`).
 | Sensor SCL / SDA (I2C1) | PB6 / PB7 |
 | Sensor INT (EXTI5) | PB5 |
 | Display SCL / SDA (I2C3) | PA8 / PB4 |
+| Buzzer ativo (GPIO saída, nível alto soa) | PB14 |
 | Serial TX / RX (USART1) | PA9 / PA10 (TX da placa → RX do adaptador) |
 | Cristal HSE 25 MHz | PH0 / PH1 (já soldado na Black Pill) |
 
@@ -602,6 +603,11 @@ Se o clock mudar, **o baud rate da USART1 e o TIM2 mudam junto**: recalcular.
 | DMA | USART1_TX, DMA2 Stream 7, Memory To Peripheral, Normal, incremento só na memória, Byte/Byte | o DMA envia o buffer e a CPU segue lendo o sensor e rodando o PDS |
 | NVIC | USART1 global interrupt | avisa o fim do envio por DMA |
 
+### PB14: buzzer (System Core → GPIO)
+
+GPIO_Output, push-pull, sem pull, velocidade baixa, nível inicial baixo, label `BUZZER`.
+Buzzer **ativo** (oscilador interno) ligado direto no pino: nível alto soa.
+
 ### PB5: INT do MAX30102 (System Core → GPIO)
 
 | Campo | Valor | Por quê |
@@ -673,8 +679,9 @@ devolve o controle, nunca espera nada. É isso que garante ler o sensor a tempo.
    2. cadeia            esvazia a fila: cadeia_processa() (pds/cadeia/)
                         → ficha ppg_resultados_t, linhas na serial, onda pro display
    3. display           display_servico(): uma página (~3 ms) com a ficha
-   4. monitor_tarefa()  (monitor.c) a cada 1 s de TIM2: # laco; a cada 10 s: ciclos
-   5. serial_envia()    despacha o buffer por DMA
+   4. buzzer            buzzer_servico(): bipe por batimento, tom sem batimento
+   5. monitor_tarefa()  (monitor.c) a cada 1 s de TIM2: # laco; a cada 10 s: ciclos
+   6. serial_envia()    despacha o buffer por DMA
 
  TIM2 (100 Hz, cristal): a interrupção só soma 1 num contador.
 ```
@@ -844,6 +851,23 @@ acrescentou 16 872 B de RAM (o `hrv_freq_t` dentro do `cadeia_t`, que agora tem
 ~41 KB) e ~2 KB de flash em Release (antes dele, já com a SpO2: 61 264 / 40 392 B).
 Com `-DBANCADA_CADEIA=ON`: Release 144 832 / 57 632 B, Debug 176 828 / 57 640 B. A F411
 tem 512 KB de flash e 128 KB de RAM.
+
+### Buzzer (`buzzer.c`, `buzzer_logica.c`, #152)
+
+Feedback sonoro como monitor hospitalar, no PB14 (buzzer ativo, nível alto soa, ligado direto):
+
+- **bipe curto** (`BUZZER_BIPE_MS` = 80 ms) a cada batimento detectado (`cadeia_saida_t.bateu`);
+- **tom contínuo** enquanto o batimento estiver perdido: faz `BUZZER_PERDA_MS` = 3 s sem batimento
+  (o RR de 40 bpm é 1,5 s) ou a qualidade julgou o sinal não usável (`valido && !usavel`: sem dedo
+  ou sinal ruim). Com sinal ruim os batimentos são ignorados (podem ser ruído);
+- **para** no primeiro batimento com sinal usável, que já dá o bipe;
+- **mudo** até o primeiro batimento (placa ligada sem dedo não apita) e se um dos dois parâmetros for 0.
+
+Reaproveita os sinais da cadeia, sem módulo de PDS novo. Não bloqueia: o tempo vem de
+`HAL_GetTick()` e `buzzer_servico()` só escreve o pino quando o nível muda (custo desprezível, sem
+mudar o orçamento da volta). A regra (`buzzer_logica.c`, C puro, sem HAL, fora de `pds/`) é testada no PC
+(`testes/buzzer/teste_buzzer.c`). O bipe sai ~1,3 s depois do pulso de verdade (atraso do filtro mais o
+candidato pendente do picos), como as linhas `p,`. **Não testado na placa.**
 
 ## Laço simples, sem RTOS
 

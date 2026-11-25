@@ -7,6 +7,7 @@
 #include "bancada_cadeia.h"
 #include "bancada_hrv.h"
 #include "bancada_qualidade.h"
+#include "buzzer.h"
 #include "cadeia/cadeia.h"
 #include "cadeia/fila.h"
 #include "cadeia/linhas.h"
@@ -98,6 +99,7 @@ void app_init(I2C_HandleTypeDef *sensor, I2C_HandleTypeDef *display, UART_Handle
     display_tela_inicio(etapas, false);
     cabecalho();
     monitor_init(regua);
+    buzzer_init();
     /* Bancadas: fonte falsa em cada módulo, resultado (OK/FALHOU) na serial; a placa
        segue mesmo se falhar. As amostras do sensor desse intervalo podem sair como
        "# perdidas". */
@@ -141,6 +143,8 @@ static void cadeia_tarefa(void)
         static cadeia_saida_t s; /* ~340 B: fora da pilha (mínima de 1 KiB) */
         cadeia_processa(&cadeia, &bruto, &s);
         monitor_conta_amostra();
+        if (s.bateu)
+            buzzer_bateu(&cadeia_resultados(&cadeia)->qualidade, HAL_GetTick());
         display_amostra(s.filtrado.ir);
         static char linhas[LINHAS_MAX];
         size_t n = linhas_cadeia(&s, &bruto, APP_SERIAL_COMPLETA, linhas, sizeof linhas);
@@ -161,6 +165,7 @@ void app_laco(void)
     sensor_tarefa();
     cadeia_tarefa();
     display_servico(cadeia_resultados(&cadeia), HAL_GetTick());
+    buzzer_servico(&cadeia_resultados(&cadeia)->qualidade, HAL_GetTick());
     monitor_tarefa(&fila, &cadeia);
     serial_envia();
     monitor_conta_volta(ciclos_agora() - t0);

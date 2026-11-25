@@ -34,6 +34,10 @@ target_link_libraries(pds PRIVATE cmsis_dsp)
 
 enable_testing()
 
+# Regra do buzzer (Core/Src/buzzer_logica.c): C puro fora de pds/, sem HAL. Só o teste_buzzer a enxerga.
+add_library(buzzer_logica STATIC ${RAIZ}/Core/Src/buzzer_logica.c)
+target_include_directories(buzzer_logica PUBLIC ${RAIZ}/Core/Inc)
+
 # Um executável por arquivo testes/<módulo>/teste_*.c
 file(GLOB_RECURSE TESTES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*/teste_*.c)
 list(FILTER TESTES EXCLUDE REGEX "/guarda/")
@@ -45,6 +49,8 @@ foreach(arquivo ${TESTES})
     target_include_directories(${nome} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     add_test(NAME ${nome} COMMAND ${nome})
 endforeach()
+
+target_link_libraries(teste_buzzer PRIVATE buzzer_logica)
 
 # Replay: as cruas de uma captura de novo pela cadeia (testes/cadeia/replay.h).
 add_executable(replay_cadeia cadeia/replay_cadeia.c)
