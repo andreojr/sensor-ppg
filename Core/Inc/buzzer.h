@@ -9,12 +9,17 @@
 #include "main.h"
 #include "comum/ppg.h"
 
-/* Duração de cada bipe e tempo sem batimento até o tom contínuo. 0 = buzzer mudo. */
+/* Duração de cada bipe, tempo sem batimento até o tom contínuo e duração do tom de aviso
+   quando o dedo sai. 0 em qualquer um = buzzer mudo. */
 #ifndef BUZZER_BIPE_MS
 #define BUZZER_BIPE_MS 80u
 #endif
 #ifndef BUZZER_PERDA_MS
 #define BUZZER_PERDA_MS 3000u /* mais que o RR de 40 bpm (1,5 s), com folga */
+#endif
+
+#ifndef BUZZER_SEM_DEDO_MS
+#define BUZZER_SEM_DEDO_MS 3000u
 #endif
 
 void buzzer_init(void);

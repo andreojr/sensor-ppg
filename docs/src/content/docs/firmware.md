@@ -857,11 +857,13 @@ tem 512 KB de flash e 128 KB de RAM.
 Feedback sonoro como monitor hospitalar, no PB14 (buzzer ativo, nível alto soa, ligado direto):
 
 - **bipe curto** (`BUZZER_BIPE_MS` = 80 ms) a cada batimento detectado (`cadeia_saida_t.bateu`);
-- **tom contínuo** enquanto o batimento estiver perdido: faz `BUZZER_PERDA_MS` = 3 s sem batimento
-  (o RR de 40 bpm é 1,5 s) ou a qualidade julgou o sinal não usável (`valido && !usavel`: sem dedo
-  ou sinal ruim). Com sinal ruim os batimentos são ignorados (podem ser ruído);
-- **para** no primeiro batimento com sinal usável, que já dá o bipe;
-- **mudo** até o primeiro batimento (placa ligada sem dedo não apita) e se um dos dois parâmetros for 0.
+- **tom contínuo** só com o **dedo no sensor** e batimento perdido: faz `BUZZER_PERDA_MS` = 3 s sem batimento
+  (o RR de 40 bpm é 1,5 s) ou a qualidade julgou o sinal não usável com dedo presente
+  (`valido && dedo_presente && !usavel`). Os batimentos de sinal ruim são ignorados (podem ser ruído);
+- **dedo retirado** (`valido && !dedo_presente`): tom por `BUZZER_SEM_DEDO_MS` = 3 s e depois **cala**, sem
+  repetir. Fica mudo até o dedo voltar e o primeiro batimento rearmar o monitor;
+- o tom contínuo **para** no primeiro batimento com sinal usável, que já dá o bipe;
+- **mudo** até o primeiro batimento (placa ligada sem dedo não apita) e se um dos três parâmetros for 0.
 
 Reaproveita os sinais da cadeia, sem módulo de PDS novo. Não bloqueia: o tempo vem de
 `HAL_GetTick()` e `buzzer_servico()` só escreve o pino quando o nível muda (custo desprezível, sem
