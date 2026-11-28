@@ -71,6 +71,8 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/Core/Src/bancada_qualidade.c
     ${CMAKE_SOURCE_DIR}/Core/Src/bancada_cadeia.c
     ${CMAKE_SOURCE_DIR}/Core/Src/display.c
+    ${CMAKE_SOURCE_DIR}/Core/Src/buzzer.c
+    ${CMAKE_SOURCE_DIR}/Core/Src/buzzer_logica.c
     ${PDS_SOURCES}
     ${CMSIS_DSP_SOURCES}
 )
