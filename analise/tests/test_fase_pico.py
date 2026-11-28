@@ -54,8 +54,10 @@ def test_iir_desloca_o_pico_e_o_fir_nao(resultado, rapido):
     """Nas duas FC, o IIR tira o pico do lugar (o sentido e o tamanho dependem da
     forma da onda) e o FIR, descontado o atraso, não; nem muda com a FC.
 
-    Que no IIR o deslocamento muda de registro pra registro (de -157 a +52 ms)
-    é medido no PhysioNet (uv run python -m analise.fase_pico), com pulsos reais.
+    Aqui o pulso tem forma fixa, e o deslocamento do IIR sai quase constante (um
+    atraso fixo corrigiria): o teste só cobre isso. Que no IIR o deslocamento muda
+    de registro pra registro e de batimento a batimento, e estraga o HRV, é medido
+    no PhysioNet (uv run python -m analise.fase_pico), com pulsos reais.
     """
     for r in (resultado, rapido):
         fir = abs(r[fase_pico.FIR].desloc_ms)

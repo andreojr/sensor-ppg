@@ -61,7 +61,10 @@ o pico "certo", sem atraso nenhum.
   $-\varphi(f)/(2\pi f)$: ela explica a tendência, mas não o valor, e nem
   sempre o sentido. Os harmônicos do pulso são atrasados de forma diferente, e
   a onda se deforma (o pico vira outro ponto da onda). Num pulso sintético
-  estreito, o IIR de ordem 4 atrasa o pico em ~50 ms em vez de adiantar.
+  estreito, o IIR de ordem 4 atrasa o pico em ~50 ms em vez de adiantar, e
+  nos 22 registros `sit` de 300 s (seção abaixo) o de ordem 2 atrasa o pico na
+  maioria deles, mesmo abaixo de 85 bpm: a tendência pela fundamental só
+  aparece clara no de ordem 4.
   Não existe um `PPG_ATRASO_AMOSTRAS` que sirva pra todo mundo, e de
   −183 a +56 ms é bem mais que o RMSSD inteiro.
 - Dentro do mesmo registro, a FC varia de batimento a batimento, então o pico
@@ -97,7 +100,7 @@ SDNN 49 ms e RMSSD 33 ms.
 
 ![Atraso de grupo dos três filtros e erro do RMSSD por registro](../../../assets/filtro_fase_pico.png)
 
-- **O FIR não acrescenta erro nenhum.** O RR e o HRV saem iguais aos do filtro
+- **O FIR não acrescenta erro mensurável no RR nem no HRV.** O RR e o HRV saem iguais aos do filtro
   de fase zero, que não existe em tempo real. Os dois registros em que o FIR
   erra o RMSSD em 40 a 60 ms (s8 e s17) também erram com o fase zero (51 a
   71 ms): ali o problema é o sinal, não o filtro.
@@ -110,8 +113,9 @@ SDNN 49 ms e RMSSD 33 ms.
   em 2 Hz, justamente na faixa da fundamental do pulso (a faixa cinza). Cada
   componente da onda atrasa diferente, a onda se deforma, e o pico se desloca
   conforme a FC e a forma do pulso de cada pessoa. A FC varia batimento a
-  batimento, então o pico do IIR também oscila (25 a 59 ms dentro do mesmo
-  registro), e isso entra direto no RR.
+  batimento, então o pico do IIR também oscila dentro do mesmo registro
+  (desvio padrão mediano de 25 ms na ordem 2 e de 59 ms na ordem 4), e isso
+  entra direto no RR.
 
 ### Por que `PPG_ATRASO_AMOSTRAS = 100`
 
@@ -119,16 +123,20 @@ SDNN 49 ms e RMSSD 33 ms.
    todas as frequências em $(N-1)/2$ amostras: com 201, são 100 amostras = 1 s.
    O atraso de grupo calculado é 100,000 amostras de 0,5 a 4 Hz (teste
    `test_atraso_de_grupo`), e o `filtro.c` confere isso na compilação.
-2. **Medido, sobra menos de meia amostra.** O melhor atraso constante pra
-   alinhar o pico do FIR com o de fase zero nos 22 registros é 100 − 0,26
-   amostra (−2,6 ms). Usando 100, o que sobra é 2,4 ms RMS (pior registro:
-   6,6 ms). Isso vem da diferença de ganho entre o FIR e o Butterworth da
-   referência, não da fase, e fica abaixo da resolução de 10 ms de uma amostra.
-   Trocar pra 99 ou 101 erraria 10 ms em todo pico.
+2. **Medido, sobra menos de uma amostra.** Usando exatamente 100, o pico do
+   FIR fica, na média de cada registro, a 3,6 ms RMS do de fase zero (pior
+   registro: 9,2 ms). A constante que melhor alinharia seria 100 − 0,26
+   amostra (−2,6 ms, a mediana dos registros), e mesmo ela deixa 2,4 ms RMS
+   (pior: 6,6 ms): o que sobra vem da diferença de ganho entre o FIR e o
+   Butterworth da referência, não da fase. Como a constante é um número
+   inteiro de amostras, trocar pra 99 ou 101 erraria 10 ms em todo pico.
 3. **Pro IIR não existe valor certo.** O melhor atraso constante pro IIR de
-   ordem 2 seria +3,7 amostras, e mesmo assim sobram 21,7 ms RMS (pior: 77,5
-   ms). Pro de ordem 4, −2,5 amostras e 57,7 ms RMS (pior: 131,7 ms). Qualquer
-   constante deixa um erro maior que o RMSSD que se quer medir.
+   ordem 2 seria +3,7 amostras, e mesmo assim sobram 21,7 ms RMS entre
+   registros (pior: 77,5 ms). Pro de ordem 4, −2,5 amostras e 57,7 ms RMS
+   (pior: 131,7 ms). Isso é só a parte entre registros (a média de cada um);
+   dentro de cada registro o pico ainda varia de batimento a batimento (coluna
+   "Variação no registro" da tabela). Qualquer constante deixa um erro maior
+   que o RMSSD que se quer medir.
 4. **Pro HRV, só os intervalos importam**, e um atraso constante se cancela no
    RR. A constante serve pro instante absoluto do pico (comparar com o ECG da
    fonte falsa, tempo de trânsito do pulso), e por isso ela tem que ser a mesma

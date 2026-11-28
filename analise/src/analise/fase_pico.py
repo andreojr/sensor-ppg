@@ -126,8 +126,9 @@ def avalia(r) -> list[Resultado]:
 
 
 def melhor_constante(res: list[Resultado], caminho: str) -> tuple[float, float, float]:
-    """O atraso extra (ms) que melhor corrige o caminho em todos os registros, e o
-    erro que sobra: RMS e pior registro. É o limite de qualquer PPG_ATRASO_AMOSTRAS."""
+    """O atraso extra (ms) que melhor corrige o caminho em todos os registros (a mediana
+    dos deslocamentos médios), e o erro que sobra entre registros: RMS e pior registro.
+    Não inclui a variação dentro do registro (o jitter)."""
     d = np.array([x.desloc_ms for x in res if x.caminho == caminho])
     c = float(np.median(d))
     return c, float(np.sqrt(np.mean((d - c) ** 2))), float(np.abs(d - c).max())
@@ -153,11 +154,15 @@ def relatorio(registros: list) -> list[Resultado]:
     g = [x for x in res if x.caminho == FIR]
     print(f"\nHRV de referência (ECG), mediana: SDNN {np.median([x.sdnn_ref_ms for x in g]):.0f} ms, "
           f"RMSSD {np.median([x.rmssd_ref_ms for x in g]):.0f} ms")
-    print("\nMelhor atraso constante extra e o que sobra (é o limite de um PPG_ATRASO_AMOSTRAS):")
+    print("\nMelhor atraso constante extra e o que sobra entre registros (média de cada registro):")
     for caminho in list(caminhos())[1:]:
         c, rms, pior = melhor_constante(res, caminho)
         print(f"  {caminho:22s} {c:+7.1f} ms ({c * FS_HZ / 1000:+.1f} amostras): "
               f"sobra {rms:5.1f} ms RMS, pior registro {pior:5.1f} ms")
+    d = np.array([x.desloc_ms for x in res if x.caminho == FIR])
+    print(f"\nCom o atraso nominal ({filtro.ATRASO} amostras, sem constante extra), o FIR deixa "
+          f"{np.sqrt(np.mean(d**2)):.1f} ms RMS entre registros, pior registro "
+          f"{np.abs(d).max():.1f} ms")
     return res
 
 
