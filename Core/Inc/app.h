@@ -9,6 +9,7 @@
  *   cadeia            esvazia a fila: cadeia_processa(), linhas na serial,
  *                     a onda pro display
  *   display           uma página (~3 ms) com a ficha (ppg_resultados_t)
+ *   buzzer            bipe a cada batimento, tom contínuo sem batimento (#152)
  *   monitor_tarefa()  a cada 1 s de TIM2: taxa, fila, perdidas; a cada 10 s, ciclos
  *   serial_envia()    despacha o buffer por DMA
  *
