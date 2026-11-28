@@ -177,7 +177,8 @@ entre batimentos); o do ECG é `60 / média dos RR` na mesma janela de 8 s. Repr
 
 ![BPM por picos e pela FFT contra o ECG em s1_sit, s1_run e s2_walk, com o erro de cada um](../../../assets/comparacao_bpm.png)
 
-Mediana dos registros de cada atividade (5 por atividade), **picos / FFT**:
+Mediana dos registros de cada atividade (5 por atividade), coluna a coluna, **picos / FFT**.
+A coluna de válidos também é mediana: ela esconde o `s2_walk` (abaixo).
 
 | Atividade | Erro mediano (bpm) | Erro p95 (bpm) | Atraso (s) | Estabilidade (bpm) | Válidos (%) |
 |---|---|---|---|---|---|
@@ -187,7 +188,7 @@ Mediana dos registros de cada atividade (5 por atividade), **picos / FFT**:
 | **Todos (15)** | **0,71 / 0,84** | **2,13 / 2,91** | **3,5 / 4,0** | **0,70 / 0,81** | **100 / 100** |
 
 - **Erro:** \|BPM − BPM do ECG na janela\|. Sentado, a FFT erra mais que o dobro do picos
-  (0,73 contra 0,30 bpm): ela é uma estimativa por interpolação sobre bins de 7,5 bpm, e o
+  na mediana (0,73 contra 0,30 bpm; no `s2_sit` é o contrário, 0,84 contra 1,70): ela é uma estimativa por interpolação sobre bins de 7,5 bpm, e o
   picos mede intervalos de verdade. Em movimento os dois ficam em ~1 bpm.
 - **Atraso:** o da FFT é metade da janela (4 s, como previsto); o do picos é parecido
   (~3,5 s), porque ele é a média dos 8 últimos RR. **Não é o atraso que separa os dois.**
@@ -200,10 +201,23 @@ Mediana dos registros de cada atividade (5 por atividade), **picos / FFT**:
 
 **O que a média esconde:** em `s2_walk` a FFT dá BPM válido o tempo quase todo e erra
 feio quando o artefato de movimento passa o pulso (45 a 85 bpm contra ~135 do ECG, p95
-de 49,7 bpm). O picos, nessa hora, recusa o ritmo e fica sem número; o que sobra tem p95
-de 8,3 bpm. **Ficar sem resposta é melhor que dar a errada**: a prominência da FFT não
-separa pulso de artefato, e a regularidade dos RR do picos separa.
+de 49,7 bpm). O picos recusa o ritmo (`valido = false`) em boa parte do registro (fica
+com BPM só 23% do tempo) e escapa desses erros grandes. Mas o que ele entrega ali é pior
+que a FFT nos mesmos instantes: nos 12 em que os dois têm BPM, o picos erra 2,66 bpm na
+mediana (p95 8,3) e a FFT 0,70 (p95 2,7). E no `s2_run` o picos fica válido o tempo todo
+e sai enviesado para baixo (~132 contra ~136 bpm do ECG, erro mediano 4,55 contra 2,89 da
+FFT): ele segue os passos, como já dito na limitação acima. A regularidade dos RR recusa
+parte dos trechos com artefato, mas não todos; o resto é com a `qualidade`. Nos outros
+registros em que o picos fica sem BPM parte do tempo (`s3_walk`, `s3_run`, `s4_walk`),
+ele continua melhor que a FFT nos instantes em comum (o script imprime essa conta).
+
+**O que esta comparação não inclui:** é módulo contra módulo, sem a `qualidade`. O que a
+tela mostra passa ainda pela decisão do BPM confiável, que esconde mais instantes em
+movimento. O "erro" usa a janela de 8 s da FFT como referência para os dois; o picos é
+a média dos últimos 8 RR (3,5 a 6 s), então parte do erro dele é esse descasamento de
+janela.
 
 **Conclusão:** a FFT fica como segunda opinião independente do `bpm_picos`, que é o BPM
-do produto: não depende de achar cada batimento, mas é menos exata e não sabe dizer
-quando erra.
+do produto: não depende de achar cada batimento, mas é menos exata parada, e a
+prominência dela não separa pulso de artefato. O picos também não separa sempre
+(`s2_run`); quem decide o que vai para a tela é a `qualidade`.

@@ -176,7 +176,23 @@ def tabela(cs: list[Comparacao]) -> str:
             linhas.append(linha(atividade, grupo))
     linhas.append(linha("todos", cs))
     linhas.append(f"\nEstabilidade do próprio ECG (linha de base): {_n(_mediana_ecg(cs))} bpm.")
+    linhas.append("\nOnde o picos fica sem BPM parte do tempo, o erro nos instantes em que os dois")
+    linhas.append("têm BPM (mediana e p95, picos / FFT):")
+    for c in cs:
+        if c.m_picos.validos < 1.0:
+            linhas.append(f"  {c.registro}: {erro_comum(c)}")
     return "\n".join(linhas)
+
+
+def erro_comum(c: Comparacao) -> str:
+    """Erro dos dois só nos instantes em que os dois têm BPM (sem viés de seleção)."""
+    ok = ~np.isnan(c.picos) & ~np.isnan(c.espectral)
+    if not ok.any():
+        return "nenhum instante em comum"
+    ep, ef = np.abs(c.picos - c.ecg)[ok], np.abs(c.espectral - c.ecg)[ok]
+    med = _par(float(np.median(ep)), float(np.median(ef)))
+    p95 = _par(float(np.percentile(ep, 95)), float(np.percentile(ef, 95)))
+    return f"{ok.sum()} instantes, mediana {med}, p95 {p95} bpm"
 
 
 def _mediana_ecg(cs: list[Comparacao]) -> float:
