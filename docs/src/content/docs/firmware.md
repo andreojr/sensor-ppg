@@ -869,7 +869,7 @@ Reaproveita os sinais da cadeia, sem módulo de PDS novo. Não bloqueia: o tempo
 `HAL_GetTick()` e `buzzer_servico()` só escreve o pino quando o nível muda (custo desprezível, sem
 mudar o orçamento da volta). A regra (`buzzer_logica.c`, C puro, sem HAL, fora de `pds/`) é testada no PC
 (`testes/buzzer/teste_buzzer.c`). O bipe sai ~1,3 s depois do pulso de verdade (atraso do filtro mais o
-candidato pendente do picos), como as linhas `p,`. **Não testado na placa.**
+candidato pendente do picos), como as linhas `p,`. **Testado na placa (bipe por batimento, tom contínuo e silêncio sem dedo).**
 
 ## Recuperação de falhas
 
