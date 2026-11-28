@@ -9,6 +9,7 @@
 #define ENDERECO_HAL (DISPLAY_ENDERECO << 1) /* a HAL quer o endereço já deslocado */
 #define TIMEOUT_MS 5u /* uma página leva 3,1 ms (medido); sobra pra um ACK lento */
 #define FALHAS_SEGUIDAS_MAX 3u
+#define RELIGA_MS 2000u /* desligado: tenta o display_init de novo a cada tanto */
 
 #define CTRL_COMANDOS 0x00u /* o que vem depois são comandos */
 #define CTRL_DADOS 0x40u    /* o que vem depois são pixels */
@@ -18,6 +19,7 @@ static oled_t oled; /* ~3 KB */
 static bool ativo;
 static uint8_t falhas;
 static uint32_t t_quadro;   /* ms do último quadro desenhado */
+static uint32_t t_tentativa; /* ms em que o display se desligou ou da última tentativa de religar */
 static uint32_t t_inicio;   /* ms em que o display ligou */
 static bool quadro_pendente; /* o quadro desenhado ainda tem páginas por mandar */
 #if APP_SERIAL_TELA
@@ -54,6 +56,49 @@ static bool envia_pagina(uint8_t pagina, const uint8_t *dados)
                              (uint8_t *)(uintptr_t)dados, OLED_W, TIMEOUT_MS) == HAL_OK;
 }
 
+/* O OLED pode segurar o SDA em baixo no meio de um byte (reset do microcontrolador no meio de
+   um envio) e um reset do microcontrolador não solta o chip: o BUSY da I2C3 fica preso, sem
+   erro da HAL. 9 pulsos no SCL com o SDA solto terminam o byte; depois um STOP. A I2C3 sai
+   desligada (quem chama faz o HAL_I2C_Init). A espera é um laço curto, não HAL_Delay: a rotina
+   toda leva ~0,2 ms e cabe numa volta do laço principal. */
+static void espera(void)
+{
+    for (volatile uint32_t i = 0; i < 200u; i++) {
+    }
+}
+
+static void destrava_i2c3(void)
+{
+    GPIO_InitTypeDef gpio = {0};
+
+    (void)HAL_I2C_DeInit(i2c);
+    gpio.Pull = GPIO_NOPULL;
+    gpio.Speed = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_WritePin(DISPLAY_SCL_GPIO_Port, DISPLAY_SCL_Pin, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(DISPLAY_SDA_GPIO_Port, DISPLAY_SDA_Pin, GPIO_PIN_SET);
+    gpio.Pin = DISPLAY_SCL_Pin;
+    gpio.Mode = GPIO_MODE_OUTPUT_PP;
+    HAL_GPIO_Init(DISPLAY_SCL_GPIO_Port, &gpio);
+    gpio.Pin = DISPLAY_SDA_Pin;
+    gpio.Mode = GPIO_MODE_OUTPUT_OD; /* o chip também puxa o SDA */
+    HAL_GPIO_Init(DISPLAY_SDA_GPIO_Port, &gpio);
+    espera();
+    for (int i = 0; i < 9; i++) {
+        HAL_GPIO_WritePin(DISPLAY_SCL_GPIO_Port, DISPLAY_SCL_Pin, GPIO_PIN_RESET);
+        espera();
+        HAL_GPIO_WritePin(DISPLAY_SCL_GPIO_Port, DISPLAY_SCL_Pin, GPIO_PIN_SET);
+        espera();
+    }
+    /* STOP: SDA sobe com o SCL alto. */
+    HAL_GPIO_WritePin(DISPLAY_SCL_GPIO_Port, DISPLAY_SCL_Pin, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(DISPLAY_SDA_GPIO_Port, DISPLAY_SDA_Pin, GPIO_PIN_RESET);
+    espera();
+    HAL_GPIO_WritePin(DISPLAY_SCL_GPIO_Port, DISPLAY_SCL_Pin, GPIO_PIN_SET);
+    espera();
+    HAL_GPIO_WritePin(DISPLAY_SDA_GPIO_Port, DISPLAY_SDA_Pin, GPIO_PIN_SET);
+    espera();
+}
+
 /* Conta as falhas; depois de FALHAS_SEGUIDAS_MAX o display se desliga. A I2C é reiniciada
    a cada falha, pra um erro dela (barramento preso) não deixar o resto da placa sem I2C3. */
 static void trata(bool ok)
@@ -62,10 +107,12 @@ static void trata(bool ok)
         falhas = 0;
         return;
     }
-    (void)HAL_I2C_DeInit(i2c);
+    destrava_i2c3(); /* já faz o DeInit */
     (void)HAL_I2C_Init(i2c);
-    if (++falhas >= FALHAS_SEGUIDAS_MAX)
+    if (++falhas >= FALHAS_SEGUIDAS_MAX) {
         ativo = false;
+        t_tentativa = HAL_GetTick();
+    }
 }
 
 /* A página foi pro chip. Com SERIAL_TELA, manda também a cópia pela serial (linha d,); se a
@@ -140,6 +187,8 @@ bool display_init(I2C_HandleTypeDef *hi2c)
     static const uint8_t ACENDE[] = {0xAF};
     static const uint8_t ZEROS[OLED_W] = {0};
     i2c = hi2c;
+    destrava_i2c3();
+    (void)HAL_I2C_Init(i2c); /* a rotina deixa a I2C3 desligada */
     ativo = false;
     falhas = 0;
     quadro_pendente = false;
@@ -195,8 +244,16 @@ void display_amostra(float ir_filtrado)
 
 void display_servico(const ppg_resultados_t *r, uint32_t agora_ms)
 {
-    if (!ativo)
+    if (!ativo) {
+        /* Desligado por falhas (mau contato, falta de energia): tenta religar. Com o chip
+           ausente a tentativa leva ~17 ms; com ele de volta, ~28 ms (uma vez só). */
+        if ((uint32_t)(agora_ms - t_tentativa) >= RELIGA_MS) {
+            t_tentativa = agora_ms;
+            if (display_init(i2c))
+                t_inicio = agora_ms - DISPLAY_AGUARDE_MS; /* sem o AGUARDE: já mostra a medida */
+        }
         return;
+    }
 
     if (quadro_pendente) {
         uint8_t pagina;

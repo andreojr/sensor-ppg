@@ -10,6 +10,8 @@
 #include "max30102.h"
 #include "serial.h"
 
+#define SENSOR_SEM_DADOS_MS 1000u
+
 static volatile bool tem_dado;
 static fila_t *fila;
 static decimacao_t decimacao;               /* sensor -> bruto a PPG_FS_HZ */
@@ -18,14 +20,18 @@ static max30102_amostra_t anterior;         /* repetida no lugar das perdidas */
 static volatile max30102_amostra_t ultima;  /* pra olhar no Live Watch do debugger */
 static sensor_medidas_t medidas;
 static bool leu;                            /* já houve uma leitura (pro intervalo) */
+static I2C_HandleTypeDef *i2c_sensor;
+static uint32_t t_dado_ms;                  /* ms da última leitura com amostras */
 static uint32_t t_leitura;                  /* DWT da última leitura */
 
 sensor_erro_t sensor_init(I2C_HandleTypeDef *hi2c, fila_t *f)
 {
     fila = f;
+    i2c_sensor = hi2c;
     fila_init(fila);
     if (max30102_init(hi2c) != HAL_OK)
         return SENSOR_ERRO_SEM_RESPOSTA;
+    t_dado_ms = HAL_GetTick();
     if (!decimacao_init(&decimacao, MAX30102_FS_HZ))
         return SENSOR_ERRO_SEM_FILTRO;
     return SENSOR_OK;
@@ -52,8 +58,28 @@ static void decima(const max30102_amostra_t *amostra)
         fila_poe(fila, &bruto); /* cheia: descarta e conta (fila->cheia) */
 }
 
+/* Sem amostras por SENSOR_SEM_DADOS_MS (o MAX30102 parou ou resetou sozinho): reconfigura o
+   sensor (reset + configuração completa, acende os LEDs). Se a I2C1 não responde, reinicia a
+   I2C1 e tenta de novo 1 s depois, sem desistir. A cadeia não é reiniciada: o trecho sem
+   sinal sai como qualidade ruim. Não solta um SDA preso pelo sensor (ver firmware.md). */
+static bool recupera(void)
+{
+    if (HAL_GetTick() - t_dado_ms < SENSOR_SEM_DADOS_MS)
+        return false;
+    t_dado_ms = HAL_GetTick();
+    if (max30102_init(i2c_sensor) == HAL_OK) {
+        tem_dado = false;
+    } else {
+        (void)HAL_I2C_DeInit(i2c_sensor);
+        (void)HAL_I2C_Init(i2c_sensor);
+    }
+    return true;
+}
+
 void sensor_tarefa(void)
 {
+    if (recupera())
+        return;
     /* O pino também é olhado: se uma leitura falhar, o INT fica baixo e não vem
        outra borda de descida. */
     if (!tem_dado && HAL_GPIO_ReadPin(SENSOR_INT_GPIO_Port, SENSOR_INT_Pin) != GPIO_PIN_RESET)
@@ -94,6 +120,7 @@ void sensor_tarefa(void)
         medidas.perdidas += perdidas;
     }
     if (n > 0) {
+        t_dado_ms = HAL_GetTick();
         ultima.ir = amostras[n - 1].ir;
         ultima.vermelho = amostras[n - 1].vermelho;
     }

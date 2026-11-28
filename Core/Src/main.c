@@ -109,6 +109,15 @@ int main(void)
   destrava_i2c1();
   /* Tudo o mais (sensor, cadeia, display, TIM2 de régua) fica no app.c. */
   app_init(&hi2c1, &hi2c3, &huart1, &htim2);
+  /* Watchdog independente (LSI ~32 kHz, /64, 1000 contagens: ~2 s), direto nos registradores.
+     Parado no debugger. Ligado depois do app_init (o boot não passa de 2 s e o Error_Handler
+     travado de propósito não deve reiniciar a placa antes do aviso). */
+  DBGMCU->APB1FZ |= DBGMCU_APB1_FZ_DBG_IWDG_STOP;
+  IWDG->KR = 0x5555;
+  IWDG->PR = 4;
+  IWDG->RLR = 1000;
+  IWDG->KR = 0xAAAA;
+  IWDG->KR = 0xCCCC;
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -119,6 +128,7 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
     app_laco();
+    IWDG->KR = 0xAAAA; /* alimenta o watchdog */
   }
   /* USER CODE END 3 */
 }
@@ -344,8 +354,18 @@ static void MX_GPIO_Init(void)
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOH_CLK_ENABLE();
-  __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
+  __HAL_RCC_GPIOA_CLK_ENABLE();
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin : BUZZER_Pin */
+  GPIO_InitStruct.Pin = BUZZER_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(BUZZER_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : SENSOR_INT_Pin */
   GPIO_InitStruct.Pin = SENSOR_INT_Pin;
