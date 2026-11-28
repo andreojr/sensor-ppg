@@ -109,6 +109,15 @@ int main(void)
   destrava_i2c1();
   /* Tudo o mais (sensor, cadeia, display, TIM2 de régua) fica no app.c. */
   app_init(&hi2c1, &hi2c3, &huart1, &htim2);
+  /* Watchdog independente (LSI ~32 kHz, /64, 1000 contagens: ~2 s), direto nos registradores.
+     Parado no debugger. Ligado depois do app_init (o boot não passa de 2 s e o Error_Handler
+     travado de propósito não deve reiniciar a placa antes do aviso). */
+  DBGMCU->APB1FZ |= DBGMCU_APB1_FZ_DBG_IWDG_STOP;
+  IWDG->KR = 0x5555;
+  IWDG->PR = 4;
+  IWDG->RLR = 1000;
+  IWDG->KR = 0xAAAA;
+  IWDG->KR = 0xCCCC;
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -119,6 +128,7 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
     app_laco();
+    IWDG->KR = 0xAAAA; /* alimenta o watchdog */
   }
   /* USER CODE END 3 */
 }
