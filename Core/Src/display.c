@@ -54,6 +54,49 @@ static bool envia_pagina(uint8_t pagina, const uint8_t *dados)
                              (uint8_t *)(uintptr_t)dados, OLED_W, TIMEOUT_MS) == HAL_OK;
 }
 
+/* O OLED pode segurar o SDA em baixo no meio de um byte (reset do microcontrolador no meio de
+   um envio) e um reset do microcontrolador não solta o chip: o BUSY da I2C3 fica preso, sem
+   erro da HAL. 9 pulsos no SCL com o SDA solto terminam o byte; depois um STOP. A I2C3 sai
+   desligada (quem chama faz o HAL_I2C_Init). A espera é um laço curto, não HAL_Delay: a rotina
+   toda leva ~0,2 ms e cabe numa volta do laço principal. */
+static void espera(void)
+{
+    for (volatile uint32_t i = 0; i < 200u; i++) {
+    }
+}
+
+static void destrava_i2c3(void)
+{
+    GPIO_InitTypeDef gpio = {0};
+
+    (void)HAL_I2C_DeInit(i2c);
+    gpio.Pull = GPIO_NOPULL;
+    gpio.Speed = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_WritePin(DISPLAY_SCL_GPIO_Port, DISPLAY_SCL_Pin, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(DISPLAY_SDA_GPIO_Port, DISPLAY_SDA_Pin, GPIO_PIN_SET);
+    gpio.Pin = DISPLAY_SCL_Pin;
+    gpio.Mode = GPIO_MODE_OUTPUT_PP;
+    HAL_GPIO_Init(DISPLAY_SCL_GPIO_Port, &gpio);
+    gpio.Pin = DISPLAY_SDA_Pin;
+    gpio.Mode = GPIO_MODE_OUTPUT_OD; /* o chip também puxa o SDA */
+    HAL_GPIO_Init(DISPLAY_SDA_GPIO_Port, &gpio);
+    espera();
+    for (int i = 0; i < 9; i++) {
+        HAL_GPIO_WritePin(DISPLAY_SCL_GPIO_Port, DISPLAY_SCL_Pin, GPIO_PIN_RESET);
+        espera();
+        HAL_GPIO_WritePin(DISPLAY_SCL_GPIO_Port, DISPLAY_SCL_Pin, GPIO_PIN_SET);
+        espera();
+    }
+    /* STOP: SDA sobe com o SCL alto. */
+    HAL_GPIO_WritePin(DISPLAY_SCL_GPIO_Port, DISPLAY_SCL_Pin, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(DISPLAY_SDA_GPIO_Port, DISPLAY_SDA_Pin, GPIO_PIN_RESET);
+    espera();
+    HAL_GPIO_WritePin(DISPLAY_SCL_GPIO_Port, DISPLAY_SCL_Pin, GPIO_PIN_SET);
+    espera();
+    HAL_GPIO_WritePin(DISPLAY_SDA_GPIO_Port, DISPLAY_SDA_Pin, GPIO_PIN_SET);
+    espera();
+}
+
 /* Conta as falhas; depois de FALHAS_SEGUIDAS_MAX o display se desliga. A I2C é reiniciada
    a cada falha, pra um erro dela (barramento preso) não deixar o resto da placa sem I2C3. */
 static void trata(bool ok)
@@ -62,7 +105,7 @@ static void trata(bool ok)
         falhas = 0;
         return;
     }
-    (void)HAL_I2C_DeInit(i2c);
+    destrava_i2c3(); /* já faz o DeInit */
     (void)HAL_I2C_Init(i2c);
     if (++falhas >= FALHAS_SEGUIDAS_MAX)
         ativo = false;
@@ -140,6 +183,8 @@ bool display_init(I2C_HandleTypeDef *hi2c)
     static const uint8_t ACENDE[] = {0xAF};
     static const uint8_t ZEROS[OLED_W] = {0};
     i2c = hi2c;
+    destrava_i2c3();
+    (void)HAL_I2C_Init(i2c); /* a rotina deixa a I2C3 desligada */
     ativo = false;
     falhas = 0;
     quadro_pendente = false;
