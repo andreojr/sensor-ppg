@@ -9,6 +9,7 @@
 #define ENDERECO_HAL (DISPLAY_ENDERECO << 1) /* a HAL quer o endereço já deslocado */
 #define TIMEOUT_MS 5u /* uma página leva 3,1 ms (medido); sobra pra um ACK lento */
 #define FALHAS_SEGUIDAS_MAX 3u
+#define RELIGA_MS 2000u /* desligado: tenta o display_init de novo a cada tanto */
 
 #define CTRL_COMANDOS 0x00u /* o que vem depois são comandos */
 #define CTRL_DADOS 0x40u    /* o que vem depois são pixels */
@@ -18,6 +19,7 @@ static oled_t oled; /* ~3 KB */
 static bool ativo;
 static uint8_t falhas;
 static uint32_t t_quadro;   /* ms do último quadro desenhado */
+static uint32_t t_tentativa; /* ms em que o display se desligou ou da última tentativa de religar */
 static uint32_t t_inicio;   /* ms em que o display ligou */
 static bool quadro_pendente; /* o quadro desenhado ainda tem páginas por mandar */
 #if APP_SERIAL_TELA
@@ -107,8 +109,10 @@ static void trata(bool ok)
     }
     destrava_i2c3(); /* já faz o DeInit */
     (void)HAL_I2C_Init(i2c);
-    if (++falhas >= FALHAS_SEGUIDAS_MAX)
+    if (++falhas >= FALHAS_SEGUIDAS_MAX) {
         ativo = false;
+        t_tentativa = HAL_GetTick();
+    }
 }
 
 /* A página foi pro chip. Com SERIAL_TELA, manda também a cópia pela serial (linha d,); se a
@@ -240,8 +244,16 @@ void display_amostra(float ir_filtrado)
 
 void display_servico(const ppg_resultados_t *r, uint32_t agora_ms)
 {
-    if (!ativo)
+    if (!ativo) {
+        /* Desligado por falhas (mau contato, falta de energia): tenta religar. Com o chip
+           ausente a tentativa leva ~17 ms; com ele de volta, ~28 ms (uma vez só). */
+        if ((uint32_t)(agora_ms - t_tentativa) >= RELIGA_MS) {
+            t_tentativa = agora_ms;
+            if (display_init(i2c))
+                t_inicio = agora_ms - DISPLAY_AGUARDE_MS; /* sem o AGUARDE: já mostra a medida */
+        }
         return;
+    }
 
     if (quadro_pendente) {
         uint8_t pagina;
